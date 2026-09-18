@@ -1,0 +1,2 @@
+package main
+func Main() int { c := make(chan int); go func() { c <- 42 }(); select { case n := <-c: return n } }

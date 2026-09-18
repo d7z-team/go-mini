@@ -1,0 +1,23 @@
+[package]
+name = "mini-go-tooling"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+license = "MIT"
+publish = false
+repository = "https://github.com/d7z-team/mini-go"
+description = "Compiler language tooling for Mini-Go"
+readme = "../README.md"
+
+[dependencies]
+mini-go = { path = ".." }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["raw_value"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+base64 = "0.22"
+tokio = { version = "1", features = ["sync", "time", "rt", "macros", "io-util", "io-std", "fs"] }
+
+[[bin]]
+name = "mini-go-tools"
+path = "../../../cmd/mini-go-tools/main.rs"

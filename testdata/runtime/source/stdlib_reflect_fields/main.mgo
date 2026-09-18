@@ -1,0 +1,5 @@
+package main
+import "reflect"
+type embedded struct { Number int }
+type Record struct { hidden int; embedded; Values []int }
+func Main() int { x := Record{hidden: 1, embedded: embedded{Number: 20}, Values: []int{2}}; v := reflect.ValueOf(&x).Elem(); if v.Field(0).CanSet() || v.Field(1).CanInterface() { return -1 }; v.Field(1).Field(0).SetInt(40); v.Field(2).Index(0).SetInt(2); f := v.Type().Field(2); if f.Name != "Values" || f.Index[0] != 2 { return -2 }; return x.Number + x.Values[0] }

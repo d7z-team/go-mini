@@ -1,0 +1,83 @@
+package strconv_test
+
+import (
+	"strconv"
+	"testing"
+)
+
+func TestStrconvParseAndFormat(t *testing.T) {
+	i, err := strconv.ParseInt("-2a", 16, 16)
+	if err != nil || i != -42 {
+		t.Fatalf("ParseInt returned wrong value")
+	}
+	u, uintErr := strconv.ParseUint("0xff", 0, 8)
+	if uintErr != nil || u != uint64(255) {
+		t.Fatalf("ParseUint returned wrong value")
+	}
+	f, floatErr := strconv.ParseFloat("-1.25e2", 64)
+	if floatErr != nil || f != -125.0 {
+		t.Fatalf("ParseFloat returned wrong value")
+	}
+	c, complexErr := strconv.ParseComplex("(1.5-2.25i)", 128)
+	if complexErr != nil || real(c) != 1.5 || imag(c) != -2.25 {
+		t.Fatalf("ParseComplex returned wrong value")
+	}
+	if strconv.FormatInt(-42, 10) != "-42" || strconv.FormatUint(uint64(255), 16) != "ff" {
+		t.Fatalf("integer formatting returned wrong value")
+	}
+}
+
+func TestStrconvAppendAndQuote(t *testing.T) {
+	buf := []byte("v=")
+	buf = strconv.AppendBool(buf, true)
+	buf = append(buf, byte(':'))
+	buf = strconv.AppendInt(buf, -42, 10)
+	buf = append(buf, byte(':'))
+	buf = strconv.AppendUint(buf, uint64(255), 16)
+	buf = append(buf, byte(':'))
+	buf = strconv.AppendFloat(buf, 1.25, byte('g'), -1, 64)
+	if string(buf) != "v=true:-42:ff:1.25" {
+		t.Fatalf("Append formatting returned wrong bytes: %s", string(buf))
+	}
+	if strconv.Quote("go\n\"mini\"") != "\"go\\n\\\"mini\\\"\"" {
+		t.Fatalf("Quote returned wrong string")
+	}
+	if strconv.QuoteToASCII("世界") != "\"\\u4e16\\u754c\"" {
+		t.Fatalf("QuoteToASCII returned wrong string")
+	}
+	if strconv.QuoteRune('\n') != "'\\n'" || strconv.QuoteRuneToASCII('界') != "'\\u754c'" {
+		t.Fatalf("QuoteRune returned wrong string")
+	}
+	if !strconv.CanBackquote("go\tmini") || strconv.CanBackquote("go`mini") || strconv.CanBackquote("go\rmini") {
+		t.Fatalf("CanBackquote returned wrong result")
+	}
+}
+
+func TestStrconvUnquote(t *testing.T) {
+	text, err := strconv.Unquote("\"go\\n\\u4e16\\U0001f600\"")
+	if err != nil || text != "go\n世😀" {
+		t.Fatalf("Unquote interpreted string failed")
+	}
+	raw, rawErr := strconv.Unquote("`go\\nmini`")
+	if rawErr != nil || raw != "go\\nmini" {
+		t.Fatalf("Unquote raw string failed")
+	}
+	runeText, runeErr := strconv.Unquote("'\\u754c'")
+	if runeErr != nil || runeText != "界" {
+		t.Fatalf("Unquote rune literal failed")
+	}
+	value, multi, tail, charErr := strconv.UnquoteChar("\\u754c!", byte('"'))
+	if charErr != nil || value != '界' || !multi || tail != "!" {
+		t.Fatalf("UnquoteChar unicode escape failed")
+	}
+	plain, plainMulti, plainTail, plainErr := strconv.UnquoteChar("a界", byte('"'))
+	if plainErr != nil || plain != 'a' || plainMulti || plainTail != "界" {
+		t.Fatalf("UnquoteChar plain character failed")
+	}
+	if _, badErr := strconv.Unquote("\"\\x0\""); badErr == nil {
+		t.Fatalf("Unquote should reject short hex escape")
+	}
+	if _, badRuneErr := strconv.Unquote("'ab'"); badRuneErr == nil {
+		t.Fatalf("Unquote should reject multi-character rune literal")
+	}
+}

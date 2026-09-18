@@ -1,0 +1,89 @@
+package net_test
+
+import (
+	"io"
+	"net"
+	"os"
+	"testing"
+	"time"
+)
+
+func TestPipeTransfersOwnedBytesAndCloses(t *testing.T) {
+	left, right := net.Pipe()
+	data := []byte("hello")
+	written := make(chan error, 1)
+	go func() {
+		count, err := left.Write(data)
+		if err == nil && count != len(data) {
+			err = io.ErrShortWrite
+		}
+		written <- err
+	}()
+	first := make([]byte, 2)
+	if count, err := right.Read(first); err != nil || count != 2 || string(first) != "he" {
+		t.Fatalf("first Read = %d, %q, %v", count, string(first), err)
+	}
+	rest := make([]byte, 8)
+	if count, err := right.Read(rest); err != nil || count != 3 || string(rest[:count]) != "llo" {
+		t.Fatalf("second Read = %d, %q, %v", count, string(rest[:count]), err)
+	}
+	if err := <-written; err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+	if left.LocalAddr().Network() != "pipe" || left.RemoteAddr().String() != "pipe" {
+		t.Fatal("Pipe addresses are invalid")
+	}
+	if left.SetDeadline(time.Time{}) != nil || left.SetReadDeadline(time.Time{}) != nil || left.SetWriteDeadline(time.Time{}) != nil {
+		t.Fatal("Pipe deadline setup failed")
+	}
+	if err := left.Close(); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+	if err := left.SetDeadline(time.Time{}); err != io.ErrClosedPipe {
+		t.Fatalf("SetDeadline after Close = %v", err)
+	}
+	if count, err := right.Read(rest); count != 0 || err != io.EOF {
+		t.Fatalf("Read after peer close = %d, %v", count, err)
+	}
+	if err := left.Close(); err != nil {
+		t.Fatalf("second Close failed: %v", err)
+	}
+	if err := right.Close(); err != nil {
+		t.Fatalf("peer Close failed: %v", err)
+	}
+}
+
+func TestPipeUnblocksIOAndAppliesDeadlines(t *testing.T) {
+	left, right := net.Pipe()
+	blockedWrite := make(chan error, 1)
+	go func() {
+		_, err := left.Write([]byte("blocked"))
+		blockedWrite <- err
+	}()
+	if err := right.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-blockedWrite; err != io.ErrClosedPipe {
+		t.Fatalf("blocked Write error = %v", err)
+	}
+	left.Close()
+
+	left, right = net.Pipe()
+	if err := right.SetReadDeadline(time.Now().Add(-time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	buffer := make([]byte, 1)
+	if count, err := right.Read(buffer); count != 0 || err != os.ErrDeadlineExceeded {
+		t.Fatalf("expired Read = %d, %v", count, err)
+	}
+	if err := right.SetReadDeadline(time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := left.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := right.Read(buffer); count != 0 || err != io.EOF {
+		t.Fatalf("Read after cleared deadline and peer close = %d, %v", count, err)
+	}
+	right.Close()
+}

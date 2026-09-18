@@ -1,0 +1,15 @@
+package state
+
+type Number int
+type Box struct{ N int }
+
+var Value = 3
+var Named Number
+var Item = Box{N: 4}
+var Array = [2]int{1, 2}
+var Slice = []int{1, 2}
+var Map = map[int]int{0: 1}
+var Pointer = &Box{N: 4}
+
+func (b *Box) Add() { b.N++ }
+func Address() *int { return &Value }

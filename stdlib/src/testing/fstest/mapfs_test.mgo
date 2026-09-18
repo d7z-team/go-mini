@@ -1,0 +1,99 @@
+package fstest_test
+
+import (
+	"io/fs"
+	"testing"
+	"testing/fstest"
+)
+
+func TestMapFS(t *testing.T) {
+	files := fstest.MapFS{
+		"root/a.txt": &fstest.MapFile{Data: []byte("a")},
+		"root/sub/b.txt": &fstest.MapFile{Data: []byte("bee")},
+	}
+	data, err := fs.ReadFile(files, "root/sub/b.txt")
+	if err != nil || string(data) != "bee" {
+		t.Fatalf("ReadFile returned wrong result: %v", err)
+	}
+	entries, err := fs.ReadDir(files, "root")
+	if err != nil || len(entries) != 2 || entries[0].Name() != "a.txt" || entries[1].Name() != "sub" || !entries[1].IsDir() {
+		t.Fatalf("ReadDir returned wrong entries")
+	}
+	sub, err := fs.Sub(files, "root")
+	if err != nil {
+		t.Fatalf("Sub returned error: %v", err)
+	}
+	if data, err = fs.ReadFile(sub, "a.txt"); err != nil || string(data) != "a" {
+		t.Fatalf("sub filesystem returned wrong file")
+	}
+	matches, err := fs.Glob(files, "root/*/*.txt")
+	if err != nil || len(matches) != 1 || matches[0] != "root/sub/b.txt" {
+		t.Fatalf("Glob returned wrong matches")
+	}
+	visited := []string{}
+	err = fs.WalkDir(files, "root", func(name string, entry fs.DirEntry, err error) error {
+		if err == nil {
+			visited = append(visited, name)
+		}
+		return err
+	})
+	if err != nil || len(visited) != 4 {
+		t.Fatalf("WalkDir visited wrong tree: %v", err)
+	}
+}
+
+func TestFSContracts(t *testing.T) {
+	files := fstest.MapFS{
+		"root/a.txt": &fstest.MapFile{Data: []byte("a")},
+		"root/b.txt": &fstest.MapFile{Data: []byte("b")},
+		"root/c.txt": &fstest.MapFile{Data: []byte("c")},
+		"root/sub/d.txt": &fstest.MapFile{Data: []byte("d")},
+	}
+	if err := fstest.TestFS(files, "root/a.txt", "root/sub/d.txt"); err != nil {
+		t.Fatalf("TestFS rejected MapFS: %v", err)
+	}
+	if err := fstest.TestFS(files); err != nil {
+		t.Fatalf("TestFS rejected full filesystem check: %v", err)
+	}
+	if err := fstest.TestFS(files, "missing.txt"); err == nil {
+		t.Fatalf("TestFS accepted a missing expected file")
+	}
+	visited := []string{}
+	err := fs.WalkDir(files, "root", func(name string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		visited = append(visited, name)
+		if name == "root/b.txt" {
+			return fs.SkipDir
+		}
+		return nil
+	})
+	if err != nil || len(visited) != 3 || visited[2] != "root/b.txt" {
+		t.Fatalf("file SkipDir did not skip parent remainder: %#v %v", visited, err)
+	}
+	err = fs.WalkDir(files, "root", func(name string, entry fs.DirEntry, err error) error {
+		if name == "root/a.txt" {
+			return fs.SkipAll
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatalf("WalkDir returned SkipAll: %v", err)
+	}
+	if matches, globErr := fs.Glob(files, "missing/*"); globErr != nil || len(matches) != 0 {
+		t.Fatalf("Glob propagated missing-directory error: %#v %v", matches, globErr)
+	}
+	sub, err := fs.Sub(files, "root")
+	if err != nil {
+		t.Fatalf("Sub failed: %v", err)
+	}
+	matches, err := fs.Glob(sub, "sub/*.txt")
+	if err != nil || len(matches) != 1 || matches[0] != "sub/d.txt" {
+		t.Fatalf("Sub Glob returned %#v, %v", matches, err)
+	}
+	var info fs.FileInfo
+	if fs.FileInfoToDirEntry(info) != nil {
+		t.Fatalf("FileInfoToDirEntry(nil) must return nil")
+	}
+}

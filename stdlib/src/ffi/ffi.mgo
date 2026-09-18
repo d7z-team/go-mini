@@ -1,0 +1,26 @@
+// Package ffi provides the low-level host call boundary used by optional
+// capability libraries. Payloads are opaque to the compiler and VM.
+package ffi
+
+import "errors"
+
+// runtimeCall is implemented by the VM as the call_ffi instruction.
+func runtimeCall(route string, payload []byte) ([]byte, string, int) {
+	panic("ffi intrinsic")
+}
+
+// ErrRouteUnavailable means no host implementation is installed for the route.
+var ErrRouteUnavailable = errors.New("FFI route unavailable")
+
+// Call invokes one host route. It blocks the calling Mini-Go goroutine while
+// allowing unrelated VM work to continue.
+func Call(route string, payload []byte) ([]byte, error) {
+	response, message, status := runtimeCall(route, payload)
+	if status == 1 {
+		return nil, ErrRouteUnavailable
+	}
+	if status != 0 {
+		return nil, errors.New(message)
+	}
+	return response, nil
+}

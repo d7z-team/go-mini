@@ -1,0 +1,53 @@
+package crc32
+
+import (
+	"encoding/binary"
+	"errors"
+	"hash"
+)
+
+const stateMagic = "crc\x01"
+
+func tableChecksum(table *Table) uint32 {
+	data := []byte{}
+	if table != nil {
+		for _, value := range table {
+			data = binary.BigEndian.AppendUint32(data, value)
+		}
+	}
+	return ChecksumIEEE(data)
+}
+
+// AppendBinary appends the encoded hash state to buffer and returns the extended buffer.
+func (d *digest) AppendBinary(buffer []byte) ([]byte, error) {
+	buffer = append(buffer, []byte(stateMagic)...)
+	buffer = binary.BigEndian.AppendUint32(buffer, tableChecksum(d.table))
+	return binary.BigEndian.AppendUint32(buffer, d.crc), nil
+}
+
+// MarshalBinary returns the encoded hash state.
+func (d *digest) MarshalBinary() ([]byte, error) {
+	return d.AppendBinary([]byte{})
+}
+
+// UnmarshalBinary restores a hash state encoded with the same table.
+func (d *digest) UnmarshalBinary(data []byte) error {
+	if len(data) < len(stateMagic) || string(data[:len(stateMagic)]) != stateMagic {
+		return errors.New("hash/crc32: invalid hash state identifier")
+	}
+	if len(data) != len(stateMagic) + 8 {
+		return errors.New("hash/crc32: invalid hash state size")
+	}
+	if binary.BigEndian.Uint32(data[len(stateMagic):]) != tableChecksum(d.table) {
+		return errors.New("hash/crc32: tables do not match")
+	}
+	crc := binary.BigEndian.Uint32(data[len(stateMagic) + 4:])
+	d.crc = crc
+	return nil
+}
+
+// Clone returns an independent copy of the hash state.
+func (d *digest) Clone() (hash.Cloner, error) {
+	clone := *d
+	return &clone, nil
+}

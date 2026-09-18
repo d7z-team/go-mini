@@ -1,0 +1,2 @@
+package main
+func Main() int { fs := []func() int{}; for i := 0; i < 3; i++ { fs = append(fs, func() int { return i }) }; return fs[0]() * 100 + fs[1]() * 10 + fs[2]() }

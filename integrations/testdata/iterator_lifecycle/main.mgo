@@ -1,0 +1,10 @@
+package main
+
+func Main() int {
+	m := map[int]int{1: 20, 2: 21}
+	sum := 0
+	for _, value := range m {
+		sum += value // pause
+	}
+	return sum + 1
+}

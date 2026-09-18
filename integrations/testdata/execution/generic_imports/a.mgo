@@ -1,0 +1,8 @@
+package main
+
+import "example/lib"
+import "example/state"
+
+func Result() int {
+	return lib.Value() + Imported() + Local(4) + Shadowed() + state.Value
+}

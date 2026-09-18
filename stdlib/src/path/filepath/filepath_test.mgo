@@ -1,0 +1,22 @@
+package filepath_test
+
+import (
+	"path/filepath"
+	"testing"
+)
+
+func TestPortablePathOperations(t *testing.T) {
+	if filepath.Separator != '/' || filepath.ListSeparator != ':' {
+		t.Fatal("portable separators are incorrect")
+	}
+	if filepath.Clean("/a/../b") != "/b" || filepath.Join("a", "b", "..", "c") != "a/c" {
+		t.Fatal("Clean or Join returned the wrong path")
+	}
+	relative, err := filepath.Rel("/a/b", "/a/c/d")
+	if err != nil || relative != "../c/d" {
+		t.Fatalf("Rel returned %q, %v", relative, err)
+	}
+	if !filepath.IsLocal("a/b") || filepath.IsLocal("../a") || filepath.IsLocal("/a") {
+		t.Fatal("IsLocal returned the wrong result")
+	}
+}

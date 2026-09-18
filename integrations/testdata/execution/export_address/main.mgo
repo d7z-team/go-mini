@@ -1,0 +1,86 @@
+package main
+
+import "example/state"
+
+func Assign() int {
+	state.Value = 11
+	state.Value += 2
+	state.Value++
+	return state.Value
+}
+
+func Address() int {
+	p := &state.Value
+	if p != state.Address() || p != &state.Value {
+		panic("different global slots")
+	}
+	*p = 9
+	return state.Value
+}
+
+func Fields() int {
+	state.Item.N = 7
+	p := &state.Item.N
+	*p += 5
+	state.Item.Add()
+	return state.Item.N
+}
+
+var calls int
+
+func next() int { calls++; return 1 }
+
+func ArrayIndex() int {
+	state.Array[next()] += 5
+	return calls*10 + state.Array[1]
+}
+
+func Copies() int {
+	array := state.Array
+	array[0] = 99
+	item := state.Item
+	item.N = 99
+	state.Array = [2]int{5, 6}
+	state.Item = state.Box{N: 8}
+	array = state.Array
+	item = state.Item
+	array[0]++
+	item.N++
+	return state.Array[0]*10 + state.Item.N
+}
+
+func ArrayAssignment() int {
+	state.Array, state.Array[0] = [2]int{8, 9}, 7
+	return state.Array[0]*10 + state.Array[1]
+}
+
+func SliceAssignment() int {
+	old := state.Slice
+	state.Slice, state.Slice[0] = []int{8, 9}, 7
+	return state.Slice[0]*10 + old[0]
+}
+
+func MapAssignment() int {
+	old := state.Map
+	state.Map, state.Map[0] = map[int]int{0: 8}, 7
+	return state.Map[0]*10 + old[0]
+}
+
+func PointerAssignment() int {
+	old := state.Pointer
+	state.Pointer, state.Pointer.N = &state.Box{N: 8}, 7
+	return state.Pointer.N*10 + old.N
+}
+
+func Named() int {
+	p := &state.Named
+	*p = state.Number(6)
+	return int(state.Named)
+}
+
+func Shadow() int {
+	_ = state.Value
+	state := struct{ Value int }{}
+	state.Value = 12
+	return state.Value
+}

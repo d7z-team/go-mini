@@ -1,0 +1,11 @@
+package main
+
+func Result() (result int) {
+	defer func() {
+		if recover() != nil {
+			result = 7
+		}
+	}()
+	zero := 0
+	return 1 / zero
+}

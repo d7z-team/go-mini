@@ -1,0 +1,3 @@
+package main
+import "reflect"
+func Main() int { a := []int{1, 2}; v := reflect.Append(reflect.ValueOf(a), reflect.ValueOf(3)); b := make([]int, 3); n := reflect.Copy(reflect.ValueOf(b), v); if n != 3 { return -1 }; swap := reflect.Swapper(b); swap(0, 2); return b[0]*10+b[1]*5+b[2]+1 }

@@ -1,0 +1,6 @@
+package rand
+
+// runtimeRead is lowered to the VM entropy intrinsic.
+func runtimeRead(data []byte) (int, string, bool) {
+	panic("crypto/rand intrinsic")
+}

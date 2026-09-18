@@ -1,0 +1,333 @@
+// Package csv reads and writes comma-separated value files.
+package csv
+
+import (
+	"errors"
+	"io"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
+
+// ErrBareQuote is returned when a bare quote appears in an unquoted field.
+var ErrBareQuote = errors.New("bare \" in non-quoted-field")
+
+// ErrQuote is returned for an invalid quoted field.
+var ErrQuote = errors.New("extraneous or missing \" in quoted-field")
+
+// ErrFieldCount is returned when a record has an unexpected number of fields.
+var ErrFieldCount = errors.New("wrong number of fields")
+
+// ErrTrailingComma is retained for source compatibility.
+// Deprecated: ErrTrailingComma is no longer used.
+var ErrTrailingComma = errors.New("extra delimiter at end of line")
+
+// ParseError describes an error while parsing CSV input.
+type ParseError struct {
+	// StartLine is the line where the record began.
+	StartLine int
+	// Line is the line where the error occurred.
+	Line int
+	// Column is the byte column where the error occurred.
+	Column int
+	// Err is the underlying parsing error.
+	Err error
+}
+
+// Error returns a description of the CSV parsing error.
+func (e *ParseError) Error() string {
+	return "record on line " + itoa(e.StartLine) + ": parse error on line " + itoa(e.Line) + ", column " + itoa(e.Column) + ": " + e.Err.Error()
+}
+
+// Unwrap returns the underlying parsing error.
+func (e *ParseError) Unwrap() error {
+	return e.Err
+}
+
+// Reader reads records from CSV-encoded input.
+type Reader struct {
+	// Comma is the field delimiter. It defaults to a comma.
+	Comma rune
+	// Comment, when nonzero, identifies lines to ignore.
+	Comment rune
+	// FieldsPerRecord controls the expected number of fields in each record.
+	FieldsPerRecord int
+	// LazyQuotes permits quotes in unquoted fields and malformed quoted fields.
+	LazyQuotes bool
+	// TrimLeadingSpace ignores leading Unicode space in each field.
+	TrimLeadingSpace bool
+	// ReuseRecord permits Read to reuse the backing array of its previous result.
+	ReuseRecord bool
+	// TrailingComma is retained for source compatibility and is not used.
+	// Deprecated: trailing commas are handled without this field.
+	TrailingComma bool
+	reader io.Reader
+	data string
+	loaded bool
+	offset int
+	line int
+	fieldLines []int
+	fieldColumns []int
+	previous []string
+}
+
+// NewReader returns a Reader that reads from r.
+func NewReader(r io.Reader) *Reader {
+	return &Reader{Comma: ',', reader: r, line: 1}
+}
+
+func validDelim(r rune) bool {
+	return r != 0 && r != '"' && r != '\r' && r != '\n' && r != utf8.RuneError
+}
+
+func (r *Reader) load() error {
+	if r.loaded {
+		return nil
+	}
+	data, err := io.ReadAll(r.reader)
+	if err != nil {
+		return err
+	}
+	r.data = string(data)
+	r.loaded = true
+	return nil
+}
+
+// Read reads one record from r.
+func (r *Reader) Read() ([]string, error) {
+	if !validDelim(r.Comma) || r.Comment != 0 && (!validDelim(r.Comment) || r.Comment == r.Comma) {
+		return nil, errors.New("csv: invalid field or comment delimiter")
+	}
+	if err := r.load(); err != nil {
+		return nil, err
+	}
+	comma := string(r.Comma)
+	for r.offset < len(r.data) {
+		start := r.offset
+		end := strings.IndexByte(r.data[start:], '\n')
+		if end < 0 {
+			end = len(r.data) - start
+		} else {
+			end++
+		}
+		lineText := r.data[start:start + end]
+		if lineText == "\n" || lineText == "\r\n" {
+			r.offset += end
+			r.line++
+			continue
+		}
+		if r.Comment != 0 && strings.HasPrefix(lineText, string(r.Comment)) {
+			r.offset += end
+			r.line++
+			continue
+		}
+		break
+	}
+	if r.offset >= len(r.data) {
+		return nil, io.EOF
+	}
+	startLine := r.line
+	record := []string{}
+	r.fieldLines = nil
+	r.fieldColumns = nil
+	for {
+		if r.TrimLeadingSpace {
+			for r.offset < len(r.data) {
+				value, size := utf8.DecodeRuneInString(r.data[r.offset:])
+				if !unicode.IsSpace(value) || value == '\n' || value == '\r' {
+					break
+				}
+				r.offset += size
+			}
+		}
+		fieldLine := r.line
+		lineStart := strings.LastIndex(r.data[:r.offset], "\n") + 1
+		fieldColumn := r.offset - lineStart + 1
+		field := ""
+		if r.offset < len(r.data) && r.data[r.offset] == '"' {
+			r.offset++
+			for {
+				if r.offset >= len(r.data) {
+					return record, &ParseError{StartLine: startLine, Line: r.line, Column: fieldColumn, Err: ErrQuote}
+				}
+				value := r.data[r.offset]
+				if value == '"' {
+					if r.offset + 1 < len(r.data) && r.data[r.offset + 1] == '"' {
+						field += "\""
+						r.offset += 2
+						continue
+					}
+					r.offset++
+					if r.offset < len(r.data) && !strings.HasPrefix(r.data[r.offset:], comma) && r.data[r.offset] != '\n' && r.data[r.offset] != '\r' {
+						if !r.LazyQuotes {
+							return record, &ParseError{StartLine: startLine, Line: r.line, Column: r.offset - lineStart + 1, Err: ErrQuote}
+						}
+						field += "\""
+						continue
+					}
+					break
+				}
+				if value == '\r' && r.offset + 1 < len(r.data) && r.data[r.offset + 1] == '\n' {
+					field += "\n"
+					r.offset += 2
+					r.line++
+					continue
+				}
+				field += r.data[r.offset:r.offset + 1]
+				r.offset++
+				if value == '\n' {
+					r.line++
+				}
+			}
+		} else {
+			start := r.offset
+			for r.offset < len(r.data) && !strings.HasPrefix(r.data[r.offset:], comma) && r.data[r.offset] != '\n' && r.data[r.offset] != '\r' {
+				if r.data[r.offset] == '"' && !r.LazyQuotes {
+					return record, &ParseError{StartLine: startLine, Line: r.line, Column: r.offset - lineStart + 1, Err: ErrBareQuote}
+				}
+				r.offset++
+			}
+			field = r.data[start:r.offset]
+		}
+		record = append(record, field)
+		r.fieldLines = append(r.fieldLines, fieldLine)
+		r.fieldColumns = append(r.fieldColumns, fieldColumn)
+		if r.offset >= len(r.data) {
+			break
+		}
+		if strings.HasPrefix(r.data[r.offset:], comma) {
+			r.offset += len(comma)
+			continue
+		}
+		if r.data[r.offset] == '\r' {
+			r.offset++
+			if r.offset < len(r.data) && r.data[r.offset] == '\n' {
+				r.offset++
+			}
+		} else if r.data[r.offset] == '\n' {
+			r.offset++
+		}
+		r.line++
+		break
+	}
+	if r.FieldsPerRecord == 0 {
+		r.FieldsPerRecord = len(record)
+	}
+	if r.FieldsPerRecord > 0 && len(record) != r.FieldsPerRecord {
+		return record, &ParseError{StartLine: startLine, Line: startLine, Column: 1, Err: ErrFieldCount}
+	}
+	if r.ReuseRecord {
+		r.previous = record
+		return r.previous, nil
+	}
+	return record, nil
+}
+
+// ReadAll reads all remaining records.
+func (r *Reader) ReadAll() ([][]string, error) {
+	records := [][]string{}
+	for {
+		record, err := r.Read()
+		if err == io.EOF {
+			return records, nil
+		}
+		if err != nil {
+			return records, err
+		}
+		records = append(records, record)
+	}
+}
+
+// FieldPos returns the line and column corresponding to field in the most
+// recently returned record.
+func (r *Reader) FieldPos(field int) (int, int) {
+	if field < 0 || field >= len(r.fieldLines) {
+		panic("out of range index passed to FieldPos")
+	}
+	return r.fieldLines[field], r.fieldColumns[field]
+}
+
+// InputOffset returns the byte offset of the end of the most recently read record.
+func (r *Reader) InputOffset() int64 {
+	return int64(r.offset)
+}
+
+// Writer writes records using CSV encoding.
+type Writer struct {
+	// Comma is the field delimiter. It defaults to a comma.
+	Comma rune
+	// UseCRLF selects CRLF line endings instead of LF.
+	UseCRLF bool
+	writer io.Writer
+	err error
+}
+
+// NewWriter returns a new Writer that writes to w.
+func NewWriter(w io.Writer) *Writer {
+	return &Writer{Comma: ',', writer: w}
+}
+
+// Write writes one CSV record.
+func (w *Writer) Write(record []string) error {
+	if w.err != nil {
+		return w.err
+	}
+	if !validDelim(w.Comma) {
+		w.err = errors.New("csv: invalid field or comment delimiter")
+		return w.err
+	}
+	line := ""
+	comma := string(w.Comma)
+	for i, field := range record {
+		if i > 0 {
+			line += comma
+		}
+		quote := strings.Contains(field, comma) || strings.ContainsAny(field, "\"\r\n") || len(field) > 0 && unicode.IsSpace([]rune(field)[0])
+		if quote {
+			line += "\"" + strings.ReplaceAll(field, "\"", "\"\"") + "\""
+		} else {
+			line += field
+		}
+	}
+	if w.UseCRLF {
+		line += "\r\n"
+	} else {
+		line += "\n"
+	}
+	written, err := io.WriteString(w.writer, line)
+	if err == nil && written != len(line) {
+		err = io.ErrShortWrite
+	}
+	w.err = err
+	return err
+}
+
+// WriteAll writes multiple records and reports the first error.
+func (w *Writer) WriteAll(records [][]string) error {
+	for _, record := range records {
+		if err := w.Write(record); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Flush writes buffered data to the underlying writer. This implementation writes each record eagerly.
+func (w *Writer) Flush() {}
+
+// Error reports the first error encountered by Writer.
+func (w *Writer) Error() error {
+	return w.err
+}
+
+func itoa(value int) string {
+	if value == 0 {
+		return "0"
+	}
+	out := ""
+	for value > 0 {
+		out = string(rune('0' + value % 10)) + out
+		value /= 10
+	}
+	return out
+}

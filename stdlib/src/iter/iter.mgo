@@ -1,0 +1,140 @@
+// Package iter provides basic definitions and operations related to iterators
+// over sequences.
+package iter
+
+// Seq is an iterator over sequences of individual values.
+type Seq[V any] func(yield func(V) bool)
+
+// Seq2 is an iterator over sequences of pairs of values.
+type Seq2[K, V any] func(yield func(K, V) bool)
+
+// Pull converts the push-style iterator sequence seq into a pair of functions:
+// next, which returns the next value in the sequence, and stop, which stops the
+// sequence. The caller must call stop if it does not consume the sequence fully.
+func Pull[V any](seq Seq[V]) (next func() (V, bool), stop func()) {
+	requests := make(chan bool)
+	statuses := make(chan int)
+	values := make(chan V)
+	panics := make(chan any)
+	finished := false
+
+	go func() {
+		continuing := <-requests
+		if !continuing {
+			return
+		}
+		completed := false
+		defer func() {
+			if !completed {
+				statuses <- 2
+				panics <- recover()
+				return
+			}
+			statuses <- 0
+		}()
+		seq(func(value V) bool {
+			statuses <- 1
+			values <- value
+			continuing = <-requests
+			return continuing
+		})
+		completed = true
+	}()
+
+	next = func() (V, bool) {
+		var zero V
+		if finished {
+			return zero, false
+		}
+		requests <- true
+		status := <-statuses
+		if status == 2 {
+			finished = true
+			panic(<-panics)
+		}
+		if status == 0 {
+			finished = true
+			return zero, false
+		}
+		return <-values, true
+	}
+	stop = func() {
+		if finished {
+			return
+		}
+		finished = true
+		requests <- false
+		status := <-statuses
+		if status == 2 {
+			panic(<-panics)
+		}
+	}
+	return next, stop
+}
+
+// Pull2 converts the push-style iterator sequence seq into a pair of functions:
+// next, which returns the next pair in the sequence, and stop, which stops the
+// sequence. The caller must call stop if it does not consume the sequence fully.
+func Pull2[K, V any](seq Seq2[K, V]) (next func() (K, V, bool), stop func()) {
+	requests := make(chan bool)
+	statuses := make(chan int)
+	keys := make(chan K)
+	values := make(chan V)
+	panics := make(chan any)
+	finished := false
+
+	go func() {
+		continuing := <-requests
+		if !continuing {
+			return
+		}
+		completed := false
+		defer func() {
+			if !completed {
+				statuses <- 2
+				panics <- recover()
+				return
+			}
+			statuses <- 0
+		}()
+		seq(func(key K, value V) bool {
+			statuses <- 1
+			keys <- key
+			values <- value
+			continuing = <-requests
+			return continuing
+		})
+		completed = true
+	}()
+
+	next = func() (K, V, bool) {
+		var zeroKey K
+		var zeroValue V
+		if finished {
+			return zeroKey, zeroValue, false
+		}
+		requests <- true
+		status := <-statuses
+		if status == 2 {
+			finished = true
+			panic(<-panics)
+		}
+		if status == 0 {
+			finished = true
+			return zeroKey, zeroValue, false
+		}
+		return <-keys, <-values, true
+	}
+	stop = func() {
+		if finished {
+			return
+		}
+		finished = true
+		requests <- false
+		status := <-statuses
+		if status == 2 {
+			panic(<-panics)
+		}
+	}
+	return next, stop
+}

@@ -1,0 +1,148 @@
+// Package path implements utility routines for manipulating slash-separated
+// paths.
+//
+// The path package should only be used for paths separated by forward
+// slashes, such as the paths in URLs. This package does not deal with
+// Windows paths with drive letters or backslashes; to manipulate
+// operating system paths, use the [path/filepath] package.
+package path
+
+import "errors"
+
+// ErrBadPattern indicates a pattern was malformed.
+var ErrBadPattern = errors.New("syntax error in pattern")
+
+// Match reports whether name matches the shell pattern.
+// The pattern syntax is:
+//
+// 	pattern:
+// 		{ term }
+// 	term:
+// 		'*'         matches any sequence of non-/ characters
+// 		'?'         matches any single non-/ character
+// 		'[' [ '^' ] { character-range } ']'
+// 		            character class (must be non-empty)
+// 		c           matches character c (c != '*', '?', '\\', '[')
+// 		'\\' c      matches character c
+//
+// 	character-range:
+// 		c           matches character c (c != '\\', '-', ']')
+// 		'\\' c      matches character c
+// 		lo '-' hi   matches character c for lo <= c <= hi
+//
+// Match requires pattern to match all of name, not just a substring.
+// The only possible returned error is [ErrBadPattern], when pattern
+// is malformed.
+func Match(pattern, name string) (bool, error) {
+	return matchRunes([]rune(pattern), []rune(name), 0, 0)
+}
+
+func matchRunes(pattern, name []rune, pi, ni int) (bool, error) {
+	for pi < len(pattern) {
+		switch pattern[pi] {
+			case '*':
+				for pi < len(pattern) && pattern[pi] == '*' {
+					pi++
+				}
+				if pi == len(pattern) {
+					for i := ni; i < len(name); i++ {
+						if name[i] == '/' {
+							return false, nil
+						}
+					}
+					return true, nil
+				}
+				for i := ni; ; i++ {
+					matched, err := matchRunes(pattern, name, pi, i)
+					if err != nil || matched {
+						return matched, err
+					}
+					if i >= len(name) || name[i] == '/' {
+						return false, nil
+					}
+				}
+			case '?':
+				if ni >= len(name) || name[ni] == '/' {
+					return false, nil
+				}
+				pi++
+				ni++
+			case '[':
+				if ni >= len(name) || name[ni] == '/' {
+					return false, nil
+				}
+				matched, next, err := matchClass(pattern, pi + 1, name[ni])
+				if err != nil || !matched {
+					return false, err
+				}
+				pi = next
+				ni++
+			case '\\':
+				pi++
+				if pi >= len(pattern) {
+					return false, ErrBadPattern
+				}
+				if ni >= len(name) || name[ni] != pattern[pi] {
+					return false, nil
+				}
+				pi++
+				ni++
+			default:
+				if ni >= len(name) || name[ni] != pattern[pi] {
+					return false, nil
+				}
+				pi++
+				ni++
+		}
+	}
+	return ni == len(name), nil
+}
+
+func matchClass(pattern []rune, index int, value rune) (bool, int, error) {
+	negated := false
+	if index < len(pattern) && pattern[index] == '^' {
+		negated = true
+		index++
+	}
+	matched := false
+	hasTerm := false
+	for index < len(pattern) && pattern[index] != ']' {
+		low, next, ok := classRune(pattern, index)
+		if !ok {
+			return false, 0, ErrBadPattern
+		}
+		index = next
+		high := low
+		if index + 1 < len(pattern) && pattern[index] == '-' && pattern[index + 1] != ']' {
+			high, next, ok = classRune(pattern, index + 1)
+			if !ok || high < low {
+				return false, 0, ErrBadPattern
+			}
+			index = next
+		}
+		hasTerm = true
+		if low <= value && value <= high {
+			matched = true
+		}
+	}
+	if !hasTerm || index >= len(pattern) || pattern[index] != ']' {
+		return false, 0, ErrBadPattern
+	}
+	if negated {
+		matched = !matched
+	}
+	return matched, index + 1, nil
+}
+
+func classRune(pattern []rune, index int) (rune, int, bool) {
+	if index >= len(pattern) {
+		return 0, 0, false
+	}
+	if pattern[index] == '\\' {
+		index++
+		if index >= len(pattern) {
+			return 0, 0, false
+		}
+	}
+	return pattern[index], index + 1, true
+}

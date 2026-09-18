@@ -1,0 +1,46 @@
+package io
+
+// An OffsetWriter maps writes at offset base to offset base+off in the underlying writer.
+type OffsetWriter struct {
+	w WriterAt
+	off int64
+}
+
+// NewOffsetWriter returns an [OffsetWriter] that writes to w
+// starting at offset off.
+func NewOffsetWriter(w WriterAt, off int64) *OffsetWriter {
+	return &OffsetWriter{w: w, off: off}
+}
+
+// Write writes p at the current offset and advances the offset by the number of bytes written.
+func (w *OffsetWriter) Write(p []byte) (int, error) {
+	n, err := w.w.WriteAt(p, w.off)
+	w.off += int64(n)
+	return n, err
+}
+
+// WriteAt writes p at an offset relative to the OffsetWriter base.
+func (w *OffsetWriter) WriteAt(p []byte, off int64) (int, error) {
+	if off < 0 {
+		return 0, errorString{text: "io: OffsetWriter.WriteAt: negative offset"}
+	}
+	return w.w.WriteAt(p, w.off + off)
+}
+
+// Seek sets the offset for the next write and returns the new offset.
+func (w *OffsetWriter) Seek(offset int64, whence int) (int64, error) {
+	position := w.off
+	switch whence {
+		case SeekStart:
+			position = offset
+		case SeekCurrent:
+			position += offset
+		default:
+			return 0, errorString{text: "io: OffsetWriter.Seek: invalid whence"}
+	}
+	if position < 0 {
+		return 0, errorString{text: "io: OffsetWriter.Seek: negative position"}
+	}
+	w.off = position
+	return position, nil
+}

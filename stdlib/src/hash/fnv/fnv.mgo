@@ -1,0 +1,175 @@
+// Package fnv implements FNV-1 and FNV-1a non-cryptographic hash functions.
+package fnv
+
+import (
+	"hash"
+	"math/bits"
+)
+
+type sum32 struct {
+	value uint32
+	alternate bool
+}
+
+type sum64 struct {
+	value uint64
+	alternate bool
+}
+
+type sum128 struct {
+	high uint64
+	low uint64
+	alternate bool
+}
+
+func (s *sum32) Reset() {
+	s.value = 2166136261
+}
+
+func (s *sum32) Size() int {
+	return 4
+}
+
+func (s *sum32) BlockSize() int {
+	return 1
+}
+
+func (s *sum32) Sum32() uint32 {
+	return s.value
+}
+
+func (s *sum32) Sum(buffer []byte) []byte {
+	value := s.value
+	return append(buffer, byte(value >> 24), byte(value >> 16), byte(value >> 8), byte(value))
+}
+
+func (s *sum32) Write(data []byte) (int, error) {
+	for _, value := range data {
+		if s.alternate {
+			s.value ^= uint32(value)
+		}
+		s.value *= 16777619
+		if !s.alternate {
+			s.value ^= uint32(value)
+		}
+	}
+	return len(data), nil
+}
+
+func (s *sum64) Reset() {
+	s.value = uint64(14695981039346656037)
+}
+
+func (s *sum64) Size() int {
+	return 8
+}
+
+func (s *sum64) BlockSize() int {
+	return 1
+}
+
+func (s *sum64) Sum64() uint64 {
+	return s.value
+}
+
+func (s *sum64) Sum(buffer []byte) []byte {
+	value := s.value
+	for shift := 56; shift >= 0; shift -= 8 {
+		buffer = append(buffer, byte(value >> uint(shift)))
+	}
+	return buffer
+}
+
+func (s *sum64) Write(data []byte) (int, error) {
+	for _, value := range data {
+		if s.alternate {
+			s.value ^= uint64(value)
+		}
+		s.value *= uint64(1099511628211)
+		if !s.alternate {
+			s.value ^= uint64(value)
+		}
+	}
+	return len(data), nil
+}
+
+func (s *sum128) Reset() {
+	s.high = uint64(0x6c62272e07bb0142)
+	s.low = uint64(0x62b821756295c58d)
+}
+
+func (s *sum128) Size() int {
+	return 16
+}
+
+func (s *sum128) BlockSize() int {
+	return 1
+}
+
+func (s *sum128) Sum(buffer []byte) []byte {
+	for shift := 56; shift >= 0; shift -= 8 {
+		buffer = append(buffer, byte(s.high >> uint(shift)))
+	}
+	for shift := 56; shift >= 0; shift -= 8 {
+		buffer = append(buffer, byte(s.low >> uint(shift)))
+	}
+	return buffer
+}
+
+func (s *sum128) Write(data []byte) (int, error) {
+	for _, value := range data {
+		if s.alternate {
+			s.low ^= uint64(value)
+		}
+		low := s.low
+		carry, product := bits.Mul64(low, uint64(0x13b))
+		s.low = product
+		s.high = s.high * uint64(0x13b) + carry + low << 24
+		if !s.alternate {
+			s.low ^= uint64(value)
+		}
+	}
+	return len(data), nil
+}
+
+// New32 returns a new 32-bit FNV-1 hash.Hash32.
+func New32() hash.Hash32 {
+	value := &sum32{}
+	value.Reset()
+	return value
+}
+
+// New32a returns a new 32-bit FNV-1a hash.Hash32.
+func New32a() hash.Hash32 {
+	value := &sum32{alternate: true}
+	value.Reset()
+	return value
+}
+
+// New64 returns a new 64-bit FNV-1 hash.Hash64.
+func New64() hash.Hash64 {
+	value := &sum64{}
+	value.Reset()
+	return value
+}
+
+// New64a returns a new 64-bit FNV-1a hash.Hash64.
+func New64a() hash.Hash64 {
+	value := &sum64{alternate: true}
+	value.Reset()
+	return value
+}
+
+// New128 returns a new 128-bit FNV-1 hash.Hash.
+func New128() hash.Hash {
+	value := &sum128{}
+	value.Reset()
+	return value
+}
+
+// New128a returns a new 128-bit FNV-1a hash.Hash.
+func New128a() hash.Hash {
+	value := &sum128{alternate: true}
+	value.Reset()
+	return value
+}

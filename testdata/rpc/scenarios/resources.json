@@ -1,0 +1,6 @@
+[
+  {"name":"discard-provisional","actions":["open","discard","close"],"released":[0,1,1]},
+  {"name":"accept-and-release","actions":["open","accept","release","close"],"released":[0,0,1,1]},
+  {"name":"binding-owns-accepted","actions":["open","accept","close"],"released":[0,0,1]},
+  {"name":"identity-and-alias-lifetime","actions":["open","accept","wrong_epoch","wrong_owner","alias_release","close"],"released":[0,0,0,0,1,1]}
+]

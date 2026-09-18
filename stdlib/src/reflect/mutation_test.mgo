@@ -1,0 +1,476 @@
+package reflect_test
+
+import (
+	"reflect"
+	"testing"
+)
+
+func TestReflectWritableValue(t *testing.T) {
+	s := sample{A: 1, B: "old"}
+	value := reflect.ValueOf(&s).Elem()
+	if !value.CanAddr() || !value.CanSet() {
+		t.Fatalf("Elem of pointer should be settable")
+	}
+	name := value.FieldByName("B")
+	if !name.IsValid() {
+		t.Fatalf("FieldByName should find B")
+	}
+	name.SetString("new")
+	value.FieldByIndex([]int{0}).SetInt(9)
+	if s.A != 9 || s.B != "new" {
+		t.Fatalf("field Set did not write through pointer")
+	}
+	values := [2]int{1, 2}
+	arrayValue := reflect.ValueOf(&values).Elem()
+	arrayValue.Index(1).SetInt(7)
+	if values[1] != 7 {
+		t.Fatalf("array index Set did not write through pointer")
+	}
+	items := []int{3, 4}
+	sliceValue := reflect.ValueOf(&items).Elem()
+	sliceValue.Index(0).SetInt(8)
+	if items[0] != 8 {
+		t.Fatalf("slice index Set did not write through pointer")
+	}
+}
+
+func TestReflectAddressAndSliceViews(t *testing.T) {
+	s := sample{A: 1, B: "old"}
+	root := reflect.ValueOf(&s).Elem()
+	address := root.Addr()
+	address.Elem().FieldByIndex([]int{0}).SetInt(7)
+	if s.A != 7 {
+		t.Fatalf("Addr().Elem() did not preserve the source identity")
+	}
+	expectPanic(t, func() {
+		_ = reflect.ValueOf(s).Addr()
+	})
+	values := [4]int{1, 2, 3, 4}
+	array := reflect.ValueOf(&values).Elem()
+	view := array.Slice(1, 3)
+	if view.CanAddr() || view.CanSet() || view.Len() != 2 || view.Cap() != 3 {
+		t.Fatalf("Slice should return a non-settable view with the correct bounds")
+	}
+	view.Index(0).SetInt(20)
+	if values[1] != 20 {
+		t.Fatalf("array Slice view did not share backing storage")
+	}
+	limited := array.Slice3(0, 2, 2)
+	if limited.Len() != 2 || limited.Cap() != 2 {
+		t.Fatalf("Slice3 should preserve the explicit capacity")
+	}
+	limited.Index(1).SetInt(30)
+	if values[1] != 30 {
+		t.Fatalf("array Slice3 view did not share backing storage")
+	}
+	expectPanic(t, func() {
+		limited.SetLen(1)
+	})
+	items := []int{3, 4, 5, 6}
+	slice := reflect.ValueOf(items)
+	subset := slice.Slice(1, 3)
+	subset.Index(1).SetInt(40)
+	if items[2] != 40 {
+		t.Fatalf("slice Slice view did not share backing storage")
+	}
+	if subset.Len() != 2 || subset.Cap() != 3 {
+		t.Fatalf("slice Slice view returned wrong header: len=%d cap=%d", subset.Len(), subset.Cap())
+	}
+	text := reflect.ValueOf("abcdef").Slice(1, 4)
+	if text.String() != "bcd" || text.Len() != 3 {
+		t.Fatalf("string Slice should use byte bounds")
+	}
+	expectPanic(t, func() {
+		_ = reflect.ValueOf("abcdef").Slice3(1, 4, 5)
+	})
+	expectPanic(t, func() {
+		_ = reflect.ValueOf([2]int{1, 2}).Slice(0, 1)
+	})
+}
+
+func TestReflectConstructedWritableValue(t *testing.T) {
+	var items []int
+	slice := reflect.MakeSlice(reflect.TypeOf(items), 3, 3)
+	slice.Index(0).SetInt(4)
+	slice.Index(1).SetInt(5)
+	slice.Index(2).SetInt(6)
+	slice.Index(1).SetInt(9)
+	sliceItem, sliceItemOK := slice.Index(1).Interface().(int)
+	if slice.Len() != 3 || slice.Index(1).Int() != 9 || !sliceItemOK || sliceItem != 9 {
+		t.Fatalf("MakeSlice current value did not reflect index write")
+	}
+	reflect.ValueOf(&items).Elem().Set(slice)
+	if len(items) != 3 || items[0] != 4 || items[1] != 9 || items[2] != 6 {
+		t.Fatalf("MakeSlice did not create writable slice")
+	}
+	var lookup map[string]int
+	madeMap := reflect.MakeMap(reflect.TypeOf(lookup))
+	madeMap.SetMapIndex(reflect.ValueOf("answer"), reflect.ValueOf(42))
+	keys := madeMap.MapKeys()
+	hit := madeMap.MapIndex(reflect.ValueOf("answer"))
+	iter := madeMap.MapRange()
+	iterOK := iter.Next()
+	keyText, keyOK := iter.Key().Interface().(string)
+	valueInt, valueOK := iter.Value().Interface().(int)
+	if madeMap.Len() != 1 || len(keys) != 1 || !hit.IsValid() || hit.Int() != 42 || !iterOK || !keyOK || keyText != "answer" || !valueOK || valueInt != 42 {
+		t.Fatalf("MakeMap current value did not reflect SetMapIndex")
+	}
+	reflect.ValueOf(&lookup).Elem().Set(madeMap)
+	if lookup["answer"] != 42 {
+		t.Fatalf("MakeMap did not create writable map")
+	}
+	var intLookup map[int]string
+	madeIntMap := reflect.MakeMap(reflect.TypeOf(intLookup))
+	madeIntMap.SetMapIndex(reflect.ValueOf(2), reflect.ValueOf("two"))
+	intKeys := madeIntMap.MapKeys()
+	intHit := madeIntMap.MapIndex(reflect.ValueOf(2))
+	intIter := madeIntMap.MapRange()
+	intIterOK := intIter.Next()
+	intKey, intKeyOK := intIter.Key().Interface().(int)
+	intValue, intValueOK := intIter.Value().Interface().(string)
+	if madeIntMap.Len() != 1 || len(intKeys) != 1 {
+		t.Fatalf("MakeMap did not expose integer map key length")
+	}
+	if !intHit.IsValid() || intHit.String() != "two" {
+		t.Fatalf("MakeMap did not lookup integer map key")
+	}
+	if !intIterOK {
+		t.Fatalf("MakeMap did not iterate integer map key")
+	}
+	if !intKeyOK || intKey != 2 {
+		t.Fatalf("MakeMap did not preserve integer map key type")
+	}
+	if !intValueOK || intValue != "two" {
+		t.Fatalf("MakeMap did not preserve integer map value type")
+	}
+	count := 1
+	countValue := reflect.ValueOf(&count).Elem()
+	countValue.SetInt(12)
+	countAny, countAnyOK := countValue.Interface().(int)
+	if countValue.Int() != 12 || !countAnyOK || countAny != 12 || countValue.IsZero() {
+		t.Fatalf("writable scalar current value did not reflect SetInt")
+	}
+	ptr := reflect.New(reflect.TypeOf(sample{}))
+	field := ptr.Elem().FieldByName("B")
+	if !field.IsValid() {
+		t.Fatalf("New value should expose field B")
+	}
+	field.SetString("allocated")
+	allocated := sample{}
+	reflect.ValueOf(&allocated).Elem().Set(ptr.Elem())
+	if allocated.B != "allocated" {
+		t.Fatalf("New did not allocate writable value")
+	}
+}
+
+func TestReflectValueGuardsAndNil(t *testing.T) {
+	invalid := reflect.Value{}
+	if invalid.IsValid() {
+		t.Fatalf("zero Value should be invalid")
+	}
+	if invalid.Kind() != reflect.Invalid {
+		t.Fatalf("invalid Value should have empty kind")
+	}
+	expectPanic(t, func() {
+		_ = invalid.Type()
+	})
+	expectPanic(t, func() {
+		_ = invalid.Interface()
+	})
+	expectPanic(t, func() {
+		_ = invalid.IsZero()
+	})
+	expectPanic(t, func() {
+		_ = invalid.IsNil()
+	})
+	var items []int
+	if !reflect.ValueOf(items).IsNil() {
+		t.Fatalf("nil slice should be nil")
+	}
+	items = []int{}
+	if reflect.ValueOf(items).IsNil() {
+		t.Fatalf("empty non-nil slice should not be nil")
+	}
+	var lookup map[string]int
+	if !reflect.ValueOf(lookup).IsNil() {
+		t.Fatalf("nil map should be nil")
+	}
+	lookup = map[string]int{}
+	if reflect.ValueOf(lookup).IsNil() {
+		t.Fatalf("empty non-nil map should not be nil")
+	}
+	var ptr *sample
+	if !reflect.ValueOf(ptr).IsNil() {
+		t.Fatalf("nil pointer should be nil")
+	}
+	ptr = &sample{}
+	if reflect.ValueOf(ptr).IsNil() {
+		t.Fatalf("non-nil pointer should not be nil")
+	}
+	expectPanic(t, func() {
+		_ = reflect.ValueOf(1).IsNil()
+	})
+	expectPanic(t, func() {
+		_ = reflect.ValueOf("go").IsNil()
+	})
+}
+
+func TestReflectInterfaceElem(t *testing.T) {
+	container := struct {
+		Value any
+	}{Value: []int{1, 2}}
+	value := reflect.ValueOf(container).Field(0)
+	if value.Kind() != reflect.Interface || value.IsNil() {
+		t.Fatalf("interface field should contain a non-nil dynamic value")
+	}
+	dynamic := value.Elem()
+	if dynamic.Kind() != reflect.Slice || dynamic.Len() != 2 || dynamic.Index(1).Int() != 2 {
+		t.Fatalf("Elem did not unwrap the dynamic interface value")
+	}
+	container.Value = nil
+	value = reflect.ValueOf(container).Field(0)
+	if !value.IsNil() || value.Elem().IsValid() {
+		t.Fatalf("nil interface should return an invalid Elem")
+	}
+}
+
+func TestReflectValueSetZeroAndKindGuards(t *testing.T) {
+	s := sample{A: 9, B: "set"}
+	value := reflect.ValueOf(&s).Elem()
+	value.FieldByIndex([]int{0}).SetZero()
+	field := value.FieldByName("B")
+	if !field.IsValid() {
+		t.Fatalf("FieldByName should find B")
+	}
+	field.SetZero()
+	if s.A != 0 || s.B != "" {
+		t.Fatalf("SetZero did not write struct field zero values")
+	}
+	items := []int{7, 8}
+	slice := reflect.ValueOf(&items).Elem()
+	slice.Index(1).SetZero()
+	if items[1] != 0 {
+		t.Fatalf("SetZero did not write slice index zero value")
+	}
+	var lookup map[string]int
+	madeMap := reflect.MakeMap(reflect.TypeOf(lookup))
+	zeroInt := reflect.New(reflect.TypeOf(1)).Elem()
+	zeroInt.SetInt(42)
+	zeroInt.SetZero()
+	madeMap.SetMapIndex(reflect.ValueOf("answer"), zeroInt)
+	hit := madeMap.MapIndex(reflect.ValueOf("answer"))
+	if !hit.IsValid() || hit.Int() != 0 {
+		t.Fatalf("SetZero value was not usable for SetMapIndex")
+	}
+	box := scoreBox{Count: score(5)}
+	boxValue := reflect.ValueOf(&box).Elem()
+	scoreType := reflect.TypeOf(score(1))
+	countField := boxValue.Type().Field(0)
+	if countField.Type.String() != scoreType.String() {
+		t.Fatalf("StructField.Type should preserve named primitive identity")
+	}
+	zeroScore := reflect.New(countField.Type).Elem()
+	if zeroScore.Type().String() != scoreType.String() || zeroScore.Int() != 0 {
+		t.Fatalf("New on named primitive field type should preserve named zero value")
+	}
+	boxValue.FieldByIndex([]int{0}).SetZero()
+	if box.Count != score(0) {
+		t.Fatalf("SetZero should write named primitive field zero value")
+	}
+	text := reflect.ValueOf("AZ")
+	if text.Len() != 2 || text.Index(1).Uint() != 90 {
+		t.Fatalf("string Len/Index should use byte semantics")
+	}
+	expectPanic(t, func() {
+		_ = reflect.ValueOf(1).Len()
+	})
+	expectPanic(t, func() {
+		_ = reflect.ValueOf(1).Cap()
+	})
+	expectPanic(t, func() {
+		_ = reflect.ValueOf(1).NumField()
+	})
+	expectPanic(t, func() {
+		_ = reflect.ValueOf(1).Field(0)
+	})
+	expectPanic(t, func() {
+		_ = reflect.ValueOf(1).FieldByName("A")
+	})
+	expectPanic(t, func() {
+		_ = reflect.ValueOf(1).Index(0)
+	})
+	expectPanic(t, func() {
+		_ = reflect.ValueOf(1).MapKeys()
+	})
+	expectPanic(t, func() {
+		_ = reflect.ValueOf(1).MapIndex(reflect.ValueOf("answer"))
+	})
+	expectPanic(t, func() {
+		_ = reflect.ValueOf(1).MapRange()
+	})
+}
+
+func TestReflectConvertibleToAndValueConvert(t *testing.T) {
+	scoreType := reflect.TypeOf(score(42))
+	intType := reflect.TypeOf(1)
+	boolType := reflect.TypeOf(true)
+	bytesType := reflect.TypeOf([]byte{})
+	stringType := reflect.TypeOf("")
+	if !scoreType.ConvertibleTo(intType) || !intType.ConvertibleTo(scoreType) || !stringType.ConvertibleTo(bytesType) {
+		t.Fatalf("ConvertibleTo should use runtime conversion semantics")
+	}
+	if boolType.ConvertibleTo(bytesType) {
+		t.Fatalf("Bool should not convert to []byte")
+	}
+	scoreValue := reflect.ValueOf(score(42))
+	convertedInt := scoreValue.Convert(intType)
+	if !scoreValue.CanConvert(intType) || convertedInt.Type().String() != intType.String() || convertedInt.Int() != 42 {
+		t.Fatalf("Value.Convert should convert named primitive to target primitive")
+	}
+	convertedScore := reflect.ValueOf(7).Convert(scoreType)
+	if convertedScore.Type().String() != scoreType.String() || convertedScore.Int() != 7 {
+		t.Fatalf("Value.Convert should convert primitive to named primitive")
+	}
+	byteValue := reflect.ValueOf("AZ").Convert(bytesType)
+	if !reflect.ValueOf("AZ").CanConvert(bytesType) || byteValue.Kind() != reflect.Slice || byteValue.Len() != 2 || byteValue.Index(0).Uint() != 65 || byteValue.Index(1).Uint() != 90 {
+		t.Fatalf("Value.Convert should convert string to []byte")
+	}
+	textValue := reflect.ValueOf([]byte("go")).Convert(stringType)
+	if textValue.String() != "go" {
+		t.Fatalf("Value.Convert should convert []byte to string")
+	}
+	invalid := reflect.Value{}
+	if invalid.CanConvert(intType) {
+		t.Fatalf("invalid Value should not CanConvert")
+	}
+	expectPanic(t, func() {
+		_ = invalid.Convert(intType)
+	})
+	expectPanic(t, func() {
+		_ = reflect.ValueOf(true).Convert(bytesType)
+	})
+}
+
+func TestReflectSliceValueOperations(t *testing.T) {
+	items := []int{1, 2}
+	value := reflect.ValueOf(items)
+	appended := reflect.Append(value, reflect.ValueOf(3), reflect.ValueOf(4))
+	if value.Len() != 2 || appended.Len() != 4 || appended.Index(2).Int() != 3 || appended.Index(3).Int() != 4 {
+		t.Fatalf("Append should return grown slice without changing source header")
+	}
+	more := reflect.AppendSlice(value, reflect.ValueOf([]int{5, 6}))
+	if more.Len() != 4 || more.Index(2).Int() != 5 || more.Index(3).Int() != 6 {
+		t.Fatalf("AppendSlice should append source slice values")
+	}
+	bytes := []byte("----")
+	byteCount := reflect.Copy(reflect.ValueOf(bytes), reflect.ValueOf("go"))
+	if byteCount != 2 || string(bytes) != "go--" {
+		t.Fatalf("Copy should copy string bytes into []byte backing")
+	}
+	dst := []int{0, 0, 0}
+	src := []int{7, 8}
+	count := reflect.Copy(reflect.ValueOf(dst), reflect.ValueOf(src))
+	if count != 2 || dst[0] != 7 || dst[1] != 8 || dst[2] != 0 {
+		t.Fatalf("Copy should copy slice elements")
+	}
+	resized := make([]int, 2, 5)
+	resizedValue := reflect.ValueOf(&resized).Elem()
+	resizedValue.SetLen(4)
+	resizedValue.Index(3).SetInt(9)
+	if len(resized) != 4 || cap(resized) != 5 || resized[3] != 9 {
+		t.Fatalf("SetLen should update writable slice header")
+	}
+	resizedValue.SetCap(4)
+	if len(resized) != 4 || cap(resized) != 4 {
+		t.Fatalf("SetCap should update writable slice capacity")
+	}
+	made := reflect.MakeSlice(reflect.TypeOf([]int{}), 1, 3)
+	made.Index(0).SetInt(11)
+	made.SetLen(3)
+	made.Index(2).SetInt(13)
+	made.SetCap(3)
+	if made.Len() != 3 || made.Cap() != 3 || made.Index(0).Int() != 11 || made.Index(2).Int() != 13 {
+		t.Fatalf("SetLen/SetCap should update constructed slice cell")
+	}
+	var grown []string
+	grownValue := reflect.ValueOf(&grown).Elem()
+	grownValue.Grow(2)
+	grownValue.SetLen(2)
+	if grownValue.Index(0).Type().String() != "string" || grownValue.Index(0).String() != "" {
+		t.Fatalf("Grow should initialize spare capacity with typed zero values")
+	}
+	grownValue.Index(1).SetString("ready")
+	if len(grown) != 2 || grown[1] != "ready" {
+		t.Fatalf("Grow should expose settable elements after SetLen")
+	}
+	expectPanic(t, func() {
+		reflect.ValueOf([]int{}).SetLen(0)
+	})
+	expectPanic(t, func() {
+		resizedValue.SetLen(5)
+	})
+	expectPanic(t, func() {
+		resizedValue.SetCap(3)
+	})
+	expectPanic(t, func() {
+		_ = reflect.Append(reflect.ValueOf([]int{}), reflect.ValueOf("bad"))
+	})
+	expectPanic(t, func() {
+		_ = reflect.AppendSlice(reflect.ValueOf([]int{}), reflect.ValueOf([1]int{1}))
+	})
+	expectPanic(t, func() {
+		_ = reflect.Copy(reflect.ValueOf(1), reflect.ValueOf([]int{}))
+	})
+}
+
+func TestReflectZeroIndirectAndTypeConstructors(t *testing.T) {
+	intType := reflect.TypeOf(1)
+	stringType := reflect.TypeOf("")
+	sliceType := reflect.SliceOf(intType)
+	ptrType := reflect.PointerTo(intType)
+	aliasPtrType := reflect.PtrTo(intType)
+	mapType := reflect.MapOf(stringType, intType)
+	if sliceType.Kind() != reflect.Slice || sliceType.String() != "[]int" || sliceType.Elem().String() != "int" {
+		t.Fatalf("SliceOf should build canonical slice type")
+	}
+	if ptrType.Kind() != reflect.Pointer || ptrType.String() != "*int" || ptrType.Elem().String() != "int" {
+		t.Fatalf("PointerTo should build canonical pointer type")
+	}
+	if aliasPtrType.String() != ptrType.String() || aliasPtrType.Elem().String() != ptrType.Elem().String() {
+		t.Fatalf("PtrTo should return the same type as PointerTo")
+	}
+	var invalid reflect.Type
+	expectPanic(t, func() {
+		_ = reflect.PointerTo(invalid)
+	})
+	if mapType.Kind() != reflect.Map || mapType.String() != "map[string]int" || mapType.Key().String() != "string" || mapType.Elem().String() != "int" {
+		t.Fatalf("MapOf should build canonical map type")
+	}
+	zeroInt := reflect.Zero(intType)
+	zeroSlice := reflect.Zero(sliceType)
+	zeroPtr := reflect.Zero(ptrType)
+	zeroMap := reflect.Zero(mapType)
+	if zeroInt.Kind() != reflect.Int || zeroInt.Int() != 0 || !zeroSlice.IsNil() || !zeroPtr.IsNil() || !zeroMap.IsNil() {
+		t.Fatalf("Zero should return typed zero Value snapshots")
+	}
+	value := 42
+	ptrValue := reflect.ValueOf(&value)
+	indirect := reflect.Indirect(ptrValue)
+	if indirect.Kind() != reflect.Int || indirect.Int() != 42 {
+		t.Fatalf("Indirect should dereference non-nil pointer values")
+	}
+	plain := reflect.ValueOf("mini")
+	if reflect.Indirect(plain).String() != "mini" {
+		t.Fatalf("Indirect should return non-pointer values unchanged")
+	}
+	var nilPointer *int
+	if reflect.Indirect(reflect.ValueOf(nilPointer)).IsValid() {
+		t.Fatalf("Indirect of nil pointer should return invalid Value")
+	}
+	expectPanic(t, func() {
+		zeroSlice.SetLen(0)
+	})
+	expectPanic(t, func() {
+		_ = reflect.MapOf(sliceType, intType)
+	})
+}

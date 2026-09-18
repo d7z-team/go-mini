@@ -1,0 +1,77 @@
+package rand_test
+
+import (
+	rand "math/rand/v2"
+	"testing"
+)
+
+func TestPCGAndRand(t *testing.T) {
+	pcg := rand.NewPCG(1, 2)
+	want := []uint64{
+		0xc4f5a58656eef510,
+		0x9dcec3ad077dec6c,
+		0xc8d04605312f8088,
+		0xcbedc0dcb63ac19a,
+	}
+	for i, expected := range want {
+		if got := pcg.Uint64(); got != expected {
+			t.Fatalf("PCG value %d = %#x, want %#x", i, got, expected)
+		}
+	}
+
+	first := rand.New(rand.NewPCG(10, 20))
+	second := rand.New(rand.NewPCG(10, 20))
+	for i := 0; i < 20; i++ {
+		if first.Uint64() != second.Uint64() {
+			t.Fatal("equal seeds produced different streams")
+		}
+	}
+	if value := first.IntN(17); value < 0 || value >= 17 {
+		t.Fatalf("IntN = %d", value)
+	}
+	values := first.Perm(16)
+	seen := make(map[int]bool)
+	for _, value := range values {
+		if value < 0 || value >= 16 || seen[value] {
+			t.Fatalf("invalid permutation: %v", values)
+		}
+		seen[value] = true
+	}
+}
+
+func TestPCGBinaryRoundTrip(t *testing.T) {
+	first := rand.NewPCG(0x123456789abcdef0, 0xfedcba9876543210)
+	data, err := first.MarshalBinary()
+	if err != nil || len(data) != 20 || string(data[:4]) != "pcg:" {
+		t.Fatalf("MarshalBinary = (%v, %v)", data, err)
+	}
+	second := rand.NewPCG(0, 0)
+	if err := second.UnmarshalBinary(data); err != nil {
+		t.Fatal(err)
+	}
+	if first.Uint64() != second.Uint64() {
+		t.Fatal("binary round trip changed state")
+	}
+}
+
+func TestChaCha8SequenceAndBinaryState(t *testing.T) {
+	seed := [32]byte([]byte("ABCDEFGHIJKLMNOPQRSTUVWXYZ123456"))
+	generator := rand.NewChaCha8(seed)
+	want := []uint64{0xb773b6063d4616a5, 0x1160af22a66abc3c, 0x8c2599d9418d287c, 0x7ee07e037edc5cd6}
+	for index, expected := range want {
+		if value := generator.Uint64(); value != expected {
+			t.Fatalf("value %d = %#x, want %#x", index, value, expected)
+		}
+	}
+	encoded, err := generator.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored := rand.NewChaCha8([32]byte{})
+	if err := restored.UnmarshalBinary(encoded); err != nil {
+		t.Fatal(err)
+	}
+	if restored.Uint64() != generator.Uint64() {
+		t.Fatal("restored ChaCha8 state diverged")
+	}
+}

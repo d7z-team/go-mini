@@ -1,0 +1,15 @@
+package main
+
+import . "example/state"
+
+func identity[T any](value T) T { return value }
+
+func Dot() int {
+	Value = 11
+	p := identity(&Value)
+	*p += 3
+	*(&Array[0]) = 5
+	fn := Item.Add
+	fn()
+	return Value + Array[0] + Item.N
+}

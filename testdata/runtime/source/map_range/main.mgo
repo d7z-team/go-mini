@@ -1,0 +1,2 @@
+package main
+func Main() int { m := map[int]int{2: 10, 3: 20}; n := 0; for k, v := range m { n += k + v }; clear(m); return n + len(m) }

@@ -1,0 +1,22 @@
+package tabwriter_test
+
+import (
+	"bytes"
+	"testing"
+	"text/tabwriter"
+)
+
+func TestTabwriterAlignsColumns(t *testing.T) {
+	var output bytes.Buffer
+	writer := tabwriter.NewWriter(&output, 0, 4, 1, ' ', 0)
+	if _, err := writer.Write([]byte("name\tvalue\nshort\t1\nlonger\t22\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	const want = "name   value\nshort  1\nlonger 22\n"
+	if output.String() != want {
+		t.Fatalf("tabwriter output = %q", output.String())
+	}
+}

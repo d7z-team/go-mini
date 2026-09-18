@@ -1,0 +1,23 @@
+package embed
+
+import (
+	"errors"
+	"io/fs"
+	"testing"
+)
+
+func TestZeroFS(t *testing.T) {
+	var filesystem FS
+	entries, err := filesystem.ReadDir(".")
+	if err != nil || len(entries) != 0 {
+		t.Fatal("zero FS root is not empty")
+	}
+	if _, err = filesystem.Open("missing.txt"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal("zero FS opened a missing file")
+	}
+	if err = fs.WalkDir(filesystem, ".", func(string, fs.DirEntry, error) error {
+		return nil
+	}); err != nil {
+		t.Fatal("WalkDir failed")
+	}
+}

@@ -1,0 +1,12 @@
+[
+  {"name":"empty-health-round","targets":"00","bindings":[],"operations":[]},
+  {"name":"binding-and-operation","targets":"0201030207","bindings":[3],"operations":[7]},
+  {"name":"two-bindings","targets":"0201010102","bindings":[1,2],"operations":[]},
+  {"name":"same-id-distinct-owner-kinds","targets":"0201010201","bindings":[1],"operations":[1]},
+  {"name":"missing-count","targets":"","invalid":true},
+  {"name":"duplicate-binding","targets":"0201010101","invalid":true},
+  {"name":"zero-owner","targets":"010100","invalid":true},
+  {"name":"unknown-owner-kind","targets":"010301","invalid":true},
+  {"name":"truncated-owner","targets":"0101","invalid":true},
+  {"name":"trailing-target-data","targets":"0000","invalid":true}
+]

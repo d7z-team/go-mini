@@ -1,0 +1,7 @@
+[
+  {"name":"control-between-data-fragments","fragments":["4d475246010104006162","4d4752460100010078","4d475246010104026364"],"messages":["","78","61626364"]},
+  {"name":"partial-control","fragments":["4d4752460100020078"],"error_at":0},
+  {"name":"control-offset","fragments":["4d4752460100020178"],"error_at":0},
+  {"name":"second-data-assembly","fragments":["4d475246010104006162","4d475246010202007879"],"messages":[""],"error_at":1},
+  {"name":"repeated-data-sequence","fragments":["4d475246010102006162","4d475246010102006162"],"messages":["6162"],"error_at":1}
+]

@@ -1,0 +1,89 @@
+package example
+
+type Worker struct {
+	N int
+}
+
+func (w Worker) Send(out chan int, values ...int) {
+	for _, n := range values {
+		w.N += n
+	}
+	out <- w.N
+}
+
+type Sender interface {
+	Send(chan int, ...int)
+}
+
+var worker = Worker{N: 10}
+
+var calls int
+
+func receiver() *Worker {
+	calls++
+	return &worker
+}
+
+func argument() int {
+	worker.N = 20
+	return 1
+}
+
+func send(out chan int, n int) {
+	out <- 999
+}
+
+var observed int
+
+func record(n int) {
+	observed = 999
+}
+
+func MethodReceiverOrder() int {
+	out := make(chan int, 1)
+	go receiver().Send(out, argument())
+	if calls != 1 {
+		panic("receiver evaluation")
+	}
+	return <-out
+}
+
+func InterfaceCapture() int {
+	out := make(chan int, 1)
+	var sender Sender = worker
+	values := []int{1, 2}
+	go sender.Send(out, values...)
+	sender = Worker{N: 100}
+	return <-out
+}
+
+func GoLocalShadow() int {
+	out := make(chan int, 1)
+	send := func(ch chan int, n int) {
+		ch <- n
+	}
+	go send(out, 7)
+	return <-out
+}
+
+func DeferLocalShadow() int {
+	func() {
+		record := func(n int) {
+			observed = n
+		}
+		defer record(7)
+	}()
+	return observed
+}
+
+func DeferFunctionValueEllipsis() int {
+	func() {
+		fn := func(values ...int) {
+			for _, n := range values {
+				observed += n
+			}
+		}
+		defer fn([]int{3, 4}...)
+	}()
+	return observed
+}

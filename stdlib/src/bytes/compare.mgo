@@ -1,0 +1,109 @@
+package bytes
+
+import (
+	"strings"
+	"unicode/utf8"
+)
+
+// Equal reports whether a and b
+// are the same length and contain the same bytes.
+// A nil argument is equivalent to an empty slice.
+func Equal(a []byte, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := 0; i < len(a); i++ {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// Compare returns an integer comparing two byte slices lexicographically.
+// The result will be 0 if a == b, -1 if a < b, and +1 if a > b.
+// A nil argument is equivalent to an empty slice.
+func Compare(a []byte, b []byte) int {
+	limit := len(a)
+	if len(b) < limit {
+		limit = len(b)
+	}
+	for i := 0; i < limit; i++ {
+		if a[i] < b[i] {
+			return -1
+		}
+		if a[i] > b[i] {
+			return 1
+		}
+	}
+	if len(a) < len(b) {
+		return -1
+	}
+	if len(a) > len(b) {
+		return 1
+	}
+	return 0
+}
+
+// Contains reports whether subslice is within b.
+func Contains(b []byte, subslice []byte) bool {
+	return Index(b, subslice) >= 0
+}
+
+// ContainsAny reports whether any of the UTF-8-encoded code points in chars are within b.
+func ContainsAny(b []byte, chars string) bool {
+	return IndexAny(b, chars) >= 0
+}
+
+// ContainsFunc reports whether any UTF-8-encoded code point r within b
+// satisfies f(r).
+func ContainsFunc(b []byte, f func(rune) bool) bool {
+	return IndexFunc(b, f) >= 0
+}
+
+// ContainsRune reports whether the rune is contained in the UTF-8-encoded byte slice b.
+func ContainsRune(b []byte, r rune) bool {
+	return IndexRune(b, r) >= 0
+}
+
+// Count counts the number of non-overlapping instances of sep in s.
+// If sep is an empty slice, Count returns 1 + the number of UTF-8-encoded code points in s.
+func Count(s []byte, sep []byte) int {
+	if len(sep) == 0 {
+		return utf8.RuneCount(s) + 1
+	}
+	count := 0
+	start := 0
+	for start <= len(s) {
+		index := Index(s[start:], sep)
+		if index < 0 {
+			return count
+		}
+		count++
+		start = start + index + len(sep)
+	}
+	return count
+}
+
+// HasPrefix reports whether the byte slice s begins with prefix.
+func HasPrefix(s []byte, prefix []byte) bool {
+	if len(prefix) > len(s) {
+		return false
+	}
+	return Equal(s[:len(prefix)], prefix)
+}
+
+// HasSuffix reports whether the byte slice s ends with suffix.
+func HasSuffix(s []byte, suffix []byte) bool {
+	if len(suffix) > len(s) {
+		return false
+	}
+	return Equal(s[len(s) - len(suffix):], suffix)
+}
+
+// EqualFold reports whether s and t, interpreted as UTF-8 strings,
+// are equal under simple Unicode case-folding, which is a more general
+// form of case-insensitivity.
+func EqualFold(s []byte, t []byte) bool {
+	return strings.EqualFold(string(s), string(t))
+}

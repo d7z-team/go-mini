@@ -1,0 +1,100 @@
+package main
+
+type Flag bool
+
+func Loop() int {
+	sum := 0
+	for i := 0; i < 1000; i++ {
+		flag := false
+		if flag {
+			sum += 99
+		}
+		sum += i + 6
+	}
+	return sum // breakpoint
+}
+
+func Shadow() int {
+	flag := true
+	result := 0
+	if flag {
+		flag := false
+		if flag {
+			result += 100
+		} else {
+			result += 2
+		}
+	}
+	if flag {
+		result += 10
+	}
+	return result
+}
+
+func Captures() int {
+	var functions []func() bool
+	for i := 0; i < 3; i++ {
+		flag := false
+		if flag {
+			panic("unexpected initial flag")
+		}
+		functions = append(functions, func() bool { return flag })
+		flag = i == 0
+	}
+	result := 0
+	for i, function := range functions {
+		if function() {
+			result += i + 1
+		}
+	}
+	return result
+}
+
+func Named() int {
+	flag := Flag(false)
+	if flag {
+		return 99
+	}
+	return 3
+}
+
+func set(flag *bool) { *flag = true }
+
+func Mutation() int {
+	flag := false
+	set(&flag)
+	if flag {
+		return 7
+	}
+	return 99
+}
+
+func pair() (bool, int) { return true, 9 }
+
+func Multiple() int {
+	flag, value := pair()
+	if flag {
+		return value
+	}
+	return 99
+}
+
+func Recovered() (result int) {
+	defer func() {
+		if recover() != nil {
+			result = 42
+		}
+	}()
+	flag := true
+	if flag {
+		panic("boolean panic")
+	}
+	return 0
+}
+
+func Panic() {
+	flag := true
+	if flag {
+		panic("boolean panic")
+	}
+}

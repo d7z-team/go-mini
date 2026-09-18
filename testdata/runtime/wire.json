@@ -1,0 +1,431 @@
+[
+  {
+    "name": "zero_type",
+    "model": "TypeRef",
+    "input": {
+      "kind": 0,
+      "named": {
+        "module_path": "",
+        "decl_id": ""
+      }
+    },
+    "canonical": "{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}}",
+    "hash": "b4a6331ece44d4afe0d9f4d4a8ae1382afe00e6b4cc0e3264c8518efecb41097"
+  },
+  {
+    "name": "primitive_type",
+    "model": "TypeRef",
+    "input": {
+      "kind": 3,
+      "primitive": 12,
+      "named": {
+        "module_path": "",
+        "decl_id": ""
+      }
+    },
+    "canonical": "{\"kind\":3,\"primitive\":12,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}}",
+    "hash": "4bf40427c1ca1ae10806696350f80e5c88fa62b9406b5a10c1fce504a99ba8e6"
+  },
+  {
+    "name": "named_type",
+    "model": "TypeRef",
+    "input": {
+      "kind": 4,
+      "named": {
+        "module_path": "example/世界",
+        "decl_id": "Thing"
+      }
+    },
+    "canonical": "{\"kind\":4,\"named\":{\"module_path\":\"example/世界\",\"decl_id\":\"Thing\"}}",
+    "hash": "f70fb65bf4ff505da50778612d9fcd7c572910803859d40aa59a143157cf72e3"
+  },
+  {
+    "name": "zero_node",
+    "model": "TypeNode",
+    "input": {
+      "id": "",
+      "kind": 0,
+      "identity": {
+        "module_path": "",
+        "decl_id": ""
+      },
+      "alias_target": {
+        "kind": 0,
+        "named": {
+          "module_path": "",
+          "decl_id": ""
+        }
+      },
+      "underlying": {
+        "kind": 0,
+        "named": {
+          "module_path": "",
+          "decl_id": ""
+        }
+      },
+      "elem": {
+        "kind": 0,
+        "named": {
+          "module_path": "",
+          "decl_id": ""
+        }
+      },
+      "key": {
+        "kind": 0,
+        "named": {
+          "module_path": "",
+          "decl_id": ""
+        }
+      },
+      "constraint": {
+        "kind": 0,
+        "named": {
+          "module_path": "",
+          "decl_id": ""
+        }
+      },
+      "base": {
+        "kind": 0,
+        "named": {
+          "module_path": "",
+          "decl_id": ""
+        }
+      }
+    },
+    "canonical": "{\"id\":\"\",\"kind\":0,\"identity\":{\"module_path\":\"\",\"decl_id\":\"\"},\"alias_target\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"underlying\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"elem\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"key\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"constraint\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"base\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}}}",
+    "hash": "cce104c1d59acd0da7df2772abc741da1a57237f2cdb4aa880d57e71d3524b57"
+  },
+  {
+    "name": "field_metadata",
+    "model": "TypeNode",
+    "input": {
+      "id": "n1",
+      "kind": 12,
+      "identity": {
+        "module_path": "",
+        "decl_id": ""
+      },
+      "alias_target": {
+        "kind": 0,
+        "named": {
+          "module_path": "",
+          "decl_id": ""
+        }
+      },
+      "underlying": {
+        "kind": 0,
+        "named": {
+          "module_path": "",
+          "decl_id": ""
+        }
+      },
+      "elem": {
+        "kind": 0,
+        "named": {
+          "module_path": "",
+          "decl_id": ""
+        }
+      },
+      "key": {
+        "kind": 0,
+        "named": {
+          "module_path": "",
+          "decl_id": ""
+        }
+      },
+      "fields": [
+        {
+          "name": "世界",
+          "type": {
+            "kind": 3,
+            "primitive": 2,
+            "named": {
+              "module_path": "",
+              "decl_id": ""
+            }
+          },
+          "tag": "json:\"<name>&\"\u2028\u2029",
+          "embedded": true
+        }
+      ],
+      "constraint": {
+        "kind": 0,
+        "named": {
+          "module_path": "",
+          "decl_id": ""
+        }
+      },
+      "base": {
+        "kind": 0,
+        "named": {
+          "module_path": "",
+          "decl_id": ""
+        }
+      }
+    },
+    "canonical": "{\"id\":\"n1\",\"kind\":12,\"identity\":{\"module_path\":\"\",\"decl_id\":\"\"},\"alias_target\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"underlying\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"elem\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"key\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"fields\":[{\"name\":\"世界\",\"type\":{\"kind\":3,\"primitive\":2,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"tag\":\"json:\\\"<name>&\\\"\\u2028\\u2029\",\"embedded\":true}],\"constraint\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"base\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}}}",
+    "hash": "d5e7499b16dd70c0a959f8090d84e562d04766e01544c3b0a0012cd16f43ee72"
+  },
+  {
+    "name": "nil_image",
+    "model": "ExecutionImage",
+    "input": {
+      "format": "",
+      "version": 0,
+      "compiler_id": "",
+      "contract_id": "",
+      "target": {
+        "tags": null
+      },
+      "root": "",
+      "entries": null,
+      "packages": null,
+      "hash": ""
+    },
+    "canonical": "{\"format\":\"\",\"version\":0,\"compiler_id\":\"\",\"contract_id\":\"\",\"target\":{\"tags\":null},\"root\":\"\",\"entries\":null,\"packages\":null,\"hash\":\"\"}",
+    "hash": "8a4f6f09117933d5f63a1917d15a277eefa79f6161a4f770fbdad3d4b39b1d8b"
+  },
+  {
+    "name": "empty_image",
+    "model": "ExecutionImage",
+    "input": {
+      "format": "",
+      "version": 0,
+      "compiler_id": "",
+      "contract_id": "",
+      "target": {
+        "tags": null
+      },
+      "root": "",
+      "entries": [],
+      "packages": {},
+      "hash": ""
+    },
+    "canonical": "{\"format\":\"\",\"version\":0,\"compiler_id\":\"\",\"contract_id\":\"\",\"target\":{\"tags\":null},\"root\":\"\",\"entries\":[],\"packages\":{},\"hash\":\"\"}",
+    "hash": "fe752b17f9b6cda18622d1f7829081c03ce467612ec2bec97204d4adee90f17d"
+  },
+  {
+    "name": "raw_archive",
+    "model": "PackageArchive",
+    "input": {
+      "artifact": {
+        "number": 18446744073709551615,
+        "text": "<>&  "
+      },
+      "artifact_hash": "abc"
+    },
+    "canonical": "{\"artifact\":{\"number\":18446744073709551615,\"text\":\"<>&\u2028\u2029\"},\"artifact_hash\":\"abc\"}",
+    "hash": "114cd3f77bca790e1841406d9b90d66923ffd98208d78c074ef54ee9ef9a4aa7"
+  },
+  {
+    "name": "ordered_packages",
+    "model": "ExecutionImage",
+    "input": {
+      "format": "",
+      "version": 0,
+      "compiler_id": "",
+      "contract_id": "",
+      "target": {
+        "tags": null
+      },
+      "root": "",
+      "entries": null,
+      "packages": {
+        "a": {
+          "artifact": {
+            "x": 1e+99
+          },
+          "artifact_hash": ""
+        },
+        "z": {
+          "artifact": {
+            "x": -0.0
+          },
+          "artifact_hash": ""
+        }
+      },
+      "hash": ""
+    },
+    "canonical": "{\"format\":\"\",\"version\":0,\"compiler_id\":\"\",\"contract_id\":\"\",\"target\":{\"tags\":null},\"root\":\"\",\"entries\":null,\"packages\":{\"a\":{\"artifact\":{\"x\":1e+99},\"artifact_hash\":\"\"},\"z\":{\"artifact\":{\"x\":-0.0},\"artifact_hash\":\"\"}},\"hash\":\"\"}",
+    "hash": "22fffc3b57d135551966e156bde6cfabccaad43b57469f14f93b6cbded793586"
+  },
+  {
+    "name": "zero_symbols",
+    "model": "ProgramSymbols",
+    "input": {
+      "format": "",
+      "version": 0,
+      "compiler_id": "",
+      "contract_id": "",
+      "program_hash": "",
+      "optimization": 0,
+      "packages": null,
+      "hash": ""
+    },
+    "canonical": "{\"format\":\"\",\"version\":0,\"compiler_id\":\"\",\"contract_id\":\"\",\"program_hash\":\"\",\"optimization\":0,\"packages\":null,\"hash\":\"\"}",
+    "hash": "a8f186fc5b60cfa82d409c0f2caba894c379f2e44102ed9fd614cf2e5846a902"
+  },
+  {
+    "name": "raw_constant",
+    "model": "Constant",
+    "input": {
+      "id": "huge",
+      "type": {
+        "kind": 3,
+        "primitive": 12,
+        "named": {
+          "module_path": "",
+          "decl_id": ""
+        }
+      },
+      "value": 18446744073709551615
+    },
+    "canonical": "{\"id\":\"huge\",\"type\":{\"kind\":3,\"primitive\":12,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"value\":18446744073709551615}",
+    "hash": "1dc9081323749710f717209afde42ce6aff31b9d1f69c548410172c1a1d88ac7"
+  },
+  {
+    "name": "duplicate_scalar",
+    "model": "TypeRef",
+    "input": {
+      "kind": 3,
+      "primitive": 3,
+      "primitive": 5
+    },
+    "canonical": "{\"kind\":3,\"primitive\":5,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}}",
+    "hash": "d278aa11f01c6ef7ee7d0f0a0dbf66523cb4f086ac0e8a4c9f663766c12b7f56"
+  },
+  {
+    "name": "null_scalar_preserves_value",
+    "model": "TypeRef",
+    "input": {
+      "kind": 3,
+      "primitive": 3,
+      "primitive": null,
+      "node": null
+    },
+    "canonical": "{\"kind\":3,\"primitive\":3,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}}",
+    "hash": "f1666429a0c7bcf025305ef3b03a3c2435a5f07d99818c327eaa45b1463587f0"
+  },
+  {
+    "name": "duplicate_struct_merges_fields",
+    "model": "TypeRef",
+    "input": {
+      "named": {
+        "module_path": "example"
+      },
+      "named": {
+        "decl_id": "T"
+      }
+    },
+    "canonical": "{\"kind\":0,\"named\":{\"module_path\":\"example\",\"decl_id\":\"T\"}}",
+    "hash": "2d6d2a4844431bacc9d2d449f9219b4fdd42af94ee1a0ca94db8f80837c77035"
+  },
+  {
+    "name": "field_case_folding",
+    "model": "TypeRef",
+    "input": {
+      "KIND": 3,
+      "Primitive": 12
+    },
+    "canonical": "{\"kind\":3,\"primitive\":12,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}}",
+    "hash": "4bf40427c1ca1ae10806696350f80e5c88fa62b9406b5a10c1fce504a99ba8e6"
+  },
+  {
+    "name": "unicode_field_case_folding",
+    "model": "TypeRef",
+    "input": {
+      "Kind": 3,
+      "primitive": 3
+    },
+    "canonical": "{\"kind\":3,\"primitive\":3,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}}",
+    "hash": "f1666429a0c7bcf025305ef3b03a3c2435a5f07d99818c327eaa45b1463587f0"
+  },
+  {
+    "name": "null_struct",
+    "model": "TypeRef",
+    "input": null,
+    "canonical": "{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}}",
+    "hash": "b4a6331ece44d4afe0d9f4d4a8ae1382afe00e6b4cc0e3264c8518efecb41097"
+  },
+  {
+    "name": "duplicate_map_merges_keys",
+    "model": "ExecutionImage",
+    "input": {
+      "packages": {
+        "a": {}
+      },
+      "packages": {
+        "b": {}
+      }
+    },
+    "canonical": "{\"format\":\"\",\"version\":0,\"compiler_id\":\"\",\"contract_id\":\"\",\"target\":{\"tags\":null},\"root\":\"\",\"entries\":null,\"packages\":{\"a\":{\"artifact\":null,\"artifact_hash\":\"\"},\"b\":{\"artifact\":null,\"artifact_hash\":\"\"}},\"hash\":\"\"}",
+    "hash": "0b935a8f813ad54ad690603cf744a3ee06275f06e6493806f96a0eaac481a434"
+  },
+  {
+    "name": "null_map_clears_keys",
+    "model": "ExecutionImage",
+    "input": {
+      "packages": {
+        "a": {}
+      },
+      "packages": null
+    },
+    "canonical": "{\"format\":\"\",\"version\":0,\"compiler_id\":\"\",\"contract_id\":\"\",\"target\":{\"tags\":null},\"root\":\"\",\"entries\":null,\"packages\":null,\"hash\":\"\"}",
+    "hash": "8a4f6f09117933d5f63a1917d15a277eefa79f6161a4f770fbdad3d4b39b1d8b"
+  },
+  {
+    "name": "duplicate_pointer_merges_fields",
+    "model": "TypeNode",
+    "input": {
+      "signature": {
+        "params": [
+          {
+            "type": {
+              "kind": 3,
+              "primitive": 3
+            }
+          }
+        ]
+      },
+      "signature": {
+        "results": [
+          {
+            "kind": 3,
+            "primitive": 2
+          }
+        ]
+      }
+    },
+    "canonical": "{\"id\":\"\",\"kind\":0,\"identity\":{\"module_path\":\"\",\"decl_id\":\"\"},\"alias_target\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"underlying\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"elem\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"key\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"signature\":{\"params\":[{\"type\":{\"kind\":3,\"primitive\":3,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}}}],\"results\":[{\"kind\":3,\"primitive\":2,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}}]},\"constraint\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"base\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}}}",
+    "hash": "5d16fe61ac5d313bb2b26c1193ee85af73e7fba682d751f5d27da13c4e5bd881"
+  },
+  {
+    "name": "raw_null_retains_presence",
+    "model": "Constant",
+    "input": {
+      "value": null
+    },
+    "canonical": "{\"id\":\"\",\"type\":{\"kind\":0,\"named\":{\"module_path\":\"\",\"decl_id\":\"\"}},\"value\":null}",
+    "hash": "f0c1df8c6405f8f340997302369e946ea105028faca0bf0da013170c415225c3"
+  },
+  {
+    "name": "unknown_field",
+    "model": "TypeRef",
+    "input": {
+      "unknown": 1
+    },
+    "canonical": "",
+    "hash": "",
+    "error": "json: unknown field \"unknown\""
+  },
+  {
+    "name": "invalid_numeric_type",
+    "model": "TypeRef",
+    "input": {
+      "primitive": true
+    },
+    "canonical": "",
+    "hash": "",
+    "error": "json: cannot unmarshal bool into Go struct field TypeRef.primitive of type types.PrimitiveKind"
+  }
+]

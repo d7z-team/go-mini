@@ -1,0 +1,60 @@
+package sort_test
+
+import (
+	"sort"
+	"testing"
+)
+
+func TestSortTypedSlicesAndSearch(t *testing.T) {
+	ints := []int{3, 1, 2}
+	sort.Ints(ints)
+	if ints[0] != 1 || ints[1] != 2 || ints[2] != 3 {
+		t.Fatalf("Ints did not sort values")
+	}
+	if !sort.IntsAreSorted(ints) {
+		t.Fatalf("IntsAreSorted should report sorted values")
+	}
+	if sort.SearchInts(ints, 2) != 1 {
+		t.Fatalf("SearchInts returned wrong index")
+	}
+}
+
+func TestSortSliceFunctions(t *testing.T) {
+	people := []person{
+		{Name: "second", Score: 2},
+		{Name: "first", Score: 1},
+		{Name: "third", Score: 3},
+	}
+	sort.Slice(people, func(i int, j int) bool {
+		return people[i].Score < people[j].Score
+	})
+	if people[0].Name != "first" || people[1].Name != "second" || people[2].Name != "third" {
+		t.Fatalf("Slice did not sort struct slice")
+	}
+	if !sort.SliceIsSorted(people, func(i int, j int) bool {
+		return people[i].Score < people[j].Score
+	}) {
+		t.Fatalf("SliceIsSorted should report sorted struct slice")
+	}
+	values := namedInts{3, 1, 2}
+	sort.SliceStable(values, func(i int, j int) bool {
+		return values[i] < values[j]
+	})
+	if values[0] != 1 || values[1] != 2 || values[2] != 3 {
+		t.Fatalf("SliceStable did not sort named slice")
+	}
+	descending := namedInts{1, 3, 2}
+	sort.Slice(descending, func(i int, j int) bool {
+		return descending[i] > descending[j]
+	})
+	if descending[0] != 3 || descending[1] != 2 || descending[2] != 1 {
+		t.Fatalf("Slice did not honor descending less function")
+	}
+}
+
+type person struct {
+	Name string
+	Score int
+}
+
+type namedInts []int

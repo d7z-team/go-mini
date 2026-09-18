@@ -1,0 +1,3 @@
+package main
+import "reflect"
+func Main() int { integer := reflect.TypeOf(int(0)); array := reflect.ArrayOf(2, integer); v := reflect.New(array).Elem(); v.Index(1).SetInt(42); if array != reflect.TypeOf([2]int{}) || v.Interface().([2]int)[1] != 42 { return -1 }; st := reflect.StructOf([]reflect.StructField{{Name: "Number", Type: integer}}); value := reflect.New(st).Elem(); value.Field(0).SetInt(42); if st != reflect.TypeOf(struct { Number int }{}) { return -2 }; fn := reflect.TypeOf(func(int, ...string) bool { return true }); constructed := reflect.FuncOf([]reflect.Type{integer, reflect.TypeOf([]string{})}, []reflect.Type{reflect.TypeOf(true)}, true); if fn != constructed { return -3 }; return int(value.Field(0).Int()) }

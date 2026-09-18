@@ -1,0 +1,2 @@
+package main
+func Main() int { c := make(chan int); n := 0; select { case n = <-c: return -1; default: n = 42 }; return n }

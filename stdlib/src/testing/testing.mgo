@@ -1,0 +1,120 @@
+package testing
+
+import (
+	"fmt"
+)
+
+// T records failure, skip, fatal, message, and log state for one Mini-Go test.
+type T struct {
+	name string
+	failed bool
+	skipped bool
+	fatal bool
+	message string
+	logs []string
+}
+
+// InternalTest associates a discovered Mini-Go test name with its function.
+type InternalTest struct {
+	// Name identifies the test function.
+	Name string
+	// F is the test function to execute.
+	F func(*T)
+}
+
+// Error records a formatted message and marks the test as failed.
+func (t *T) Error(args ...any) {
+	t.failed = true
+	message := fmt.Sprint(args...)
+	t.message = appendMessage(t.message, message)
+}
+
+// Errorf records a formatted message and marks the test as failed.
+func (t *T) Errorf(format string, args ...any) {
+	t.failed = true
+	message := fmt.Sprintf(format, args...)
+	t.message = appendMessage(t.message, message)
+}
+
+// Fatal records a message, marks the test as failed, and records a fatal result.
+func (t *T) Fatal(args ...any) {
+	t.failed = true
+	t.fatal = true
+	message := fmt.Sprint(args...)
+	t.message = appendMessage(t.message, message)
+}
+
+// Fatalf records a formatted message, marks the test as failed, and records a fatal result.
+func (t *T) Fatalf(format string, args ...any) {
+	t.failed = true
+	t.fatal = true
+	message := fmt.Sprintf(format, args...)
+	t.message = appendMessage(t.message, message)
+}
+
+// Log records a message in the test log.
+func (t *T) Log(args ...any) {
+	message := fmt.Sprint(args...)
+	t.logs = append(t.logs, message)
+}
+
+// Logf records a formatted message in the test log.
+func (t *T) Logf(format string, args ...any) {
+	message := fmt.Sprintf(format, args...)
+	t.logs = append(t.logs, message)
+}
+
+// Fail marks the test as failed.
+func (t *T) Fail() {
+	t.failed = true
+}
+
+// FailNow marks the test as failed and records a fatal result.
+func (t *T) FailNow() {
+	t.failed = true
+	t.fatal = true
+}
+
+// Failed reports whether the test has failed.
+func (t *T) Failed() bool {
+	return t.failed
+}
+
+// Name returns the name of the running test.
+func (t *T) Name() string {
+	return t.name
+}
+
+// Skip records a message and marks the test as skipped.
+func (t *T) Skip(args ...any) {
+	t.skipped = true
+	message := fmt.Sprint(args...)
+	t.message = appendMessage(t.message, message)
+}
+
+// SkipNow marks the test as skipped.
+func (t *T) SkipNow() {
+	t.skipped = true
+}
+
+// Skipf records a formatted message and marks the test as skipped.
+func (t *T) Skipf(format string, args ...any) {
+	t.skipped = true
+	message := fmt.Sprintf(format, args...)
+	t.message = appendMessage(t.message, message)
+}
+
+// Skipped reports whether the test was skipped.
+func (t *T) Skipped() bool {
+	return t.skipped
+}
+
+func appendMessage(current string, next string) string {
+	if next == "" {
+		return current
+	}
+	if current == "" {
+		return next
+	}
+	return current + "\n" + next
+}

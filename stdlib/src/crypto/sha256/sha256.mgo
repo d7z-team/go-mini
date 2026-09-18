@@ -1,0 +1,158 @@
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license.
+
+// Package sha256 implements the SHA224 and SHA256 hash algorithms as defined
+// in FIPS 180-4.
+package sha256
+
+import "hash"
+
+const (
+	// The size of a SHA256 checksum in bytes.
+	Size = 32
+
+	// The size of a SHA224 checksum in bytes.
+	Size224 = 28
+	// The blocksize of SHA256 and SHA224 in bytes.
+	BlockSize = 64
+)
+
+type digest struct {
+	h [8]uint32
+	x [BlockSize]byte
+	nx int
+	len uint64
+	is224 bool
+}
+
+// New returns a new [hash.Hash] computing the SHA256 checksum. The Hash
+// also implements [encoding.BinaryMarshaler], [encoding.BinaryAppender] and
+// [encoding.BinaryUnmarshaler] to marshal and unmarshal the internal
+// state of the hash.
+func New() hash.Hash {
+	d := new(digest)
+	d.Reset()
+	return d
+}
+
+// New224 returns a new [hash.Hash] computing the SHA224 checksum. The Hash
+// also implements [encoding.BinaryMarshaler], [encoding.BinaryAppender] and
+// [encoding.BinaryUnmarshaler] to marshal and unmarshal the internal
+// state of the hash.
+func New224() hash.Hash {
+	d := &digest{is224: true}
+	d.Reset()
+	return d
+}
+
+func (d *digest) Reset() {
+	if d.is224 {
+		d.h = [8]uint32{0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939, 0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4}
+	} else {
+		d.h = [8]uint32{0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19}
+	}
+	d.nx = 0
+	d.len = 0
+}
+
+func (d *digest) Size() int {
+	if d.is224 {
+		return Size224
+	}
+	return Size
+}
+
+func (d *digest) BlockSize() int {
+	return BlockSize
+}
+
+func (d *digest) Write(p []byte) (int, error) {
+	written := len(p)
+	d.len += uint64(written)
+	if d.nx > 0 {
+		n := copy(d.x[d.nx:], p)
+		d.nx += n
+		if d.nx == BlockSize {
+			block(d, d.x[:])
+			d.nx = 0
+		}
+		p = p[n:]
+	}
+	if len(p) >= BlockSize {
+		n := len(p) &^ (BlockSize - 1)
+		block(d, p[:n])
+		p = p[n:]
+	}
+	if len(p) > 0 {
+		d.nx = copy(d.x[:], p)
+	}
+	return written, nil
+}
+
+func (d *digest) Sum(in []byte) []byte {
+	copyDigest := *d
+	sum := copyDigest.checkSum()
+	if d.is224 {
+		return append(in, sum[:Size224]...)
+	}
+	return append(in, sum[:]...)
+}
+
+// Sum256 returns the SHA256 checksum of the data.
+func Sum256(data []byte) [Size]byte {
+	d := new(digest)
+	d.Reset()
+	d.Write(data)
+	return d.checkSum()
+}
+
+// Sum224 returns the SHA224 checksum of the data.
+func Sum224(data []byte) [Size224]byte {
+	d := &digest{is224: true}
+	d.Reset()
+	d.Write(data)
+	full := d.checkSum()
+	var out [Size224]byte
+	copy(out[:], full[:Size224])
+	return out
+}
+
+func (d *digest) checkSum() [Size]byte {
+	length := d.len
+	var padding [BlockSize]byte
+	padding[0] = 0x80
+	pad := 56 - int(length % 64)
+	if pad <= 0 {
+		pad += 64
+	}
+	d.Write(padding[:pad])
+	var tail [8]byte
+	putUint64(tail[:], length << 3)
+	d.Write(tail[:])
+	var out [Size]byte
+	for i, value := range d.h {
+		putUint32(out[i * 4:], value)
+	}
+	return out
+}
+
+func runtimeBlock(state [8]uint32, data []byte) [8]uint32 {
+	panic("sha256 intrinsic")
+}
+
+func block(d *digest, p []byte) {
+	d.h = runtimeBlock(d.h, p)
+}
+
+func putUint32(dst []byte, value uint32) {
+	dst[0] = byte(value >> 24)
+	dst[1] = byte(value >> 16)
+	dst[2] = byte(value >> 8)
+	dst[3] = byte(value)
+}
+
+func putUint64(dst []byte, value uint64) {
+	for i := 0; i < 8; i++ {
+		dst[i] = byte(value >> uint(56 - i * 8))
+	}
+}

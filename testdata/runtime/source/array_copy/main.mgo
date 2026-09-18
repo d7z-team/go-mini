@@ -1,0 +1,3 @@
+package main
+type Pair struct { Values [2]int }
+func Main() int { a := Pair{Values: [2]int{20, 2}}; b := a; b.Values[0] = 40; return a.Values[0] + b.Values[0] + b.Values[1] }

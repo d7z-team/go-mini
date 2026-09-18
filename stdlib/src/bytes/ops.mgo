@@ -1,0 +1,142 @@
+package bytes
+
+import "unicode/utf8"
+
+func replaceEmpty(s []byte, new []byte, n int) []byte {
+	out := []byte{}
+	inserted := 0
+	for {
+		if n < 0 || inserted < n {
+			out = append(out, new...)
+			inserted++
+		}
+		if len(s) == 0 {
+			return out
+		}
+		_, size := utf8.DecodeRune(s)
+		out = append(out, s[:size]...)
+		s = s[size:]
+	}
+}
+
+// Join concatenates the elements of s to create a new byte slice. The separator
+// sep is placed between elements in the resulting slice.
+func Join(s [][]byte, sep []byte) []byte {
+	if len(s) == 0 {
+		return []byte{}
+	}
+	out := []byte{}
+	for i := 0; i < len(s); i++ {
+		if i > 0 {
+			out = append(out, sep...)
+		}
+		out = append(out, s[i]...)
+	}
+	return out
+}
+
+// Repeat returns a new byte slice consisting of count copies of b.
+//
+// It panics if count is negative or if the result of (len(b) * count)
+// overflows.
+func Repeat(b []byte, count int) []byte {
+	if count < 0 {
+		panic("negative Repeat count")
+	}
+	out := []byte{}
+	for i := 0; i < count; i++ {
+		out = append(out, b...)
+	}
+	return out
+}
+
+// Replace returns a copy of the slice s with the first n
+// non-overlapping instances of old replaced by new.
+// If old is empty, it matches at the beginning of the slice
+// and after each UTF-8 sequence, yielding up to k+1 replacements
+// for a k-rune slice.
+// If n < 0, there is no limit on the number of replacements.
+func Replace(s []byte, old []byte, new []byte, n int) []byte {
+	if n == 0 {
+		return s
+	}
+	if len(old) == 0 {
+		return replaceEmpty(s, new, n)
+	}
+	out := []byte{}
+	start := 0
+	replaced := 0
+	for start <= len(s) {
+		index := Index(s[start:], old)
+		if index < 0 {
+			out = append(out, s[start:]...)
+			return out
+		}
+		out = append(out, s[start:start + index]...)
+		out = append(out, new...)
+		start = start + index + len(old)
+		replaced++
+		if n > 0 && replaced >= n {
+			out = append(out, s[start:]...)
+			return out
+		}
+	}
+	return out
+}
+
+// ReplaceAll returns a copy of the slice s with all
+// non-overlapping instances of old replaced by new.
+// If old is empty, it matches at the beginning of the slice
+// and after each UTF-8 sequence, yielding up to k+1 replacements
+// for a k-rune slice.
+func ReplaceAll(s []byte, old []byte, new []byte) []byte {
+	return Replace(s, old, new, -1)
+}
+
+// Cut slices s around the first instance of sep,
+// returning the text before and after sep.
+// The found result reports whether sep appears in s.
+// If sep does not appear in s, cut returns s, nil, false.
+//
+// Cut returns slices of the original slice s, not copies.
+func Cut(s []byte, sep []byte) ([]byte, []byte, bool) {
+	index := Index(s, sep)
+	if index < 0 {
+		return s, []byte{}, false
+	}
+	before := []byte{}
+	after := []byte{}
+	before = s[:index]
+	after = s[index + len(sep):]
+	return before, after, true
+}
+
+// CutPrefix returns s without the provided leading prefix byte slice
+// and reports whether it found the prefix.
+// If s doesn't start with prefix, CutPrefix returns s, false.
+// If prefix is the empty byte slice, CutPrefix returns s, true.
+//
+// CutPrefix returns slices of the original slice s, not copies.
+func CutPrefix(s []byte, prefix []byte) ([]byte, bool) {
+	if HasPrefix(s, prefix) {
+		after := []byte{}
+		after = s[len(prefix):]
+		return after, true
+	}
+	return s, false
+}
+
+// CutSuffix returns s without the provided ending suffix byte slice
+// and reports whether it found the suffix.
+// If s doesn't end with suffix, CutSuffix returns s, false.
+// If suffix is the empty byte slice, CutSuffix returns s, true.
+//
+// CutSuffix returns slices of the original slice s, not copies.
+func CutSuffix(s []byte, suffix []byte) ([]byte, bool) {
+	if HasSuffix(s, suffix) {
+		before := []byte{}
+		before = s[:len(s) - len(suffix)]
+		return before, true
+	}
+	return s, false
+}

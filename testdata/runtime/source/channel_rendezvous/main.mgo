@@ -1,0 +1,2 @@
+package main
+func Main() int { c := make(chan int); go func() { c <- 20; c <- 22; close(c) }(); n := 0; for value := range c { n += value }; return n }

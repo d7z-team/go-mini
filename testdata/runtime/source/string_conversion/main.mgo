@@ -1,0 +1,3 @@
+package main
+type Tag string
+func Main() int { s := Tag(string([]byte{255, 0, 128})); b := []byte(string(s)); var c byte = 42; var bad uint64 = 18446744073709551615; if string(c) != "*" || string(bad) != "�" || string(int32(-1)) != "�" { return -1 }; if b[0] != 255 || b[1] != 0 || b[2] != 128 { return -2 }; return 42 }

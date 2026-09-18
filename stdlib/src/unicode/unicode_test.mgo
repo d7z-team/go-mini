@@ -1,0 +1,51 @@
+package unicode_test
+
+import (
+	"testing"
+	"unicode"
+)
+
+func TestUnicodeClassification(t *testing.T) {
+	if !unicode.IsLetter('A') || !unicode.IsLetter('ñ') || !unicode.IsLetter('Ω') || !unicode.IsLetter('Ж') || !unicode.IsLetter('界') {
+		t.Fatalf("IsLetter should recognize scanner-grade letters")
+	}
+	if unicode.IsLetter('9') || unicode.IsLetter('_') {
+		t.Fatalf("IsLetter should reject non-letters")
+	}
+	if !unicode.IsDigit('9') || !unicode.IsDigit('٣') || !unicode.IsDigit('５') {
+		t.Fatalf("IsDigit should recognize decimal digits")
+	}
+	if !unicode.IsNumber('Ⅻ') || unicode.IsNumber('A') {
+		t.Fatalf("IsNumber returned wrong result")
+	}
+	if !unicode.IsSpace('\n') || !unicode.IsSpace('\u2003') || unicode.IsSpace('A') {
+		t.Fatalf("IsSpace returned wrong result")
+	}
+	if !unicode.IsControl('\n') || unicode.IsControl(' ') {
+		t.Fatalf("IsControl returned wrong result")
+	}
+	if !unicode.IsPrint('界') || unicode.IsPrint('\n') {
+		t.Fatalf("IsPrint returned wrong result")
+	}
+	if !unicode.IsGraphic(' ') || unicode.IsGraphic('\n') {
+		t.Fatalf("IsGraphic returned wrong result")
+	}
+}
+
+func TestUnicodeCaseMapping(t *testing.T) {
+	if !unicode.IsUpper('A') || !unicode.IsLower('a') || unicode.IsUpper('a') || unicode.IsLower('A') {
+		t.Fatalf("ASCII case classification failed")
+	}
+	if unicode.ToLower('A') != 'a' || unicode.ToUpper('z') != 'Z' || unicode.ToTitle('ñ') != 'Ñ' {
+		t.Fatalf("ASCII/Latin case mapping failed")
+	}
+	if unicode.ToLower('Ω') != 'ω' || unicode.ToUpper('ж') != 'Ж' {
+		t.Fatalf("Greek/Cyrillic case mapping failed")
+	}
+	if unicode.SimpleFold('A') != 'a' || unicode.SimpleFold('a') != 'A' || unicode.SimpleFold('界') != '界' {
+		t.Fatalf("SimpleFold returned wrong result")
+	}
+	if unicode.MaxASCII != 127 || unicode.MaxLatin1 != 255 || unicode.ReplacementChar != '�' || unicode.MaxRune != '\U0010ffff' {
+		t.Fatalf("unicode constants have wrong values")
+	}
+}

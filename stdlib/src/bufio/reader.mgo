@@ -1,0 +1,363 @@
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license.
+// Adapted for the Mini-Go runtime-neutral standard library.
+
+package bufio
+
+import (
+	"io"
+	"unicode/utf8"
+)
+
+// Reader implements buffering for an io.Reader object.
+// A new Reader is created by calling [NewReader] or [NewReaderSize];
+// alternatively the zero value of a Reader may be used after calling [Reset]
+// on it.
+type Reader struct {
+	reader io.Reader
+	buffer []byte
+	start int
+	size int
+	err error
+	lastByte bool
+	lastRune int
+}
+
+// NewReader returns a new [Reader] whose buffer has the default size.
+func NewReader(reader io.Reader) *Reader {
+	return NewReaderSize(reader, defaultBufSize)
+}
+
+// NewReaderSize returns a new [Reader] whose buffer has at least the specified
+// size. If the argument io.Reader is already a [Reader] with large enough
+// size, it returns the underlying [Reader].
+func NewReaderSize(reader io.Reader, size int) *Reader {
+	if existing, ok := reader.(*Reader); ok && existing.Size() >= size {
+		return existing
+	}
+	if size < 16 {
+		size = 16
+	}
+	return &Reader{reader: reader, buffer: make([]byte, 0, size), size: size}
+}
+
+func (reader *Reader) resetLast() {
+	reader.lastByte, reader.lastRune = false, 0
+}
+
+func (reader *Reader) compact() {
+	if reader.start == 0 {
+		return
+	}
+	copy(reader.buffer, reader.buffer[reader.start:])
+	reader.buffer = reader.buffer[:len(reader.buffer) - reader.start]
+	reader.start = 0
+}
+
+func (reader *Reader) fill() {
+	if reader.err != nil || len(reader.buffer) - reader.start >= reader.size {
+		return
+	}
+	reader.compact()
+	space := reader.size - len(reader.buffer)
+	if space <= 0 {
+		return
+	}
+	temporary := make([]byte, space)
+	for emptyReads := 0; emptyReads < maxConsecutiveEmptyReads; emptyReads++ {
+		count, err := reader.reader.Read(temporary)
+		if count < 0 || count > len(temporary) {
+			reader.err = ErrBadReadCount
+			return
+		}
+		if count > 0 {
+			reader.buffer = append(reader.buffer, temporary[:count]...)
+		}
+		if err != nil {
+			reader.err = err
+			return
+		}
+		if count > 0 {
+			return
+		}
+	}
+	reader.err = io.ErrNoProgress
+}
+
+// Buffered returns the number of bytes that can be read from the current buffer.
+func (reader *Reader) Buffered() int {
+	return len(reader.buffer) - reader.start
+}
+
+// Size returns the size of the underlying buffer in bytes.
+func (reader *Reader) Size() int {
+	return reader.size
+}
+
+// Peek returns the next n bytes without advancing the reader. The bytes stop
+// being valid at the next read call. If necessary, Peek will read more bytes
+// into the buffer in order to make n bytes available. If Peek returns fewer
+// than n bytes, it also returns an error explaining why the read is short.
+// The error is [ErrBufferFull] if n is larger than b's buffer size.
+//
+// Calling Peek prevents a [Reader.UnreadByte] or [Reader.UnreadRune] call from succeeding
+// until the next read operation.
+func (reader *Reader) Peek(count int) ([]byte, error) {
+	reader.resetLast()
+	if count < 0 {
+		return nil, ErrNegativeCount
+	}
+	if count > reader.size {
+		return reader.buffer[reader.start:], ErrBufferFull
+	}
+	for reader.Buffered() < count && reader.err == nil {
+		reader.fill()
+	}
+	if reader.Buffered() < count {
+		if reader.Buffered() == reader.size {
+			return reader.buffer[reader.start:], ErrBufferFull
+		}
+		return reader.buffer[reader.start:], reader.err
+	}
+	return reader.buffer[reader.start:reader.start + count], nil
+}
+
+// Discard skips the next n bytes, returning the number of bytes discarded.
+//
+// If Discard skips fewer than n bytes, it also returns an error.
+// If 0 <= n <= b.Buffered(), Discard is guaranteed to succeed without
+// reading from the underlying io.Reader.
+func (reader *Reader) Discard(count int) (int, error) {
+	reader.resetLast()
+	if count < 0 {
+		return 0, ErrNegativeCount
+	}
+	discarded := 0
+	for discarded < count {
+		if reader.Buffered() == 0 {
+			reader.fill()
+			if reader.Buffered() == 0 {
+				return discarded, reader.err
+			}
+		}
+		step := count - discarded
+		if step > reader.Buffered() {
+			step = reader.Buffered()
+		}
+		reader.start += step
+		discarded += step
+	}
+	return discarded, nil
+}
+
+// Read reads data into p.
+// It returns the number of bytes read into p.
+// The bytes are taken from at most one Read on the underlying [Reader],
+// hence n may be less than len(p).
+// To read exactly len(p) bytes, use io.ReadFull(b, p).
+// If the underlying [Reader] can return a non-zero count with io.EOF,
+// then this Read method can do so as well; see the [io.Reader] docs.
+func (reader *Reader) Read(target []byte) (int, error) {
+	reader.resetLast()
+	if len(target) == 0 {
+		if reader.Buffered() == 0 {
+			return 0, reader.err
+		}
+		return 0, nil
+	}
+	if reader.Buffered() == 0 {
+		reader.fill()
+	}
+	if reader.Buffered() == 0 {
+		return 0, reader.err
+	}
+	count := copy(target, reader.buffer[reader.start:])
+	reader.start += count
+	return count, nil
+}
+
+// ReadByte reads and returns a single byte.
+// If no byte is available, returns an error.
+func (reader *Reader) ReadByte() (byte, error) {
+	reader.resetLast()
+	if reader.Buffered() == 0 {
+		reader.fill()
+	}
+	if reader.Buffered() == 0 {
+		return 0, reader.err
+	}
+	value := reader.buffer[reader.start]
+	reader.start++
+	reader.lastByte = true
+	return value, nil
+}
+
+// UnreadByte unreads the last byte. Only the most recently read byte can be unread.
+//
+// UnreadByte returns an error if the most recent method called on the
+// [Reader] was not a read operation. Notably, [Reader.Peek], [Reader.Discard], and [Reader.WriteTo] are not
+// considered read operations.
+func (reader *Reader) UnreadByte() error {
+	if !reader.lastByte || reader.start == 0 {
+		return ErrInvalidUnreadByte
+	}
+	reader.start--
+	reader.resetLast()
+	return nil
+}
+
+// ReadRune reads a single UTF-8 encoded Unicode character and returns the
+// rune and its size in bytes. If the encoded rune is invalid, it consumes one byte
+// and returns unicode.ReplacementChar (U+FFFD) with a size of 1.
+func (reader *Reader) ReadRune() (rune, int, error) {
+	reader.resetLast()
+	for reader.Buffered() < utf8.UTFMax && reader.err == nil {
+		reader.fill()
+	}
+	if reader.Buffered() == 0 {
+		return 0, 0, reader.err
+	}
+	value, size := utf8.DecodeRune(reader.buffer[reader.start:])
+	reader.start += size
+	reader.lastRune = size
+	return value, size, nil
+}
+
+// UnreadRune unreads the last rune. If the most recent method called on
+// the [Reader] was not a [Reader.ReadRune], [Reader.UnreadRune] returns an error. (In this
+// regard it is stricter than [Reader.UnreadByte], which will unread the last byte
+// from any read operation.)
+func (reader *Reader) UnreadRune() error {
+	if reader.lastRune <= 0 || reader.start < reader.lastRune {
+		return ErrInvalidUnreadRune
+	}
+	reader.start -= reader.lastRune
+	reader.resetLast()
+	return nil
+}
+
+// ReadSlice reads until the first occurrence of delim in the input,
+// returning a slice pointing at the bytes in the buffer.
+// The bytes stop being valid at the next read.
+// If ReadSlice encounters an error before finding a delimiter,
+// it returns all the data in the buffer and the error itself (often io.EOF).
+// ReadSlice fails with error [ErrBufferFull] if the buffer fills without a delim.
+// Because the data returned from ReadSlice will be overwritten
+// by the next I/O operation, most clients should use
+// [Reader.ReadBytes] or ReadString instead.
+// ReadSlice returns err != nil if and only if line does not end in delim.
+func (reader *Reader) ReadSlice(delimiter byte) ([]byte, error) {
+	reader.resetLast()
+	for {
+		for index := reader.start; index < len(reader.buffer); index++ {
+			if reader.buffer[index] == delimiter {
+				out := reader.buffer[reader.start:index + 1]
+				reader.start = index + 1
+				return out, nil
+			}
+		}
+		if reader.Buffered() >= reader.size {
+			out := reader.buffer[reader.start:]
+			reader.start = len(reader.buffer)
+			return out, ErrBufferFull
+		}
+		if reader.err != nil {
+			out, err := reader.buffer[reader.start:], reader.err
+			reader.start = len(reader.buffer)
+			return out, err
+		}
+		reader.fill()
+	}
+}
+
+func (reader *Reader) collect(delimiter byte) ([]byte, error) {
+	out := []byte{}
+	for {
+		fragment, err := reader.ReadSlice(delimiter)
+		out = append(out, fragment...)
+		if err != ErrBufferFull {
+			return out, err
+		}
+	}
+}
+
+// ReadBytes reads until the first occurrence of delim in the input,
+// returning a slice containing the data up to and including the delimiter.
+// If ReadBytes encounters an error before finding a delimiter,
+// it returns the data read before the error and the error itself (often io.EOF).
+// ReadBytes returns err != nil if and only if the returned data does not end in
+// delim.
+// For simple uses, a Scanner may be more convenient.
+func (reader *Reader) ReadBytes(delimiter byte) ([]byte, error) {
+	return reader.collect(delimiter)
+}
+
+// ReadString reads until the first occurrence of delim in the input,
+// returning a string containing the data up to and including the delimiter.
+// If ReadString encounters an error before finding a delimiter,
+// it returns the data read before the error and the error itself (often io.EOF).
+// ReadString returns err != nil if and only if the returned data does not end in
+// delim.
+// For simple uses, a Scanner may be more convenient.
+func (reader *Reader) ReadString(delimiter byte) (string, error) {
+	data, err := reader.collect(delimiter)
+	return string(data), err
+}
+
+// ReadLine is a low-level line-reading primitive. Most callers should use
+// [Reader.ReadBytes]('\n') or [Reader.ReadString]('\n') instead or use a [Scanner].
+//
+// ReadLine tries to return a single line, not including the end-of-line bytes.
+// If the line was too long for the buffer then isPrefix is set and the
+// beginning of the line is returned. The rest of the line will be returned
+// from future calls. isPrefix will be false when returning the last fragment
+// of the line. The returned buffer is only valid until the next call to
+// ReadLine. ReadLine either returns a non-nil line or it returns an error,
+// never both.
+//
+// The text returned from ReadLine does not include the line end ("\r\n" or "\n").
+// No indication or error is given if the input ends without a final line end.
+// Calling [Reader.UnreadByte] after ReadLine will always unread the last byte read
+// (possibly a character belonging to the line end) even if that byte is not
+// part of the line returned by ReadLine.
+func (reader *Reader) ReadLine() ([]byte, bool, error) {
+	line, err := reader.ReadSlice('\n')
+	if err == ErrBufferFull {
+		return line, true, nil
+	}
+	if len(line) > 0 && line[len(line) - 1] == '\n' {
+		line = line[:len(line) - 1]
+		if len(line) > 0 && line[len(line) - 1] == '\r' {
+			line = line[:len(line) - 1]
+		}
+	}
+	return line, false, err
+}
+
+// WriteTo implements io.WriterTo.
+// This may make multiple calls to the [Reader.Read] method of the underlying [Reader].
+// If the underlying reader supports the [Reader.WriteTo] method,
+// this calls the underlying [Reader.WriteTo] without buffering.
+func (reader *Reader) WriteTo(writer io.Writer) (int64, error) {
+	var written int64
+	if reader.Buffered() > 0 {
+		count, err := writer.Write(reader.buffer[reader.start:])
+		reader.start += count
+		written += int64(count)
+		if err != nil {
+			return written, err
+		}
+	}
+	count, err := io.Copy(writer, reader.reader)
+	return written + count, err
+}
+
+// Reset discards any buffered data, resets all state, and switches
+// the buffered reader to read from r.
+// Calling Reset on the zero value of [Reader] initializes the internal buffer
+// to the default size.
+// Calling b.Reset(b) (that is, resetting a [Reader] to itself) does nothing.
+func (reader *Reader) Reset(source io.Reader) {
+	reader.reader, reader.buffer, reader.start, reader.err = source, reader.buffer[:0], 0, nil
+	reader.resetLast()
+}

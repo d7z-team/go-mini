@@ -1,0 +1,3 @@
+package main
+import "strconv"
+func Main() int { n, err := strconv.Atoi(strconv.Itoa(42)); if err != nil { return -1 }; return n }

@@ -1,0 +1,289 @@
+package binary
+
+import (
+	"errors"
+	"io"
+	"math"
+	"reflect"
+)
+
+var errOverflow = errors.New("binary: varint overflows a 64-bit integer")
+
+var errInvalidType = errors.New("binary: some values are not fixed-sized")
+
+var errBufferTooSmall = errors.New("binary: buffer too small")
+
+// Size returns how many bytes Write would generate for v, or -1 when v is not
+// fixed-size data.
+func Size(v any) int {
+	if v == nil {
+		return -1
+	}
+	return dataSize(reflect.ValueOf(v))
+}
+
+func dataSize(value reflect.Value) int {
+	kind := value.Kind()
+	switch kind {
+		case reflect.Bool, reflect.Int8, reflect.Uint8:
+			return 1
+		case reflect.Int16, reflect.Uint16:
+			return 2
+		case reflect.Int32, reflect.Uint32, reflect.Float32:
+			return 4
+		case reflect.Int64, reflect.Uint64, reflect.Float64, reflect.Complex64:
+			return 8
+		case reflect.Complex128:
+			return 16
+		case reflect.Array, reflect.Slice:
+			total := 0
+			for i := 0; i < value.Len(); i++ {
+				size := dataSize(value.Index(i))
+				if size < 0 {
+					return -1
+				}
+				total += size
+			}
+			return total
+		case reflect.Struct:
+			total := 0
+			for i := 0; i < value.NumField(); i++ {
+				size := dataSize(value.Field(i))
+				if size < 0 {
+					return -1
+				}
+				total += size
+			}
+			return total
+	}
+	return -1
+}
+
+// Encode encodes data into buf and returns the number of bytes written.
+func Encode(buf []byte, order ByteOrder, data any) (int, error) {
+	size := Size(data)
+	if size < 0 {
+		return 0, errInvalidType
+	}
+	if len(buf) < size {
+		return 0, errBufferTooSmall
+	}
+	encodeValue(buf[:size], order, reflect.ValueOf(data))
+	return size, nil
+}
+
+// Append appends the encoded form of data to buf.
+func Append(buf []byte, order ByteOrder, data any) ([]byte, error) {
+	size := Size(data)
+	if size < 0 {
+		return buf, errInvalidType
+	}
+	start := len(buf)
+	buf = append(buf, make([]byte, size)...)
+	encodeValue(buf[start:], order, reflect.ValueOf(data))
+	return buf, nil
+}
+
+func encodeValue(buf []byte, order ByteOrder, value reflect.Value) int {
+	kind := value.Kind()
+	switch kind {
+		case reflect.Bool:
+			if value.Bool() {
+				buf[0] = 1
+			} else {
+				buf[0] = 0
+			}
+			return 1
+		case reflect.Int8:
+			buf[0] = byte(value.Int())
+			return 1
+		case reflect.Uint8:
+			buf[0] = byte(value.Uint())
+			return 1
+		case reflect.Int16:
+			order.PutUint16(buf, uint16(value.Int()))
+			return 2
+		case reflect.Uint16:
+			order.PutUint16(buf, uint16(value.Uint()))
+			return 2
+		case reflect.Int32:
+			order.PutUint32(buf, uint32(value.Int()))
+			return 4
+		case reflect.Uint32:
+			order.PutUint32(buf, uint32(value.Uint()))
+			return 4
+		case reflect.Int64:
+			order.PutUint64(buf, uint64(value.Int()))
+			return 8
+		case reflect.Uint64:
+			order.PutUint64(buf, value.Uint())
+			return 8
+		case reflect.Float32:
+			order.PutUint32(buf, math.Float32bits(float32(value.Float())))
+			return 4
+		case reflect.Float64:
+			order.PutUint64(buf, math.Float64bits(value.Float()))
+			return 8
+		case reflect.Complex64:
+			number := complex64(value.Complex())
+			order.PutUint32(buf, math.Float32bits(real(number)))
+			order.PutUint32(buf[4:], math.Float32bits(imag(number)))
+			return 8
+		case reflect.Complex128:
+			number := value.Complex()
+			order.PutUint64(buf, math.Float64bits(real(number)))
+			order.PutUint64(buf[8:], math.Float64bits(imag(number)))
+			return 16
+		case reflect.Array, reflect.Slice:
+			offset := 0
+			for i := 0; i < value.Len(); i++ {
+				offset += encodeValue(buf[offset:], order, value.Index(i))
+			}
+			return offset
+		case reflect.Struct:
+			offset := 0
+			for i := 0; i < value.NumField(); i++ {
+				size := dataSize(value.Field(i))
+				if value.Type().Field(i).Name == "_" {
+					for j := 0; j < size; j++ {
+						buf[offset + j] = 0
+					}
+				} else {
+					encodeValue(buf[offset:offset + size], order, value.Field(i))
+				}
+				offset += size
+			}
+			return offset
+	}
+	return 0
+}
+
+// Decode decodes buf into data and returns the number of bytes consumed.
+func Decode(buf []byte, order ByteOrder, data any) (int, error) {
+	if data == nil {
+		return 0, errInvalidType
+	}
+	value := reflect.ValueOf(data)
+	if value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return 0, errInvalidType
+		}
+		value = value.Elem()
+	} else if value.Kind() != reflect.Slice {
+		return 0, errInvalidType
+	}
+	size := dataSize(value)
+	if size < 0 {
+		return 0, errInvalidType
+	}
+	if len(buf) < size {
+		return 0, errBufferTooSmall
+	}
+	decodeValue(buf[:size], order, value)
+	return size, nil
+}
+
+func decodeValue(buf []byte, order ByteOrder, value reflect.Value) int {
+	kind := value.Kind()
+	switch kind {
+		case reflect.Bool:
+			value.SetBool(buf[0] != 0)
+			return 1
+		case reflect.Int8:
+			value.SetInt(int64(int8(buf[0])))
+			return 1
+		case reflect.Uint8:
+			value.SetUint(uint64(buf[0]))
+			return 1
+		case reflect.Int16:
+			value.SetInt(int64(int16(order.Uint16(buf))))
+			return 2
+		case reflect.Uint16:
+			value.SetUint(uint64(order.Uint16(buf)))
+			return 2
+		case reflect.Int32:
+			value.SetInt(int64(int32(order.Uint32(buf))))
+			return 4
+		case reflect.Uint32:
+			value.SetUint(uint64(order.Uint32(buf)))
+			return 4
+		case reflect.Int64:
+			value.SetInt(int64(order.Uint64(buf)))
+			return 8
+		case reflect.Uint64:
+			value.SetUint(order.Uint64(buf))
+			return 8
+		case reflect.Float32:
+			value.SetFloat(float64(math.Float32frombits(order.Uint32(buf))))
+			return 4
+		case reflect.Float64:
+			value.SetFloat(math.Float64frombits(order.Uint64(buf)))
+			return 8
+		case reflect.Complex64:
+			value.SetComplex(complex128(complex(math.Float32frombits(order.Uint32(buf)), math.Float32frombits(order.Uint32(buf[4:])))))
+			return 8
+		case reflect.Complex128:
+			value.SetComplex(complex(math.Float64frombits(order.Uint64(buf)), math.Float64frombits(order.Uint64(buf[8:]))))
+			return 16
+		case reflect.Array, reflect.Slice:
+			offset := 0
+			for i := 0; i < value.Len(); i++ {
+				offset += decodeValue(buf[offset:], order, value.Index(i))
+			}
+			return offset
+		case reflect.Struct:
+			offset := 0
+			for i := 0; i < value.NumField(); i++ {
+				size := dataSize(value.Field(i))
+				if value.Type().Field(i).Name != "_" {
+					decodeValue(buf[offset:offset + size], order, value.Field(i))
+				}
+				offset += size
+			}
+			return offset
+	}
+	return 0
+}
+
+// Read reads structured binary data from r into data.
+func Read(r io.Reader, order ByteOrder, data any) error {
+	size := decodeSize(data)
+	if size < 0 {
+		return errInvalidType
+	}
+	buf := make([]byte, size)
+	if _, err := io.ReadFull(r, buf); err != nil {
+		return err
+	}
+	_, err := Decode(buf, order, data)
+	return err
+}
+
+func decodeSize(data any) int {
+	if data == nil {
+		return -1
+	}
+	value := reflect.ValueOf(data)
+	if value.Kind() == reflect.Pointer {
+		if value.IsNil() {
+			return -1
+		}
+		value = value.Elem()
+	} else if value.Kind() != reflect.Slice {
+		return -1
+	}
+	return dataSize(value)
+}
+
+// Write writes the binary encoding of data to w.
+func Write(w io.Writer, order ByteOrder, data any) error {
+	buf, err := Append(nil, order, data)
+	if err != nil {
+		return err
+	}
+	written, err := w.Write(buf)
+	if err == nil && written != len(buf) {
+		return io.ErrShortWrite
+	}
+	return err
+}

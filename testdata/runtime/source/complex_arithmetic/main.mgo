@@ -1,0 +1,2 @@
+package main
+func Main() int { a := complex(20.0, 2.0); b := complex(1.0, -1.0); c := a*b/b; if c != a { return -1 }; var z complex128; z += 1+2i; return int(real(c) + imag(c) + real(z)*20) }

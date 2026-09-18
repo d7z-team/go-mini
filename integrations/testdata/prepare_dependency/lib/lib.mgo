@@ -1,0 +1,5 @@
+package lib
+
+const Number = 1
+
+func Value() int { return 1 }

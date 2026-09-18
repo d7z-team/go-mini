@@ -1,0 +1,11 @@
+package initializer
+
+import "example/state"
+
+func init() {
+	state.Value = 11
+}
+
+func Keep[T any](value T) T {
+	return value
+}

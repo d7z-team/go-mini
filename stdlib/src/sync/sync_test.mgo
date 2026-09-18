@@ -1,0 +1,174 @@
+package sync
+
+import (
+	"testing"
+)
+
+func TestMutexWaitGroupAndOnce(t *testing.T) {
+	var mutex Mutex
+	var group WaitGroup
+	value := 0
+	for index := 0; index < 32; index++ {
+		group.Go(func() {
+			for iteration := 0; iteration < 8; iteration++ {
+				mutex.Lock()
+				value++
+				mutex.Unlock()
+			}
+		})
+	}
+	group.Wait()
+	if value != 256 || !mutex.TryLock() {
+		t.Fatalf("synchronization result = %d", value)
+	}
+	mutex.Unlock()
+	calls := 0
+	onceValue := OnceValue(func() int {
+		calls++
+		return 42
+	})
+	if onceValue() != 42 || onceValue() != 42 || calls != 1 {
+		t.Fatalf("OnceValue calls = %d", calls)
+	}
+}
+
+func TestMutexFIFOAndCrossGoroutineUnlock(t *testing.T) {
+	var mutex Mutex
+	mutex.Lock()
+	first := mutex.enqueue()
+	second := mutex.enqueue()
+	mutex.Unlock()
+	<-first
+	select {
+		case <-second:
+			t.Fatal("second waiter acquired before first released")
+		default:
+	}
+	mutex.Unlock()
+	<-second
+	mutex.Unlock()
+
+	mutex.Lock()
+	done := make(chan struct{})
+	go func() {
+		mutex.Unlock()
+		close(done)
+	}()
+	<-done
+	if !mutex.TryLock() {
+		t.Fatal("cross-goroutine Unlock did not release mutex")
+	}
+	mutex.Unlock()
+}
+
+func TestMutexUnlockPanicsWhenUnlocked(t *testing.T) {
+	deferred := false
+	func() {
+		defer func() {
+			deferred = recover() != nil
+		}()
+		var mutex Mutex
+		mutex.Unlock()
+	}()
+	if !deferred {
+		t.Fatal("Unlock of unlocked Mutex did not panic")
+	}
+}
+
+func TestMapRangeCanReenter(t *testing.T) {
+	var table Map
+	table.Store("a", 1)
+	table.Store("b", 2)
+	seen := 0
+	table.Range(func(key, value any) bool {
+		seen++
+		table.Store(key, value)
+		return true
+	})
+	if seen != 2 || !table.CompareAndSwap("a", 1, 3) {
+		t.Fatalf("Map state = %d", seen)
+	}
+}
+
+func TestPoolStoresValuesAndUsesNew(t *testing.T) {
+	var pool Pool
+	pool.Put(nil)
+	if pool.Get() != nil {
+		t.Fatal("empty Pool returned a value")
+	}
+	pool.Put("cached")
+	if value := pool.Get(); value != "cached" {
+		t.Fatalf("Pool.Get() = %v", value)
+	}
+	calls := 0
+	pool.New = func() any {
+		calls++
+		return 42
+	}
+	if value := pool.Get(); value != 42 || calls != 1 {
+		t.Fatalf("Pool.New result = %v, calls = %d", value, calls)
+	}
+}
+
+func TestCondSignal(t *testing.T) {
+	var mutex Mutex
+	condition := NewCond(&mutex)
+	ready := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		mutex.Lock()
+		close(ready)
+		condition.Wait()
+		mutex.Unlock()
+		close(done)
+	}()
+	<-ready
+	mutex.Lock()
+	condition.Signal()
+	mutex.Unlock()
+	<-done
+}
+
+func TestRWMutexAllowsReadersAndWriterProgress(t *testing.T) {
+	var mutex RWMutex
+	readers := make(chan struct{}, 2)
+	releaseReaders := make(chan struct{})
+	for index := 0; index < 2; index++ {
+		go func() {
+			mutex.RLock()
+			readers <- struct{}{}
+			<-releaseReaders
+			mutex.RUnlock()
+		}()
+	}
+	<-readers
+	<-readers
+
+	events := make(chan string, 2)
+	writerWaiting := make(chan struct{})
+	go func() {
+		close(writerWaiting)
+		mutex.Lock()
+		events <- "writer"
+		mutex.Unlock()
+	}()
+	<-writerWaiting
+	go func() {
+		mutex.RLock()
+		events <- "reader"
+		mutex.RUnlock()
+	}()
+	close(releaseReaders)
+	first := <-events
+	second := <-events
+	if first == second || first != "writer" && second != "writer" || first != "reader" && second != "reader" {
+		t.Fatalf("lock events = %q, %q", first, second)
+	}
+	if !mutex.TryRLock() {
+		t.Fatal("TryRLock failed on unlocked mutex")
+	}
+	if mutex.TryLock() {
+		t.Fatal("TryLock succeeded while a reader held the mutex")
+	}
+	mutex.RUnlock()
+}

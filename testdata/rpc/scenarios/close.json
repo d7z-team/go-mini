@@ -1,0 +1,5 @@
+[
+  {"name":"retry-after-failure","failures":1,"retry":true,"terminal_error":false,"attempts":2},
+  {"name":"shutdown-after-failure","failures":1,"retry":false,"terminal_error":false,"attempts":2},
+  {"name":"shutdown-reports-final-failure","failures":2,"retry":false,"terminal_error":true,"attempts":2}
+]

@@ -1,0 +1,19 @@
+package main
+
+import (
+    "rpc"
+    service "rpcfixture/generated/mgo/service"
+    types "rpcfixture/generated/mgo/types"
+)
+
+type laboratory struct{}
+type counter struct { value int64 }
+func (c *counter) Add(context *rpc.Context, delta int64) (int64, error) { c.value += delta; return c.value, nil }
+func (l *laboratory) Echo(context *rpc.Context, value service.Packet) (service.Packet, error) { return value, nil }
+func (l *laboratory) Tree(context *rpc.Context, value service.Node) (service.Node, error) { return value, nil }
+func (l *laboratory) Open(context *rpc.Context, initial int64) (types.CounterHandler, types.Details, error) {
+    return &counter{value: initial}, types.Details{Label: "counter", Mode: 0}, nil
+}
+func (l *laboratory) Read(context *rpc.Context, value types.CounterHandler) (int64, error) { return value.Add(context, 0) }
+func (l *laboratory) Wait(context *rpc.Context) (int64, error) { <-context.Done(); return 0, context.Err() }
+func Main() int { service.ServeLaboratory(&laboratory{}, rpc.ServerOptions{Name: "guest"}); return 0 }

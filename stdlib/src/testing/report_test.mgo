@@ -1,0 +1,28 @@
+package testing_test
+
+import "testing"
+
+func TestMainReportsPassFailureAndPanic(t *testing.T) {
+	report := testing.Main("inner", []testing.InternalTest{
+		{Name: "pass", F: func(inner *testing.T) {}},
+		{Name: "fail", F: func(inner *testing.T) {
+			inner.Log("context")
+			inner.Error("failure")
+		}},
+		{Name: "panic", F: func(inner *testing.T) {
+			panic("boom")
+		}},
+	})
+	if report.Passed || len(report.Results) != 3 {
+		t.Fatal("unexpected test report")
+	}
+	if report.Results[0].Status != "pass" || report.Results[1].Status != "fail" || report.Results[2].Status != "fail" {
+		t.Fatal("unexpected result statuses")
+	}
+	if report.Results[2].Message != "panic: boom" {
+		t.Fatal("panic message was not preserved")
+	}
+	if report.Results[1].Message != "failure" || len(report.Results[1].Logs) != 1 || report.Results[1].Logs[0] != "context" {
+		t.Fatal("failure details were not preserved")
+	}
+}

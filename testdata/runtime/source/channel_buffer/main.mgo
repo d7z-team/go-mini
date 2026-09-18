@@ -1,0 +1,2 @@
+package main
+func Main() int { c := make(chan int, 2); c <- 20; c <- 22; close(c); a, ok := <-c; if !ok { return -1 }; b := <-c; _, ok = <-c; if ok { return -2 }; return a+b }

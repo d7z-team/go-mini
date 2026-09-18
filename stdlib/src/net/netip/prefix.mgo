@@ -1,0 +1,264 @@
+// Copyright 2021 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license.
+// Adapted for the Mini-Go runtime-neutral standard library.
+
+package netip
+
+import (
+	"errors"
+	"strconv"
+	"strings"
+)
+
+// Prefix is an IP address prefix (CIDR) representing an IP network.
+//
+// The first [Prefix.Bits]() of [Addr]() are specified. The remaining bits match any address.
+// The range of Bits() is [0,32] for IPv4 or [0,128] for IPv6.
+type Prefix struct {
+	address Addr
+	bits int
+}
+
+// PrefixFrom returns a [Prefix] with the provided IP address and bit
+// prefix length.
+//
+// It does not allocate. Unlike [Addr.Prefix], [PrefixFrom] does not mask
+// off the host bits of ip.
+//
+// If bits is less than zero or greater than ip.BitLen, [Prefix.Bits]
+// will return an invalid value -1.
+func PrefixFrom(address Addr, bits int) Prefix {
+	return Prefix{address: address, bits: bits}
+}
+
+// Addr returns p's IP address.
+func (prefix Prefix) Addr() Addr {
+	return prefix.address
+}
+
+// Bits returns p's prefix length.
+//
+// It reports -1 if invalid.
+func (prefix Prefix) Bits() int {
+	return prefix.bits
+}
+
+// IsValid reports whether p.Bits() has a valid range for p.Addr().
+// If p.Addr() is the zero [Addr], IsValid returns false.
+// Note that if p is the zero [Prefix], then p.IsValid() == false.
+func (prefix Prefix) IsValid() bool {
+	return prefix.address.IsValid() && prefix.address.zone == "" && prefix.bits >= 0 && prefix.bits <= prefix.address.BitLen()
+}
+
+// ParsePrefix parses s as an IP address prefix.
+// The string can be in the form "192.168.1.0/24" or "2001:db8::/32",
+// the CIDR notation defined in RFC 4632 and RFC 4291.
+// IPv6 zones are not permitted in prefixes, and an error will be returned if a
+// zone is present.
+//
+// Note that masked address bits are not zeroed. Use Masked for that.
+func ParsePrefix(value string) (Prefix, error) {
+	slash := strings.LastIndex(value, "/")
+	if slash < 0 {
+		return Prefix{}, errors.New("prefix is missing /")
+	}
+	address, err := ParseAddr(value[:slash])
+	if err != nil {
+		return Prefix{}, err
+	}
+	bits, err := strconv.Atoi(value[slash + 1:])
+	if err != nil {
+		return Prefix{}, errors.New("invalid prefix length")
+	}
+	prefix := PrefixFrom(address, bits)
+	if !prefix.IsValid() {
+		return Prefix{}, errors.New("prefix length out of range")
+	}
+	return prefix, nil
+}
+
+// MustParsePrefix calls [ParsePrefix](s) and panics on error.
+// It is intended for use in tests with hard-coded strings.
+func MustParsePrefix(value string) Prefix {
+	prefix, err := ParsePrefix(value)
+	if err != nil {
+		panic("ParsePrefix(" + value + "): " + err.Error())
+	}
+	return prefix
+}
+
+// String returns the CIDR notation of p: "<ip>/<bits>".
+func (prefix Prefix) String() string {
+	if !prefix.IsValid() {
+		return "invalid Prefix"
+	}
+	return prefix.address.String() + "/" + strconv.Itoa(prefix.bits)
+}
+
+// Masked returns p in its canonical form, with all but the high
+// p.Bits() bits of p.Addr() masked off.
+//
+// If p is zero or otherwise invalid, Masked returns the zero [Prefix].
+func (prefix Prefix) Masked() Prefix {
+	if !prefix.IsValid() {
+		return Prefix{}
+	}
+	out := prefix
+	start := 0
+	if out.address.Is4() {
+		start = 12
+	}
+	remaining := prefix.bits
+	for index := start; index < 16; index++ {
+		if remaining >= 8 {
+			remaining -= 8
+			continue
+		}
+		if remaining > 0 {
+			out.address.bytes[index] &= byte(255 << (8 - remaining))
+			remaining = 0
+		} else {
+			out.address.bytes[index] = 0
+		}
+	}
+	return out
+}
+
+// Contains reports whether the network p includes ip.
+//
+// An IPv4 address will not match an IPv6 prefix.
+// An IPv4-mapped IPv6 address will not match an IPv4 prefix.
+// A zero-value IP will not match any prefix.
+// If ip has an IPv6 zone, Contains returns false,
+// because Prefixes strip zones.
+func (prefix Prefix) Contains(address Addr) bool {
+	if !prefix.IsValid() || prefix.address.family != address.family {
+		return false
+	}
+	return prefix.Masked().address == PrefixFrom(address, prefix.bits).Masked().address
+}
+
+// Overlaps reports whether p and o contain any IP addresses in common.
+//
+// If p and o are of different address families or either have a zero
+// IP, it reports false. Like the Contains method, a prefix with an
+// IPv4-mapped IPv6 address is still treated as an IPv6 mask.
+func (prefix Prefix) Overlaps(other Prefix) bool {
+	if !prefix.IsValid() || !other.IsValid() || prefix.address.family != other.address.family {
+		return false
+	}
+	bits := prefix.bits
+	if other.bits < bits {
+		bits = other.bits
+	}
+	return PrefixFrom(prefix.address, bits).Masked().address == PrefixFrom(other.address, bits).Masked().address
+}
+
+// IsSingleIP reports whether p contains exactly one IP.
+func (prefix Prefix) IsSingleIP() bool {
+	return prefix.IsValid() && prefix.bits == prefix.address.BitLen()
+}
+
+// Prefix keeps only the top b bits of IP, producing a Prefix
+// of the specified length.
+// If ip is a zero [Addr], Prefix always returns a zero Prefix and a nil error.
+// Otherwise, if bits is less than zero or greater than ip.BitLen(),
+// Prefix returns an error.
+func (address Addr) Prefix(bits int) (Prefix, error) {
+	prefix := PrefixFrom(address, bits)
+	if !prefix.IsValid() {
+		return Prefix{}, errors.New("prefix length out of range")
+	}
+	return prefix.Masked(), nil
+}
+
+// Compare returns an integer comparing two prefixes.
+// The result will be 0 if p == p2, -1 if p < p2, and +1 if p > p2.
+// Prefixes sort first by validity (invalid before valid), then
+// address family (IPv4 before IPv6), then masked prefix address, then
+// prefix length, then unmasked address.
+func (prefix Prefix) Compare(other Prefix) int {
+	if comparison := prefix.address.Compare(other.address); comparison != 0 {
+		return comparison
+	}
+	if prefix.bits < other.bits {
+		return -1
+	}
+	if prefix.bits > other.bits {
+		return 1
+	}
+	return 0
+}
+
+// MarshalText implements the [encoding.TextMarshaler] interface,
+// The encoding is the same as returned by [Prefix.String], with one exception:
+// If p is the zero value, the encoding is the empty string.
+func (prefix Prefix) MarshalText() ([]byte, error) {
+	if !prefix.IsValid() {
+		return nil, errors.New("invalid Prefix")
+	}
+	return []byte(prefix.String()), nil
+}
+
+// AppendText implements the [encoding.TextAppender] interface.
+// It is the same as [Prefix.AppendTo].
+func (prefix Prefix) AppendText(dst []byte) ([]byte, error) {
+	text, err := prefix.MarshalText()
+	return append(dst, text...), err
+}
+
+// AppendTo appends a text encoding of p,
+// as generated by [Prefix.MarshalText],
+// to b and returns the extended buffer.
+func (prefix Prefix) AppendTo(dst []byte) []byte {
+	return append(dst, []byte(prefix.String())...)
+}
+
+// MarshalBinary implements the [encoding.BinaryMarshaler] interface.
+// It returns [Addr.MarshalBinary] with an additional byte appended
+// containing the prefix bits.
+func (prefix Prefix) MarshalBinary() ([]byte, error) {
+	data, err := prefix.address.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	return append(data, byte(prefix.bits)), nil
+}
+
+// AppendBinary implements the [encoding.AppendMarshaler] interface.
+// It returns [Addr.AppendBinary] with an additional byte appended
+// containing the prefix bits.
+func (prefix Prefix) AppendBinary(dst []byte) ([]byte, error) {
+	data, err := prefix.MarshalBinary()
+	return append(dst, data...), err
+}
+
+// UnmarshalText implements the encoding.TextUnmarshaler interface.
+// The IP address is expected in a form accepted by [ParsePrefix]
+// or generated by [Prefix.MarshalText].
+func (prefix *Prefix) UnmarshalText(data []byte) error {
+	parsed, err := ParsePrefix(string(data))
+	if err == nil {
+		*prefix = parsed
+	}
+	return err
+}
+
+// UnmarshalBinary implements the [encoding.BinaryUnmarshaler] interface.
+// It expects data in the form generated by [Prefix.MarshalBinary].
+func (prefix *Prefix) UnmarshalBinary(data []byte) error {
+	if len(data) != 5 && len(data) < 17 {
+		return errors.New("invalid Prefix binary length")
+	}
+	addressLength := len(data) - 1
+	var address Addr
+	if err := address.UnmarshalBinary(data[:addressLength]); err != nil {
+		return err
+	}
+	value := PrefixFrom(address, int(data[addressLength]))
+	if !value.IsValid() {
+		return errors.New("invalid Prefix")
+	}
+	*prefix = value
+	return nil
+}

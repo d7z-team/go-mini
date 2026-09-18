@@ -1,0 +1,5 @@
+package main
+type Reader interface { Read() int }
+type Counter struct{}
+func (c *Counter) Read() int { if c == nil { return 42 }; return -1 }
+func Main() int { var p *Counter; var a any = p; r, ok := a.(Reader); if !ok { return -2 }; b, ok := a.(any); if !ok || b == nil { return -3 }; var n any; _, ok = n.(any); if ok { return -4 }; return r.Read() }

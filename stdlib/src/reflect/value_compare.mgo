@@ -1,0 +1,45 @@
+package reflect
+
+func valueTypeIdentity(value Value) string {
+	return typeIdentity(value.valueType)
+}
+
+func isBoolValue(value Value) bool {
+	return value.Kind() == Bool
+}
+
+func isStringValue(value Value) bool {
+	return value.Kind() == String
+}
+
+func isIntValue(value Value) bool {
+	switch value.Kind() {
+		case Int, Int8, Int16, Int32, Int64:
+			return true
+	}
+	return false
+}
+
+func isUintValue(value Value) bool {
+	switch value.Kind() {
+		case Uint, Uint8, Uint16, Uint32, Uint64, Uintptr:
+			return true
+	}
+	return false
+}
+
+func isFloatValue(value Value) bool {
+	switch value.Kind() {
+		case Float32, Float64:
+			return true
+	}
+	return false
+}
+
+func isComplexValue(value Value) bool {
+	switch value.Kind() {
+		case Complex64, Complex128:
+			return true
+	}
+	return false
+}

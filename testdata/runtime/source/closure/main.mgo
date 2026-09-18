@@ -1,0 +1,2 @@
+package main
+func Main() int { n := 1; f := func() int { n += 2; return n }; return f() + f() }

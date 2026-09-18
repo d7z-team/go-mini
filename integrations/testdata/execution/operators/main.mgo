@@ -1,0 +1,20 @@
+package main
+
+type Value struct{ Number int }
+
+func (v Value) OpAdd(other Value) Value {
+	return Value{Number: v.Number + other.Number}
+}
+
+var calls int
+
+func next() int {
+	calls++
+	return 0
+}
+
+func Result() int {
+	values := []Value{{Number: 40}}
+	values[next()] += Value{Number: 2}
+	return values[0].Number*10 + calls
+}

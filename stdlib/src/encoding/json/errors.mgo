@@ -1,0 +1,137 @@
+package json
+
+import (
+	"reflect"
+	"strconv"
+)
+
+// A SyntaxError is a description of a JSON syntax error.
+type SyntaxError struct {
+	msg string
+	// Offset is the byte offset after the last read byte involved in the error.
+	Offset int64
+}
+
+// Error returns the syntax error description.
+func (e *SyntaxError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.msg
+}
+
+// An UnmarshalTypeError describes a JSON value that was not appropriate for a Go value.
+type UnmarshalTypeError struct {
+	// Value describes the JSON value that could not be assigned.
+	Value string
+	// Type is the Go type of the destination value.
+	Type reflect.Type
+	// Offset is the byte offset after the last read byte involved in the error.
+	Offset int64
+	// Struct is the containing struct type name, when applicable.
+	Struct string
+	// Field is the full path from the containing struct to the field.
+	Field string
+}
+
+// Error describes the incompatible JSON and Go types.
+func (e *UnmarshalTypeError) Error() string {
+	if e.Struct != "" || e.Field != "" {
+		return "json: cannot unmarshal " + e.Value + " into Go struct field " + e.Struct + "." + e.Field + " of type " + e.Type.String()
+	}
+	return "json: cannot unmarshal " + e.Value + " into Go value of type " + e.Type.String()
+}
+
+// An UnmarshalFieldError describes a JSON object key targeting an unexported field.
+//
+// Deprecated: No longer used.
+type UnmarshalFieldError struct {
+	// Key is the JSON object key that selected the field.
+	Key string
+	// Type is the containing struct type.
+	Type reflect.Type
+	// Field describes the selected unexported field.
+	Field reflect.StructField
+}
+
+// Error describes the unexported field.
+func (e *UnmarshalFieldError) Error() string {
+	return "json: cannot unmarshal object key " + strconv.Quote(e.Key) + " into unexported field " + e.Field.Name + " of type " + e.Type.String()
+}
+
+// An InvalidUnmarshalError describes an invalid argument passed to Unmarshal.
+type InvalidUnmarshalError struct {
+	// Type is the invalid destination type, or nil for an untyped nil argument.
+	Type reflect.Type
+}
+
+// Error describes the invalid Unmarshal target.
+func (e *InvalidUnmarshalError) Error() string {
+	if e.Type == nil {
+		return "json: Unmarshal(nil)"
+	}
+	if e.Type.Kind() != reflect.Pointer {
+		return "json: Unmarshal(non-pointer " + e.Type.String() + ")"
+	}
+	return "json: Unmarshal(nil " + e.Type.String() + ")"
+}
+
+// An UnsupportedTypeError is returned when Marshal encounters an unsupported type.
+type UnsupportedTypeError struct {
+	// Type is the unsupported value type.
+	Type reflect.Type
+}
+
+// Error describes the unsupported type.
+func (e *UnsupportedTypeError) Error() string {
+	return "json: unsupported type: " + e.Type.String()
+}
+
+// An UnsupportedValueError is returned when Marshal encounters an unsupported value.
+type UnsupportedValueError struct {
+	// Value is the unsupported value.
+	Value reflect.Value
+	// Str describes why Value is unsupported.
+	Str string
+}
+
+// Error describes the unsupported value.
+func (e *UnsupportedValueError) Error() string {
+	return "json: unsupported value: " + e.Str
+}
+
+// InvalidUTF8Error is retained for compatibility with the Go API.
+//
+// Deprecated: Marshal replaces invalid UTF-8 with the Unicode replacement rune.
+type InvalidUTF8Error struct {
+	// S is the string containing invalid UTF-8.
+	S string
+}
+
+// Error describes the invalid UTF-8 string.
+func (e *InvalidUTF8Error) Error() string {
+	return "json: invalid UTF-8 in string: " + strconv.Quote(e.S)
+}
+
+// A MarshalerError wraps an error returned by a custom marshaler.
+type MarshalerError struct {
+	// Type is the type whose marshaler failed.
+	Type reflect.Type
+	// Err is the error returned by the custom marshaler.
+	Err error
+	sourceFunc string
+}
+
+// Error describes the custom marshaler failure.
+func (e *MarshalerError) Error() string {
+	name := e.sourceFunc
+	if name == "" {
+		name = "MarshalJSON"
+	}
+	return "json: error calling " + name + " for type " + e.Type.String() + ": " + e.Err.Error()
+}
+
+// Unwrap returns the underlying marshaler error.
+func (e *MarshalerError) Unwrap() error {
+	return e.Err
+}

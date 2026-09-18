@@ -1,0 +1,59 @@
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package strconv
+
+func lower(c byte) byte {
+	return c | ('x' - 'X')
+}
+
+// underscoreOK reports whether the underscores in s are allowed.
+// Checking them in this one function lets all the parsers skip over them simply.
+// Underscore must appear only between digits or between a base prefix and a digit.
+func underscoreOK(s string) bool {
+	// saw tracks the last character (class) we saw:
+	// ^ for beginning of number,
+	// 0 for a digit or base prefix,
+	// _ for an underscore,
+	// ! for none of the above.
+	saw := '^'
+	i := 0
+
+	// Optional sign.
+	if len(s) >= 1 && (s[0] == '-' || s[0] == '+') {
+		s = s[1:]
+	}
+
+	// Optional base prefix.
+	hex := false
+	if len(s) >= 2 && s[0] == '0' && (lower(s[1]) == 'b' || lower(s[1]) == 'o' || lower(s[1]) == 'x') {
+		i = 2
+		saw = '0' // base prefix counts as a digit for "underscore as digit separator"
+		hex = lower(s[1]) == 'x'
+	}
+
+	// Number proper.
+	for ; i < len(s); i++ {
+		// Digits are always okay.
+		if '0' <= s[i] && s[i] <= '9' || hex && 'a' <= lower(s[i]) && lower(s[i]) <= 'f' {
+			saw = '0'
+			continue
+		}
+		// Underscore must follow digit.
+		if s[i] == '_' {
+			if saw != '0' {
+				return false
+			}
+			saw = '_'
+			continue
+		}
+		// Underscore must also be followed by digit.
+		if saw == '_' {
+			return false
+		}
+		// Saw non-digit, non-underscore.
+		saw = '!'
+	}
+	return saw != '_'
+}

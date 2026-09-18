@@ -1,0 +1,23 @@
+syntax = "mrpc/v2";
+namespace conformance.service.v1;
+option go_package = "github.com/d7z-team/mini-go/testdata/rpc/generated/go/service;rpcservice";
+option mgo_package = "rpcfixture/generated/mgo/service";
+option rust_module = "crate::rpcservice";
+import types "testdata/rpc/schema/types.mrpc";
+
+message Packet {
+  data []uint8 = 1;
+  values []int64 = 2;
+  labels map[string]string = 3;
+  optional_data optional[[]uint8] = 4;
+  details types.Details = 5;
+  scalars optional[types.Scalars] = 6;
+}
+message Node { value int64 = 1; next optional[Node] = 2; }
+service Laboratory {
+  Echo(packet Packet = 1) returns (packet Packet = 1);
+  Tree(node Node = 1) returns (node Node = 1);
+  Open(initial int64 = 1) returns (counter types.Counter = 1, details types.Details = 2);
+  Read(counter types.Counter = 1) returns (value int64 = 1);
+  Wait() returns (value int64 = 1);
+}

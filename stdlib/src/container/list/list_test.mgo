@@ -1,0 +1,53 @@
+package list_test
+
+import (
+	"container/list"
+	"testing"
+)
+
+func TestListMutationAndIteration(t *testing.T) {
+	values := list.New()
+	first := values.PushBack(2)
+	last := values.PushBack(4)
+	values.PushFront(1)
+	middle := values.InsertBefore(3, last)
+	values.InsertAfter(5, last)
+	if values.Len() != 5 || values.Front().Value.(int) != 1 || values.Back().Value.(int) != 5 {
+		t.Fatal("list insertion produced the wrong endpoints")
+	}
+	if middle.Prev().Value.(int) != 2 || middle.Next().Value.(int) != 4 {
+		t.Fatal("element links are incorrect")
+	}
+	values.MoveToFront(last)
+	values.MoveToBack(first)
+	values.MoveAfter(middle, values.Front())
+	values.MoveBefore(first, values.Back())
+	if values.Front().Value.(int) != 4 || values.Back().Value.(int) != 2 {
+		t.Fatal("list movement produced the wrong endpoints")
+	}
+	if values.Remove(middle).(int) != 3 || values.Len() != 4 {
+		t.Fatal("list removal failed")
+	}
+	if middle.Next() != nil || middle.Prev() != nil {
+		t.Fatal("removed element remained linked")
+	}
+}
+
+func TestListZeroValueAndCopies(t *testing.T) {
+	var values list.List
+	values.PushBack("a")
+	values.PushBack("b")
+	copy := list.New()
+	copy.PushFrontList(&values)
+	copy.PushBackList(&values)
+	if copy.Len() != 4 {
+		t.Fatal("list copy has the wrong length")
+	}
+	if copy.Front().Value.(string) != "a" || copy.Back().Value.(string) != "b" {
+		t.Fatal("list copy has the wrong values")
+	}
+	values.PushBackList(&values)
+	if values.Len() != 4 {
+		t.Fatal("self list copy has the wrong length")
+	}
+}

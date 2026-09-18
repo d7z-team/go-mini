@@ -1,0 +1,62 @@
+package context_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+)
+
+func TestCancelCauseAndValue(t *testing.T) {
+	type key string
+	parent := context.WithValue(context.Background(), key("name"), "mini")
+	ctx, cancel := context.WithCancelCause(parent)
+	cause := errors.New("stop")
+	cancel(cause)
+	<-ctx.Done()
+	if ctx.Err() != context.Canceled || context.Cause(ctx) != cause || ctx.Value(key("name")) != "mini" {
+		t.Fatalf("cancel context returned wrong state")
+	}
+	without := context.WithoutCancel(ctx)
+	if without.Err() != nil || without.Done() != nil || without.Value(key("name")) != "mini" {
+		t.Fatalf("WithoutCancel returned wrong state")
+	}
+}
+
+func TestDeadlineAndAfterFunc(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+	<-ctx.Done()
+	if ctx.Err() != context.DeadlineExceeded || context.Cause(ctx) != context.DeadlineExceeded {
+		t.Fatalf("timeout returned wrong error")
+	}
+	called := make(chan struct{}, 1)
+	stop := context.AfterFunc(ctx, func() {
+		called <- struct{}{}
+	})
+	<-called
+	if stop() {
+		t.Fatalf("AfterFunc stop should report completed callback")
+	}
+}
+
+func TestAfterFuncWithoutCancellationDoesNotStartGoroutine(t *testing.T) {
+	called := false
+	stop := context.AfterFunc(context.Background(), func() {
+		called = true
+	})
+	if !stop() || stop() || called {
+		t.Fatalf("AfterFunc stop state = %v", called)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{})
+	stop = context.AfterFunc(ctx, func() {
+		close(started)
+	})
+	cancel()
+	<-started
+	if stop() {
+		t.Fatal("stop succeeded after callback started")
+	}
+}

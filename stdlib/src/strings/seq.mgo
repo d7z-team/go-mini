@@ -1,0 +1,64 @@
+package strings
+
+import (
+	"iter"
+	"unicode"
+)
+
+// Lines returns an iterator over the newline-terminated lines in s. The final
+// line is yielded without a newline when s does not end in one.
+func Lines(s string) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for len(s) != 0 {
+			end := IndexByte(s, '\n')
+			if end < 0 {
+				yield(s)
+				return
+			}
+			end++
+			if !yield(s[:end]) {
+				return
+			}
+			s = s[end:]
+		}
+	}
+}
+
+// SplitSeq returns an iterator over all substrings of s separated by sep.
+func SplitSeq(s string, sep string) iter.Seq[string] {
+	return splitSeq(s, sep, false)
+}
+
+// SplitAfterSeq returns an iterator over substrings of s split after sep.
+func SplitAfterSeq(s string, sep string) iter.Seq[string] {
+	return splitSeq(s, sep, true)
+}
+
+func splitSeq(s string, sep string, after bool) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		parts := splitN(s, sep, -1, after)
+		for _, part := range parts {
+			if !yield(part) {
+				return
+			}
+		}
+	}
+}
+
+// FieldsSeq returns an iterator over the fields of s separated by Unicode
+// white space.
+func FieldsSeq(s string) iter.Seq[string] {
+	return FieldsFuncSeq(s, unicode.IsSpace)
+}
+
+// FieldsFuncSeq returns an iterator over fields separated by runs of code
+// points satisfying f.
+func FieldsFuncSeq(s string, f func(rune) bool) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for _, field := range FieldsFunc(s, f) {
+			if !yield(field) {
+				return
+			}
+		}
+	}
+}

@@ -1,0 +1,64 @@
+package fmt
+
+import (
+	"io"
+	"rpc"
+	"sync"
+)
+
+var console *consoleClient
+
+var consoleMu sync.Mutex
+
+func hostConsole() *consoleClient {
+	consoleMu.Lock()
+	defer consoleMu.Unlock()
+	if console == nil {
+		console = newConsoleClient(rpc.ClientOptions{})
+	}
+	return console
+}
+
+// Print formats using the default formats for its operands and writes to standard output.
+// Spaces are added between operands when neither is a string.
+// It returns the number of bytes written and any write error encountered.
+func Print(args ...any) (int, error) {
+	return printText(Sprint(args...))
+}
+
+// Printf formats according to a format specifier and writes to standard output.
+// It returns the number of bytes written and any write error encountered.
+func Printf(format string, args ...any) (int, error) {
+	return printText(Sprintf(format, args...))
+}
+
+// Println formats using the default formats for its operands and writes to standard output.
+// Spaces are always added between operands and a newline is appended.
+// It returns the number of bytes written and any write error encountered.
+func Println(args ...any) (int, error) {
+	return printText(Sprintln(args...))
+}
+
+func printText(text string) (int, error) {
+	n, fault, err := hostConsole().Write(1, []byte(text))
+	return int(n), consoleError(fault, err)
+}
+
+func consoleError(fault streamFault, err error) error {
+	if err != nil {
+		return err
+	}
+	switch fault.Code {
+		case "":
+			return nil
+		case "eof":
+			return io.EOF
+		case "short_write":
+			return io.ErrShortWrite
+	}
+	message := fault.Message
+	if message == "" {
+		message = fault.Code
+	}
+	return &errorString{text: message}
+}

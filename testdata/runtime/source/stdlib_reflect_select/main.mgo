@@ -1,0 +1,3 @@
+package main
+import "reflect"
+func Main() int { c := make(chan int); go func() { c <- 42; close(c) }(); cases := []reflect.SelectCase{{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(c)}}; index, value, ok := reflect.Select(cases); if index != 0 || !ok { return -1 }; _, zero, ok := reflect.Select(cases); if ok || zero.Int() != 0 { return -2 }; empty := make(chan int); index, valueDefault, ok := reflect.Select([]reflect.SelectCase{{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(empty)}, {Dir: reflect.SelectDefault}}); if index != 1 || valueDefault.IsValid() || ok { return -3 }; out := make(chan int, 1); index, _, ok = reflect.Select([]reflect.SelectCase{{Dir: reflect.SelectSend, Chan: reflect.ValueOf(out), Send: value}}); if index != 0 || ok { return -4 }; return <-out }

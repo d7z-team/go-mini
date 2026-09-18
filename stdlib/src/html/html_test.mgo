@@ -1,0 +1,17 @@
+package html_test
+
+import (
+	"html"
+	"testing"
+)
+
+func TestEscapeAndUnescapeString(t *testing.T) {
+	const source = `<p title="Tom & Jerry">'hello'</p>`
+	escaped := html.EscapeString(source)
+	if escaped != "&lt;p title=&#34;Tom &amp; Jerry&#34;&gt;&#39;hello&#39;&lt;/p&gt;" {
+		t.Fatalf("EscapeString = %q", escaped)
+	}
+	if decoded := html.UnescapeString("&lt;&amp;&gesl;&#x3bb;"); decoded != "<&\u22db\ufe00λ" {
+		t.Fatalf("UnescapeString = %q", decoded)
+	}
+}

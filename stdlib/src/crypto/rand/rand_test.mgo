@@ -1,0 +1,28 @@
+package rand
+
+import "testing"
+
+type fixedReader struct{}
+
+func (fixedReader) Read(data []byte) (int, error) {
+	for i := range data {
+		data[i] = byte(i + 1)
+	}
+	return len(data), nil
+}
+
+func TestReadUsesReader(t *testing.T) {
+	original := Reader
+	Reader = fixedReader{}
+	defer func() {
+		Reader = original
+	}()
+
+	data := make([]byte, 4)
+	if n, err := Read(data); err != nil || n != len(data) {
+		t.Fatalf("Read = %d, %v", n, err)
+	}
+	if data[0] != 1 || data[1] != 2 || data[2] != 3 || data[3] != 4 {
+		t.Fatalf("Read data = %v", data)
+	}
+}

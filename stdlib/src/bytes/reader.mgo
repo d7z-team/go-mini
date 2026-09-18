@@ -1,0 +1,172 @@
+package bytes
+
+import "io"
+
+// A Reader implements the [io.Reader], [io.ReaderAt], [io.WriterTo], [io.Seeker],
+// [io.ByteScanner], and [io.RuneScanner] interfaces by reading from
+// a byte slice.
+// Unlike a [Buffer], a Reader is read-only and supports seeking.
+// The zero value for Reader operates like a Reader of an empty slice.
+type Reader struct {
+	data []byte
+	offset int
+	lastKind int
+	lastSize int
+}
+
+// NewReader returns a new [Reader] reading from b.
+func NewReader(data []byte) *Reader {
+	reader := new(Reader)
+	reader.data = data
+	reader.offset = 0
+	return reader
+}
+
+// Read implements the [io.Reader] interface.
+func (r *Reader) Read(p []byte) (int, error) {
+	if r == nil {
+		return 0, io.EOF
+	}
+	if r.offset >= len(r.data) {
+		return 0, io.EOF
+	}
+	n := copy(p, r.data[r.offset:])
+	r.offset += n
+	r.lastKind = 0
+	r.lastSize = 0
+	return n, nil
+}
+
+// ReadAt implements the [io.ReaderAt] interface.
+func (r *Reader) ReadAt(p []byte, offset int64) (int, error) {
+	if r == nil || offset < 0 || offset >= int64(len(r.data)) {
+		return 0, io.EOF
+	}
+	n := len(p)
+	available := int64(len(r.data)) - offset
+	if int64(n) > available {
+		n = int(available)
+	}
+	copy(p[:n], r.data[int(offset):int(offset) + n])
+	if n < len(p) {
+		return n, io.EOF
+	}
+	return n, nil
+}
+
+// ReadByte implements the [io.ByteReader] interface.
+func (r *Reader) ReadByte() (byte, error) {
+	if r == nil || r.offset >= len(r.data) {
+		return 0, io.EOF
+	}
+	value := r.data[r.offset]
+	r.offset++
+	r.lastKind = 1
+	r.lastSize = 1
+	return value, nil
+}
+
+// UnreadByte complements [Reader.ReadByte] in implementing the [io.ByteScanner] interface.
+func (r *Reader) UnreadByte() error {
+	if r == nil || r.lastKind != 1 {
+		return errUnreadByte
+	}
+	r.offset -= r.lastSize
+	r.lastKind = 0
+	r.lastSize = 0
+	return nil
+}
+
+// ReadRune implements the [io.RuneReader] interface.
+func (r *Reader) ReadRune() (rune, int, error) {
+	if r == nil || r.offset >= len(r.data) {
+		return 0, 0, io.EOF
+	}
+	text := string(r.data[r.offset:])
+	for _, value := range text {
+		size := len(string(value))
+		r.offset += size
+		r.lastKind = 2
+		r.lastSize = size
+		return value, size, nil
+	}
+	return 0, 0, io.EOF
+}
+
+// UnreadRune complements [Reader.ReadRune] in implementing the [io.RuneScanner] interface.
+func (r *Reader) UnreadRune() error {
+	if r == nil || r.lastKind != 2 {
+		return errUnreadRune
+	}
+	r.offset -= r.lastSize
+	r.lastKind = 0
+	r.lastSize = 0
+	return nil
+}
+
+// Seek implements the [io.Seeker] interface.
+func (r *Reader) Seek(offset int64, whence int) (int64, error) {
+	if r == nil {
+		return 0, errNegativePosition
+	}
+	newOffset := int64(r.offset)
+	switch whence {
+		case io.SeekStart:
+			newOffset = offset
+		case io.SeekCurrent:
+			newOffset += offset
+		case io.SeekEnd:
+			newOffset = int64(len(r.data)) + offset
+		default:
+			return 0, errInvalidWhence
+	}
+	if newOffset < 0 {
+		return 0, errNegativePosition
+	}
+	r.offset = int(newOffset)
+	r.lastKind = 0
+	r.lastSize = 0
+	return newOffset, nil
+}
+
+// WriteTo implements the [io.WriterTo] interface.
+func (r *Reader) WriteTo(w io.Writer) (int64, error) {
+	if r == nil || r.offset >= len(r.data) {
+		return 0, nil
+	}
+	n, err := w.Write(r.data[r.offset:])
+	r.offset += n
+	r.lastKind = 0
+	r.lastSize = 0
+	return int64(n), err
+}
+
+// Len returns the number of bytes of the unread portion of the
+// slice.
+func (r *Reader) Len() int {
+	if r == nil || r.offset >= len(r.data) {
+		return 0
+	}
+	return len(r.data) - r.offset
+}
+
+// Size returns the original length of the underlying byte slice.
+// Size is the number of bytes available for reading via [Reader.ReadAt].
+// The result is unaffected by any method calls except [Reader.Reset].
+func (r *Reader) Size() int64 {
+	if r == nil {
+		return 0
+	}
+	return int64(len(r.data))
+}
+
+// Reset resets the [Reader] to be reading from b.
+func (r *Reader) Reset(data []byte) {
+	if r == nil {
+		return
+	}
+	r.data = data
+	r.offset = 0
+	r.lastKind = 0
+	r.lastSize = 0
+}

@@ -1,0 +1,19 @@
+{
+  "bundle": {
+    "import_path": "example/echo.mrpc",
+    "hash": "2455d70be1ba412b6f1b51376305a1ff0ca64a348997c55306beb727e204380f",
+    "files": [{"path":"echo.mrpc","text":"syntax = \"mrpc/v2\"; namespace echo.v1; service Echo { Ping() returns (); }\n","hash":"4462e42eb1f02a026926c15780e3a02650dd20860a05d3fbbfc8b0a6b3e32752"}]
+  },
+  "publication": {
+    "protocol": "minigo.rpc.gateway.publication.v3",
+    "processID": "worker<&>",
+    "generation": 2,
+    "id": "dc3dbeb83f09616a72dd087f8e709e6f3649df9d971d9d69926d6c9b3f8d594b",
+    "providers": [{
+      "id": "echo",
+      "contract": {"Protocol":"minigo.rpc.contract.v2","Methods":[{"ID":"example.Echo.echo","Service":"example.Echo","Name":"echo","ContractHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","ResourceTypeHash":""}]},
+      "options": {"Name":"echo","Priority":0,"Weight":0,"MaxLeases":0,"Labels":{"zone":"a"}},
+      "references": [{"import_path":"example/echo.mrpc","hash":"2455d70be1ba412b6f1b51376305a1ff0ca64a348997c55306beb727e204380f"}]
+    }]
+  }
+}

@@ -1,0 +1,63 @@
+package strings_test
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
+
+func TestStringReader(t *testing.T) {
+	reader := strings.NewReader("go 中\nmini")
+	if reader.Len() != 11 || reader.Size() != 11 {
+		t.Fatalf("NewReader returned wrong byte size")
+	}
+	first, err := reader.ReadByte()
+	if err != nil || first != 'g' {
+		t.Fatalf("ReadByte returned wrong first byte")
+	}
+	if reader.UnreadByte() != nil {
+		t.Fatalf("UnreadByte returned an error")
+	}
+	value, size, err := reader.ReadRune()
+	if err != nil || value != 'g' || size != 1 {
+		t.Fatalf("ReadRune returned wrong first rune")
+	}
+	if reader.UnreadRune() != nil {
+		t.Fatalf("UnreadRune returned an error")
+	}
+	buffer := make([]byte, 3)
+	if n, readErr := reader.Read(buffer); n != 3 || readErr != nil || string(buffer) != "go " {
+		t.Fatalf("Read returned wrong bytes")
+	}
+	readAt := make([]byte, 3)
+	if n, readErr := reader.ReadAt(readAt, 3); n != 3 || readErr != nil || string(readAt) != "中" {
+		t.Fatalf("ReadAt returned wrong bytes")
+	}
+	if reader.Len() != 8 {
+		t.Fatalf("ReadAt should not change the reader offset")
+	}
+	if _, err = reader.Seek(0, 0); err != nil {
+		t.Fatalf("Seek to start returned an error")
+	}
+	if _, err = reader.Seek(10, 0); err != nil {
+		t.Fatalf("Seek near end returned an error")
+	}
+	if _, err = reader.Seek(-1, 1); err != nil {
+		t.Fatalf("relative Seek returned an error")
+	}
+	if reader.Len() != 2 {
+		t.Fatalf("relative Seek returned wrong position")
+	}
+	if _, err = reader.Seek(0, 99); err == nil {
+		t.Fatalf("invalid Seek whence should return an error")
+	}
+	reader.Reset("go 中\nmini")
+	writer := bytes.NewBuffer(nil)
+	if _, err = reader.Seek(0, 0); err != nil {
+		t.Fatalf("reset Seek returned an error")
+	}
+	n, err := reader.WriteTo(writer)
+	if err != nil || n != 11 || writer.String() != "go 中\nmini" || reader.Len() != 0 {
+		t.Fatalf("WriteTo returned wrong result")
+	}
+}

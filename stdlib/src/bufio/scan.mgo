@@ -1,0 +1,313 @@
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license.
+// Adapted for the Mini-Go runtime-neutral standard library.
+
+package bufio
+
+import (
+	"io"
+	"unicode"
+	"unicode/utf8"
+)
+
+// SplitFunc is the signature of the split function used to tokenize the
+// input. The arguments are an initial substring of the remaining unprocessed
+// data and a flag, atEOF, that reports whether the [Reader] has no more data
+// to give. The return values are the number of bytes to advance the input
+// and the next token to return to the user, if any, plus an error, if any.
+//
+// Scanning stops if the function returns an error, in which case some of
+// the input may be discarded. If that error is [ErrFinalToken], scanning
+// stops with no error. A non-nil token delivered with [ErrFinalToken]
+// will be the last token, and a nil token with [ErrFinalToken]
+// immediately stops the scanning.
+//
+// Otherwise, the [Scanner] advances the input. If the token is not nil,
+// the [Scanner] returns it to the user. If the token is nil, the
+// Scanner reads more data and continues scanning; if there is no more
+// data--if atEOF was true--the [Scanner] returns. If the data does not
+// yet hold a complete token, for instance if it has no newline while
+// scanning lines, a [SplitFunc] can return (0, nil, nil) to signal the
+// [Scanner] to read more data into the slice and try again with a
+// longer slice starting at the same point in the input.
+//
+// The function is never called with an empty data slice unless atEOF
+// is true. If atEOF is true, however, data may be non-empty and,
+// as always, holds unprocessed text.
+type SplitFunc func(data []byte, atEOF bool) (advance int, token []byte, err error)
+
+// Scanner provides a convenient interface for reading data such as
+// a file of newline-delimited lines of text. Successive calls to
+// the [Scanner.Scan] method will step through the 'tokens' of a file, skipping
+// the bytes between the tokens. The specification of a token is
+// defined by a split function of type [SplitFunc]; the default split
+// function breaks the input into lines with line termination stripped. [Scanner.Split]
+// functions are defined in this package for scanning a file into
+// lines, bytes, UTF-8-encoded runes, and space-delimited words. The
+// client may instead provide a custom split function.
+//
+// Scanning stops unrecoverably at EOF, the first I/O error, or a token too
+// large to fit in the [Scanner.Buffer]. When a scan stops, the reader may have
+// advanced arbitrarily far past the last token. Programs that need more
+// control over error handling or large tokens, or must run sequential scans
+// on a reader, should use [bufio.Reader] instead.
+type Scanner struct {
+	reader io.Reader
+	split SplitFunc
+	data []byte
+	start int
+	end int
+	token []byte
+	err error
+	started bool
+	done bool
+	emptyTokens int
+	max int
+	initial []byte
+}
+
+// NewScanner returns a new [Scanner] to read from r.
+// The split function defaults to [ScanLines].
+func NewScanner(reader io.Reader) *Scanner {
+	return &Scanner{reader: reader, split: ScanLines, max: MaxScanTokenSize}
+}
+
+// Split sets the split function for the [Scanner].
+// The default split function is [ScanLines].
+//
+// Split panics if it is called after scanning has started.
+func (scanner *Scanner) Split(split SplitFunc) {
+	if scanner.started {
+		panic("Split called after Scan")
+	}
+	scanner.split = split
+}
+
+// Buffer controls memory allocation by the Scanner.
+// It sets the initial buffer to use when scanning
+// and the maximum size of buffer that may be allocated during scanning.
+// The contents of the buffer are ignored.
+//
+// The maximum token size must be less than the larger of max and cap(buf).
+// If max <= cap(buf), [Scanner.Scan] will use this buffer only and do no allocation.
+//
+// By default, [Scanner.Scan] uses an internal buffer and sets the
+// maximum token size to [MaxScanTokenSize].
+//
+// Buffer panics if it is called after scanning has started.
+func (scanner *Scanner) Buffer(buffer []byte, max int) {
+	if scanner.started {
+		panic("Buffer called after Scan")
+	}
+	scanner.initial, scanner.max = buffer, max
+}
+
+// Scan advances the [Scanner] to the next token, which will then be
+// available through the [Scanner.Bytes] or [Scanner.Text] method. It returns false when
+// there are no more tokens, either by reaching the end of the input or an error.
+// After Scan returns false, the [Scanner.Err] method will return any error that
+// occurred during scanning, except that if it was [io.EOF], [Scanner.Err]
+// will return nil.
+// Scan panics if the split function returns too many empty
+// tokens without advancing the input. This is a common error mode for
+// scanners.
+func (scanner *Scanner) Scan() bool {
+	if scanner.done || scanner.split == nil {
+		return false
+	}
+	scanner.started = true
+	if len(scanner.data) == 0 && cap(scanner.initial) > 0 {
+		scanner.data = scanner.initial[:cap(scanner.initial)]
+	}
+	for {
+		if scanner.end > scanner.start || scanner.err != nil {
+			advance, token, err := scanner.split(scanner.data[scanner.start:scanner.end], scanner.err != nil)
+			if err == ErrFinalToken {
+				scanner.done = true
+				scanner.token = append(scanner.token[:0], token...)
+				return token != nil
+			}
+			if err != nil {
+				scanner.err, scanner.done = err, true
+				return false
+			}
+			if advance < 0 {
+				scanner.err, scanner.done = ErrNegativeAdvance, true
+				return false
+			}
+			if advance > scanner.end - scanner.start {
+				scanner.err, scanner.done = ErrAdvanceTooFar, true
+				return false
+			}
+			scanner.start += advance
+			if token != nil {
+				if scanner.err != nil && advance == 0 {
+					scanner.emptyTokens++
+					if scanner.emptyTokens > maxConsecutiveEmptyReads {
+						panic("bufio.Scan: too many empty tokens without progressing")
+					}
+				} else {
+					scanner.emptyTokens = 0
+				}
+				scanner.token = append(scanner.token[:0], token...)
+				return true
+			}
+		}
+		if scanner.err != nil {
+			scanner.done = true
+			return false
+		}
+		if scanner.start > 0 && (scanner.end == len(scanner.data) || scanner.start > len(scanner.data) / 2) {
+			copy(scanner.data, scanner.data[scanner.start:scanner.end])
+			scanner.end -= scanner.start
+			scanner.start = 0
+		}
+		if scanner.end == len(scanner.data) {
+			newSize := len(scanner.data) * 2
+			if newSize == 0 {
+				newSize = defaultBufSize
+				if cap(scanner.initial) > 0 {
+					newSize = cap(scanner.initial)
+				}
+			}
+			if newSize > scanner.max {
+				newSize = scanner.max
+			}
+			if newSize <= len(scanner.data) {
+				scanner.err, scanner.done = ErrTooLong, true
+				return false
+			}
+			buffer := make([]byte, newSize)
+			copy(buffer, scanner.data[scanner.start:scanner.end])
+			scanner.end -= scanner.start
+			scanner.start = 0
+			scanner.data = buffer
+		}
+		for emptyReads := 0; ; emptyReads++ {
+			count, err := scanner.reader.Read(scanner.data[scanner.end:])
+			if count < 0 || count > len(scanner.data) - scanner.end {
+				scanner.err = ErrBadReadCount
+				break
+			}
+			scanner.end += count
+			if err != nil {
+				scanner.err = err
+				break
+			}
+			if count > 0 {
+				break
+			}
+			if emptyReads + 1 >= maxConsecutiveEmptyReads {
+				scanner.err = io.ErrNoProgress
+				break
+			}
+		}
+	}
+}
+
+// Bytes returns the most recent token generated by a call to [Scanner.Scan].
+// The underlying array may point to data that will be overwritten
+// by a subsequent call to Scan. It does no allocation.
+func (scanner *Scanner) Bytes() []byte {
+	return scanner.token
+}
+
+// Text returns the most recent token generated by a call to [Scanner.Scan]
+// as a newly allocated string holding its bytes.
+func (scanner *Scanner) Text() string {
+	return string(scanner.token)
+}
+
+// Err returns the first non-EOF error that was encountered by the [Scanner].
+func (scanner *Scanner) Err() error {
+	if scanner.err == io.EOF {
+		return nil
+	}
+	return scanner.err
+}
+
+// ScanBytes is a split function for a [Scanner] that returns each byte as a token.
+func ScanBytes(data []byte, atEOF bool) (int, []byte, error) {
+	if len(data) > 0 {
+		return 1, data[:1], nil
+	}
+	return 0, nil, nil
+}
+
+// ScanRunes is a split function for a [Scanner] that returns each
+// UTF-8-encoded rune as a token. The sequence of runes returned is
+// equivalent to that from a range loop over the input as a string, which
+// means that erroneous UTF-8 encodings translate to U+FFFD = "\xef\xbf\xbd".
+// Because of the Scan interface, this makes it impossible for the client to
+// distinguish correctly encoded replacement runes from encoding errors.
+func ScanRunes(data []byte, atEOF bool) (int, []byte, error) {
+	if len(data) == 0 {
+		return 0, nil, nil
+	}
+	if !atEOF && !utf8.FullRune(data) {
+		return 0, nil, nil
+	}
+	value, size := utf8.DecodeRune(data)
+	if value == utf8.RuneError && size == 1 {
+		return 1, []byte("\xef\xbf\xbd"), nil
+	}
+	return size, data[:size], nil
+}
+
+// ScanLines is a split function for a [Scanner] that returns each line of
+// text, stripped of any trailing end-of-line marker. The returned line may
+// be empty. The end-of-line marker is one optional carriage return followed
+// by one mandatory newline. In regular expression notation, it is `\r?\n`.
+// The last non-empty line of input will be returned even if it has no
+// newline.
+func ScanLines(data []byte, atEOF bool) (int, []byte, error) {
+	for index, value := range data {
+		if value == '\n' {
+			end := index
+			if end > 0 && data[end - 1] == '\r' {
+				end--
+			}
+			return index + 1, data[:end], nil
+		}
+	}
+	if atEOF && len(data) > 0 {
+		end := len(data)
+		if data[end - 1] == '\r' {
+			end--
+		}
+		return len(data), data[:end], nil
+	}
+	return 0, nil, nil
+}
+
+// ScanWords is a split function for a [Scanner] that returns each
+// space-separated word of text, with surrounding spaces deleted. It will
+// never return an empty string. The definition of space is set by
+// unicode.IsSpace.
+func ScanWords(data []byte, atEOF bool) (int, []byte, error) {
+	start := 0
+	for start < len(data) {
+		value, size := utf8.DecodeRune(data[start:])
+		if value == utf8.RuneError && size == 1 && !atEOF && !utf8.FullRune(data[start:]) {
+			return start, nil, nil
+		}
+		if !unicode.IsSpace(value) {
+			break
+		}
+		start += size
+	}
+	for index := start; index < len(data); {
+		value, size := utf8.DecodeRune(data[index:])
+		if value == utf8.RuneError && size == 1 && !atEOF && !utf8.FullRune(data[index:]) {
+			return start, nil, nil
+		}
+		if unicode.IsSpace(value) {
+			return index + size, data[start:index], nil
+		}
+		index += size
+	}
+	if atEOF && start < len(data) {
+		return len(data), data[start:], nil
+	}
+	return start, nil, nil
+}

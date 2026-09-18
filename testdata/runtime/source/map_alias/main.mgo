@@ -1,0 +1,2 @@
+package main
+func Main() int { a := map[string]int{"a": 20, "b": 2}; b := a; b["a"] = 40; delete(a, "b"); n, ok := a["missing"]; if ok { return -1 }; return b["a"] + len(a) + n }

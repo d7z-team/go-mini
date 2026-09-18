@@ -1,0 +1,451 @@
+// Package fstest implements support for testing implementations and users of file systems.
+package fstest
+
+import (
+	"errors"
+	"io"
+	"io/fs"
+	"path"
+	"sort"
+	"strings"
+	"time"
+)
+
+// A MapFile describes a single file in a [MapFS].
+type MapFile struct {
+	// file content or symlink destination
+	Data []byte
+	// fs.FileInfo.Mode
+	Mode fs.FileMode
+	// fs.FileInfo.ModTime
+	ModTime time.Time
+	// fs.FileInfo.Sys
+	Sys any
+}
+
+// A MapFS is a simple in-memory file system for use in tests,
+// represented as a map from path names (arguments to Open)
+// to information about the files, directories, or symbolic links they represent.
+//
+// The map need not include parent directories for files contained
+// in the map; those will be synthesized if needed.
+// But a directory can still be included by setting the [MapFile.Mode]'s [fs.ModeDir] bit;
+// this may be necessary for detailed control over the directory's [fs.FileInfo]
+// or to create an empty directory.
+//
+// File system operations read directly from the map,
+// so that the file system can be changed by editing the map as needed.
+// An implication is that file system operations must not run concurrently
+// with changes to the map, which would be a race.
+// Another implication is that opening or reading a directory requires
+// iterating over the entire map, so a MapFS should typically be used with not more
+// than a few hundred entries or directory reads.
+type MapFS map[string] *MapFile
+
+type mapInfo struct {
+	name string
+	file *MapFile
+	directory bool
+}
+
+func (i mapInfo) Name() string {
+	return i.name
+}
+
+func (i mapInfo) Size() int64 {
+	if i.file == nil || i.directory {
+		return 0
+	}
+	return int64(len(i.file.Data))
+}
+
+func (i mapInfo) Mode() fs.FileMode {
+	if i.directory {
+		if i.file == nil || i.file.Mode == 0 {
+			return fs.ModeDir | 0555
+		}
+		return i.file.Mode | fs.ModeDir
+	}
+	if i.file == nil || i.file.Mode == 0 {
+		return 0666
+	}
+	return i.file.Mode
+}
+
+func (i mapInfo) ModTime() time.Time {
+	if i.file == nil {
+		return time.Time{}
+	}
+	return i.file.ModTime
+}
+
+func (i mapInfo) IsDir() bool {
+	return i.directory
+}
+
+func (i mapInfo) Sys() any {
+	if i.file == nil {
+		return nil
+	}
+	return i.file.Sys
+}
+
+type mapEntry struct {
+	info mapInfo
+}
+
+func (e mapEntry) Name() string {
+	return e.info.Name()
+}
+
+func (e mapEntry) IsDir() bool {
+	return e.info.IsDir()
+}
+
+func (e mapEntry) Type() fs.FileMode {
+	return e.info.Mode().Type()
+}
+
+func (e mapEntry) Info() (fs.FileInfo, error) {
+	return e.info, nil
+}
+
+type openFile struct {
+	info mapInfo
+	data []byte
+	offset int
+	entries []fs.DirEntry
+	dirOffset int
+	closed bool
+}
+
+func (f *openFile) Stat() (fs.FileInfo, error) {
+	if f.closed {
+		return nil, fs.ErrClosed
+	}
+	return f.info, nil
+}
+
+func (f *openFile) Close() error {
+	if f.closed {
+		return fs.ErrClosed
+	}
+	f.closed = true
+	return nil
+}
+
+func (f *openFile) Read(buffer []byte) (int, error) {
+	if f.closed {
+		return 0, fs.ErrClosed
+	}
+	if f.info.directory {
+		return 0, &fs.PathError{Op: "read", Path: f.info.name, Err: fs.ErrInvalid}
+	}
+	if f.offset >= len(f.data) {
+		return 0, io.EOF
+	}
+	n := copy(buffer, f.data[f.offset:])
+	f.offset += n
+	return n, nil
+}
+
+func (f *openFile) ReadDir(n int) ([]fs.DirEntry, error) {
+	if f.closed {
+		return nil, fs.ErrClosed
+	}
+	if !f.info.directory {
+		return nil, &fs.PathError{Op: "readdir", Path: f.info.name, Err: fs.ErrInvalid}
+	}
+	if f.dirOffset >= len(f.entries) {
+		if n > 0 {
+			return []fs.DirEntry{}, io.EOF
+		}
+		return []fs.DirEntry{}, nil
+	}
+	end := len(f.entries)
+	if n > 0 && f.dirOffset + n < end {
+		end = f.dirOffset + n
+	}
+	out := append([]fs.DirEntry{}, f.entries[f.dirOffset:end]...)
+	f.dirOffset = end
+	return out, nil
+}
+
+func (m MapFS) lookup(name string) (mapInfo, bool) {
+	if name == "." {
+		return mapInfo{name: ".", directory: true}, true
+	}
+	if file, ok := m[name]; ok && file != nil {
+		return mapInfo{name: path.Base(name), file: file, directory: file.Mode & fs.ModeDir != 0}, true
+	}
+	prefix := name + "/"
+	for candidate := range m {
+		if len(candidate) > len(prefix) && candidate[:len(prefix)] == prefix {
+			return mapInfo{name: path.Base(name), directory: true}, true
+		}
+	}
+	return mapInfo{}, false
+}
+
+// Stat returns information describing the named file or synthesized directory.
+func (m MapFS) Stat(name string) (fs.FileInfo, error) {
+	if !fs.ValidPath(name) {
+		return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrInvalid}
+	}
+	info, ok := m.lookup(name)
+	if !ok {
+		return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrNotExist}
+	}
+	return info, nil
+}
+
+// Lstat returns a FileInfo describing the named file.
+// If the file is a symbolic link, the returned FileInfo describes the symbolic link.
+// Lstat makes no attempt to follow the link.
+func (m MapFS) Lstat(name string) (fs.FileInfo, error) {
+	return m.Stat(name)
+}
+
+// ReadFile returns a copy of the named file's data.
+func (m MapFS) ReadFile(name string) ([]byte, error) {
+	info, ok := m.lookup(name)
+	if !ok || info.directory || info.file == nil {
+		return nil, &fs.PathError{Op: "readfile", Path: name, Err: fs.ErrNotExist}
+	}
+	return append([]byte{}, info.file.Data...), nil
+}
+
+// ReadDir reads and sorts the directory entries for name.
+func (m MapFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	info, ok := m.lookup(name)
+	if !ok || !info.directory {
+		return nil, &fs.PathError{Op: "readdir", Path: name, Err: fs.ErrNotExist}
+	}
+	prefix := ""
+	if name != "." {
+		prefix = name + "/"
+	}
+	seen := map[string]bool{}
+	entries := []fs.DirEntry{}
+	for candidate := range m {
+		if len(candidate) <= len(prefix) || candidate[:len(prefix)] != prefix {
+			continue
+		}
+		remainder := candidate[len(prefix):]
+		slash := -1
+		for i := 0; i < len(remainder); i++ {
+			if remainder[i] == byte('/') {
+				slash = i
+				break
+			}
+		}
+		child := remainder
+		if slash >= 0 {
+			child = remainder[:slash]
+		}
+		if seen[child] {
+			continue
+		}
+		seen[child] = true
+		childPath := child
+		if prefix != "" {
+			childPath = prefix + child
+		}
+		childInfo, _ := m.lookup(childPath)
+		entries = append(entries, mapEntry{info: childInfo})
+	}
+	sort.Slice(entries, func(i int, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
+	return entries, nil
+}
+
+// Open opens the named file after following any symbolic links.
+func (m MapFS) Open(name string) (fs.File, error) {
+	infoValue, err := m.Stat(name)
+	if err != nil {
+		return nil, err
+	}
+	info := infoValue.(mapInfo)
+	file := &openFile{info: info}
+	if info.file != nil {
+		file.data = append([]byte{}, info.file.Data...)
+	}
+	if info.directory {
+		file.entries, err = m.ReadDir(name)
+	}
+	return file, err
+}
+
+// ReadLink returns the destination of the named symbolic link.
+func (m MapFS) ReadLink(name string) (string, error) {
+	file, ok := m[name]
+	if !ok || file == nil || file.Mode & fs.ModeSymlink == 0 {
+		return "", &fs.PathError{Op: "readlink", Path: name, Err: fs.ErrInvalid}
+	}
+	return string(file.Data), nil
+}
+
+// Sub returns a file system rooted at dir.
+func (m MapFS) Sub(dir string) (fs.FS, error) {
+	info, err := m.Stat(dir)
+	if err != nil || !info.IsDir() {
+		if err == nil {
+			err = fs.ErrInvalid
+		}
+		return nil, err
+	}
+	if dir == "." {
+		return m, nil
+	}
+	prefix := dir + "/"
+	out := MapFS{}
+	for name, file := range m {
+		if len(name) > len(prefix) && name[:len(prefix)] == prefix {
+			out[name[len(prefix):]] = file
+		}
+	}
+	return out, nil
+}
+
+// Glob returns the sorted paths in the MapFS that match pattern.
+func (m MapFS) Glob(pattern string) ([]string, error) {
+	if _, err := path.Match(pattern, ""); err != nil {
+		return nil, err
+	}
+	matches := []string{}
+	seen := map[string]bool{}
+	for name := range m {
+		parts := []string{name}
+		for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
+			parts = append(parts, parent)
+		}
+		for _, candidate := range parts {
+			if seen[candidate] {
+				continue
+			}
+			seen[candidate] = true
+			matched, _ := path.Match(pattern, candidate)
+			if matched {
+				matches = append(matches, candidate)
+			}
+		}
+	}
+	sort.Strings(matches)
+	return matches, nil
+}
+
+type fsTestState struct {
+	filesystem fs.FS
+	found map[string]bool
+	problems []string
+}
+
+// TestFS tests a file system implementation.
+// It walks the entire tree of files in fsys,
+// opening and checking that each file behaves correctly.
+// Symbolic links are not followed,
+// but their Lstat values are checked
+// if the file system implements [fs.ReadLinkFS].
+// It also checks that the file system contains at least the expected files.
+// As a special case, if no expected files are listed, fsys must be empty.
+// Otherwise, fsys must contain at least the listed files; it can also contain others.
+// The contents of fsys must not change concurrently with TestFS.
+//
+// If TestFS finds any misbehaviors, it returns either the first error or a
+// list of errors. Use [errors.Is] or [errors.AsType] to inspect.
+//
+// Typical usage inside a test is:
+//
+// 	if err := fstest.TestFS(myFS, "file/that/should/be/present"); err != nil {
+// 		t.Fatal(err)
+// 	}
+func TestFS(filesystem fs.FS, expected ...string) error {
+	state := &fsTestState{filesystem: filesystem, found: map[string]bool{}}
+	for _, name := range []string{"", "/", "..", "./"} {
+		file, err := filesystem.Open(name)
+		if err == nil {
+			file.Close()
+			state.problems = append(state.problems, "Open accepted invalid path " + name)
+		}
+	}
+	state.checkDirectory(".")
+	for _, name := range expected {
+		if !fs.ValidPath(name) {
+			state.problems = append(state.problems, "invalid expected file " + name)
+			continue
+		}
+		if !state.found[name] {
+			state.problems = append(state.problems, "expected but not found: " + name)
+		}
+	}
+	if len(state.problems) != 0 {
+		return errors.New("TestFS found errors: " + strings.Join(state.problems, "; "))
+	}
+	return nil
+}
+
+func (state *fsTestState) checkDirectory(name string) {
+	file, err := state.filesystem.Open(name)
+	if err != nil {
+		state.problems = append(state.problems, name + ": Open failed")
+		return
+	}
+	directory, ok := file.(fs.ReadDirFile)
+	if !ok {
+		file.Close()
+		state.problems = append(state.problems, name + ": directory does not implement ReadDirFile")
+		return
+	}
+	entries, err := directory.ReadDir(-1)
+	if err != nil {
+		directory.Close()
+		state.problems = append(state.problems, name + ": ReadDir(-1) failed")
+		return
+	}
+	if remaining, readErr := directory.ReadDir(-1); len(remaining) != 0 || readErr != nil {
+		state.problems = append(state.problems, name + ": ReadDir(-1) EOF contract failed")
+	}
+	if remaining, readErr := directory.ReadDir(1); len(remaining) != 0 || readErr != io.EOF {
+		state.problems = append(state.problems, name + ": ReadDir(1) EOF contract failed")
+	}
+	if closeErr := directory.Close(); closeErr != nil {
+		state.problems = append(state.problems, name + ": Close failed")
+	}
+	for _, entry := range entries {
+		base := entry.Name()
+		if base == "" || base == "." || base == ".." || strings.Contains(base, "/") || strings.Contains(base, "\\") {
+			state.problems = append(state.problems, name + ": invalid child name " + base)
+			continue
+		}
+		child := base
+		if name != "." {
+			child = path.Join(name, base)
+		}
+		state.found[child] = true
+		info, infoErr := entry.Info()
+		if infoErr != nil || info.Name() != base || info.IsDir() != entry.IsDir() || info.Mode().Type() != entry.Type() {
+			state.problems = append(state.problems, child + ": inconsistent DirEntry info")
+			continue
+		}
+		opened, openErr := state.filesystem.Open(child)
+		if openErr != nil {
+			state.problems = append(state.problems, child + ": Open failed")
+			continue
+		}
+		openedInfo, statErr := opened.Stat()
+		if statErr != nil || openedInfo.Name() != base || openedInfo.IsDir() != entry.IsDir() {
+			state.problems = append(state.problems, child + ": Stat mismatch")
+		}
+		if closeErr := opened.Close(); closeErr != nil {
+			state.problems = append(state.problems, child + ": Close failed")
+		}
+		if entry.IsDir() {
+			state.checkDirectory(child)
+		} else if entry.Type() & fs.ModeSymlink == 0 {
+			if _, readErr := fs.ReadFile(state.filesystem, child); readErr != nil {
+				state.problems = append(state.problems, child + ": ReadFile failed")
+			}
+		}
+	}
+}

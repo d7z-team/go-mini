@@ -1,0 +1,27 @@
+[
+  {
+    "module":{"path":"test","package":"main"},
+    "requirements":[{"kind":"source","module_path":"lib"}],
+    "functions":[{"id":"fn.Main","signature":{"results":[{"kind":3,"primitive":3}]},"instructions":[
+      {"op":"call_direct","payload":{"module_path":"lib","function":"answer","result_count":1}},
+      {"op":"return","payload":{"result_count":1}}
+    ]}]
+  },
+  {
+    "module":{"path":"lib","package":"lib"},
+    "constants":[{"id":"answer","type":{"kind":3,"primitive":3},"value":42}],
+    "globals":[{"id":"value","type":{"kind":3,"primitive":3}}],
+    "exports":[{"name":"Value","kind":"global","id":"value","type":{"kind":3,"primitive":3}}],
+    "functions":[
+      {"id":"fn.init","instructions":[
+        {"op":"const","payload":{"constant":"answer"}},
+        {"op":"store_global","payload":{"global":"value"}},
+        {"op":"return","payload":{}}
+      ]},
+      {"id":"answer","signature":{"results":[{"kind":3,"primitive":3}]},"instructions":[
+        {"op":"load_global","payload":{"global":"value"}},
+        {"op":"return","payload":{"result_count":1}}
+      ]}
+    ]
+  }
+]

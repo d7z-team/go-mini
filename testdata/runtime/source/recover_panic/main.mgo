@@ -1,0 +1,2 @@
+package main
+func Main() (n int) { defer func() { if recover() != nil { n = 42 } }(); panic("failure") }

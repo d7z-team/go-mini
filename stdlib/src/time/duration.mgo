@@ -1,0 +1,149 @@
+package time
+
+import (
+	"strconv"
+)
+
+// A Duration represents the elapsed time between two instants
+// as an int64 nanosecond count. The representation limits the
+// largest representable duration to approximately 290 years.
+type Duration int64
+
+// Common durations. There is no definition for units of Day or larger
+// to avoid confusion across daylight savings time zone transitions.
+//
+// To count the number of units in a [Duration], divide:
+//
+// 	second := time.Second
+// 	fmt.Print(int64(second/time.Millisecond)) // prints 1000
+//
+// To convert an integer number of units to a Duration, multiply:
+//
+// 	seconds := 10
+// 	fmt.Print(time.Duration(seconds)*time.Second) // prints 10s
+const (
+
+	Nanosecond Duration = 1
+
+	Microsecond = 1000 * Nanosecond
+
+	Millisecond = 1000 * Microsecond
+
+	Second = 1000 * Millisecond
+
+	Minute = 60 * Second
+
+	Hour = 60 * Minute
+)
+
+// Nanoseconds returns the duration as an integer nanosecond count.
+func (d Duration) Nanoseconds() int64 {
+	return int64(d)
+}
+
+// Microseconds returns the duration as an integer microsecond count.
+func (d Duration) Microseconds() int64 {
+	return int64(d) / int64(Microsecond)
+}
+
+// Milliseconds returns the duration as an integer millisecond count.
+func (d Duration) Milliseconds() int64 {
+	return int64(d) / int64(Millisecond)
+}
+
+// Seconds returns the duration as a floating point number of seconds.
+func (d Duration) Seconds() float64 {
+	return float64(d) / float64(Second)
+}
+
+// Minutes returns the duration as a floating point number of minutes.
+func (d Duration) Minutes() float64 {
+	return float64(d) / float64(Minute)
+}
+
+// Hours returns the duration as a floating point number of hours.
+func (d Duration) Hours() float64 {
+	return float64(d) / float64(Hour)
+}
+
+// Abs returns the absolute value of d.
+// As a special case, Duration([math.MinInt64]) is converted to Duration([math.MaxInt64]),
+// reducing its magnitude by 1 nanosecond.
+func (d Duration) Abs() Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
+}
+
+// Truncate returns the result of rounding d toward zero to a multiple of m.
+// If m <= 0, Truncate returns d unchanged.
+func (d Duration) Truncate(m Duration) Duration {
+	if m <= 0 {
+		return d
+	}
+	return d - d % m
+}
+
+// Round returns the result of rounding d to the nearest multiple of m.
+// The rounding behavior for halfway values is to round away from zero.
+// If the result exceeds the maximum (or minimum)
+// value that can be stored in a [Duration],
+// Round returns the maximum (or minimum) duration.
+// If m <= 0, Round returns d unchanged.
+func (d Duration) Round(m Duration) Duration {
+	if m <= 0 {
+		return d
+	}
+	r := d % m
+	if r < 0 {
+		r = -r
+	}
+	if r + r < m {
+		return d.Truncate(m)
+	}
+	if d < 0 {
+		return d.Truncate(m) - m
+	}
+	return d.Truncate(m) + m
+}
+
+// String returns a string representing the duration in the form "72h3m0.5s".
+// Leading zero units are omitted. As a special case, durations less than one
+// second format use a smaller unit (milli-, micro-, or nanoseconds) to ensure
+// that the leading digit is non-zero. The zero duration formats as 0s.
+func (d Duration) String() string {
+	if d == 0 {
+		return "0s"
+	}
+	negative := d < 0
+	if negative {
+		d = -d
+	}
+	out := ""
+	if d >= Hour {
+		out += strconv.FormatInt(int64(d / Hour), 10) + "h"
+		d %= Hour
+	}
+	if d >= Minute {
+		out += strconv.FormatInt(int64(d / Minute), 10) + "m"
+		d %= Minute
+	}
+	if d > 0 || out == "" {
+		seconds := int64(d / Second)
+		nanos := int64(d % Second)
+		out += strconv.FormatInt(seconds, 10)
+		if nanos != 0 {
+			fraction := strconv.FormatInt(nanos + 1000000000, 10)[1:]
+			for len(fraction) > 0 && fraction[len(fraction) - 1:] == "0" {
+				fraction = fraction[:len(fraction) - 1]
+			}
+			out += "." + fraction
+		}
+		out += "s"
+	}
+	if negative {
+		return "-" + out
+	}
+	return out
+}

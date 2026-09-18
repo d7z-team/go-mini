@@ -1,0 +1,2 @@
+package main
+func Main() int { a := complex(1e300, 1e300); b := complex(1e300, 0.0); c := a/b; z := complex(0.0, 0.0); d := complex(1.0, 1.0)/z; if real(c) != 1 || imag(c) != 1 || real(d) <= 1e300 || imag(d) <= 1e300 { return -1 }; return 42 }

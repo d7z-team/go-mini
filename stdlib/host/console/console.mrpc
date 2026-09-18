@@ -1,0 +1,13 @@
+syntax = "mrpc/v2";
+namespace std.fmt.v1;
+option mgo_package = "fmt";
+option go_package = "github.com/d7z-team/mini-go/stdlib/host/console;console";
+option go_prefix = "Fmt";
+message streamFault {
+	Code string = 1;
+	Message string = 2;
+}
+service console {
+	Write(stream int64 = 1, data[] uint8 = 2) returns(count int64 = 1, fault streamFault = 2);
+	Read(size int64 = 1) returns(data[] uint8 = 1, fault streamFault = 2);
+}

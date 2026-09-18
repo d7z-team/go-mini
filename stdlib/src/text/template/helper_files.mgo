@@ -1,0 +1,45 @@
+package template
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+)
+
+// ParseFiles parses templates from the named files.
+func ParseFiles(filenames ...string) (*Template, error) {
+	return parseFiles(nil, readFileOS, filenames...)
+}
+
+// ParseFiles parses templates from the named files and associates them with t.
+func (t *Template) ParseFiles(filenames ...string) (*Template, error) {
+	t.init()
+	return parseFiles(t, readFileOS, filenames...)
+}
+
+// ParseGlob parses templates from files matching pattern.
+func ParseGlob(pattern string) (*Template, error) {
+	return parseGlob(nil, pattern)
+}
+
+// ParseGlob parses matching files and associates them with t.
+func (t *Template) ParseGlob(pattern string) (*Template, error) {
+	t.init()
+	return parseGlob(t, pattern)
+}
+
+func parseGlob(t *Template, pattern string) (*Template, error) {
+	filenames, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, err
+	}
+	if len(filenames) == 0 {
+		return nil, fmt.Errorf("template: pattern matches no files: %#q", pattern)
+	}
+	return parseFiles(t, readFileOS, filenames...)
+}
+
+func readFileOS(file string) (string, []byte, error) {
+	data, err := os.ReadFile(file)
+	return filepath.Base(file), data, err
+}

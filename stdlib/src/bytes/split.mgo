@@ -1,0 +1,103 @@
+package bytes
+
+import "unicode/utf8"
+
+// Clone returns a copy of b. A nil slice remains nil.
+func Clone(b []byte) []byte {
+	if b == nil {
+		return nil
+	}
+	out := make([]byte, len(b))
+	copy(out, b)
+	return out
+}
+
+// Runes interprets s as UTF-8 and returns the equivalent rune slice.
+func Runes(s []byte) []rune {
+	return []rune(string(s))
+}
+
+// ToValidUTF8 returns a copy of s with each run of invalid UTF-8 replaced by
+// replacement, which may be empty.
+func ToValidUTF8(s []byte, replacement []byte) []byte {
+	out := []byte{}
+	for len(s) != 0 {
+		r, size := utf8.DecodeRune(s)
+		if r != utf8.RuneError || size != 1 {
+			out = append(out, s[:size]...)
+			s = s[size:]
+			continue
+		}
+		out = append(out, replacement...)
+		s = s[1:]
+		for len(s) != 0 {
+			r, size = utf8.DecodeRune(s)
+			if r != utf8.RuneError || size != 1 {
+				break
+			}
+			s = s[1:]
+		}
+	}
+	return out
+}
+
+// Split slices s into all subslices separated by sep.
+func Split(s []byte, sep []byte) [][]byte {
+	return SplitN(s, sep, -1)
+}
+
+// SplitAfter slices s into all subslices after each instance of sep.
+func SplitAfter(s []byte, sep []byte) [][]byte {
+	return SplitAfterN(s, sep, -1)
+}
+
+// SplitN slices s into at most n subslices separated by sep.
+func SplitN(s []byte, sep []byte, n int) [][]byte {
+	return splitN(s, sep, n, false)
+}
+
+// SplitAfterN slices s into at most n subslices after sep.
+func SplitAfterN(s []byte, sep []byte, n int) [][]byte {
+	return splitN(s, sep, n, true)
+}
+
+func splitN(s []byte, sep []byte, n int, after bool) [][]byte {
+	if n == 0 {
+		return nil
+	}
+	if len(sep) == 0 {
+		count := utf8.RuneCount(s)
+		if n < 0 || n > count {
+			n = count
+		}
+		out := [][]byte{}
+		for len(s) != 0 && len(out) + 1 < n {
+			_, size := utf8.DecodeRune(s)
+			out = append(out, s[:size])
+			s = s[size:]
+		}
+		if n > 0 {
+			out = append(out, s)
+		}
+		return out
+	}
+	out := [][]byte{}
+	start := 0
+	for start <= len(s) {
+		if n > 0 && len(out) + 1 >= n {
+			return append(out, s[start:])
+		}
+		index := Index(s[start:], sep)
+		if index < 0 {
+			return append(out, s[start:])
+		}
+		end := start + index
+		next := end + len(sep)
+		if after {
+			end = next
+		}
+		out = append(out, s[start:end])
+		start = next
+	}
+	return out
+}

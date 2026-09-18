@@ -1,0 +1,2 @@
+package main
+func Main() int { var a int8 = 127; a++; var b uint8 = 255; b++; return int(a) + int(b) }

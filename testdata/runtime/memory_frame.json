@@ -1,0 +1,252 @@
+{
+  "module": {
+    "path": "test",
+    "package": "main"
+  },
+  "type_table": {
+    "nodes": [
+      {
+        "id": "record",
+        "kind": 12,
+        "fields": [
+          {
+            "name": "F0",
+            "type": {
+              "kind": 3,
+              "primitive": 3
+            }
+          },
+          {
+            "name": "F1",
+            "type": {
+              "kind": 3,
+              "primitive": 3
+            }
+          },
+          {
+            "name": "F2",
+            "type": {
+              "kind": 3,
+              "primitive": 3
+            }
+          },
+          {
+            "name": "F3",
+            "type": {
+              "kind": 3,
+              "primitive": 3
+            }
+          },
+          {
+            "name": "F4",
+            "type": {
+              "kind": 3,
+              "primitive": 3
+            }
+          },
+          {
+            "name": "F5",
+            "type": {
+              "kind": 3,
+              "primitive": 3
+            }
+          },
+          {
+            "name": "F6",
+            "type": {
+              "kind": 3,
+              "primitive": 3
+            }
+          },
+          {
+            "name": "F7",
+            "type": {
+              "kind": 3,
+              "primitive": 3
+            }
+          },
+          {
+            "name": "F8",
+            "type": {
+              "kind": 3,
+              "primitive": 3
+            }
+          }
+        ]
+      },
+      {
+        "id": "bytes",
+        "kind": 5,
+        "elem": {
+          "kind": 3,
+          "primitive": 9
+        }
+      }
+    ]
+  },
+  "constants": [
+    {
+      "id": "length",
+      "type": {
+        "kind": 3,
+        "primitive": 3
+      },
+      "value": 32
+    }
+  ],
+  "functions": [
+    {
+      "id": "fn.Main",
+      "signature": {
+        "results": [
+          {
+            "kind": 3,
+            "primitive": 3
+          }
+        ]
+      },
+      "locals": [
+        {
+          "id": "record",
+          "type": {
+            "kind": 12,
+            "node": "record"
+          }
+        }
+      ],
+      "instructions": [
+        {
+          "op": "const",
+          "payload": {
+            "constant": "length"
+          }
+        },
+        {
+          "op": "const",
+          "payload": {
+            "constant": "length"
+          }
+        },
+        {
+          "op": "const",
+          "payload": {
+            "constant": "length"
+          }
+        },
+        {
+          "op": "const",
+          "payload": {
+            "constant": "length"
+          }
+        },
+        {
+          "op": "const",
+          "payload": {
+            "constant": "length"
+          }
+        },
+        {
+          "op": "const",
+          "payload": {
+            "constant": "length"
+          }
+        },
+        {
+          "op": "const",
+          "payload": {
+            "constant": "length"
+          }
+        },
+        {
+          "op": "const",
+          "payload": {
+            "constant": "length"
+          }
+        },
+        {
+          "op": "const",
+          "payload": {
+            "constant": "length"
+          }
+        },
+        {
+          "op": "make_struct",
+          "payload": {
+            "type": {
+              "kind": 12,
+              "node": "record"
+            },
+            "fields": [
+              "F0",
+              "F1",
+              "F2",
+              "F3",
+              "F4",
+              "F5",
+              "F6",
+              "F7",
+              "F8"
+            ]
+          }
+        },
+        {
+          "op": "store_local",
+          "payload": {
+            "local": "record"
+          }
+        },
+        {
+          "op": "const",
+          "payload": {
+            "constant": "length"
+          }
+        },
+        {
+          "op": "make_slice",
+          "payload": {
+            "type": {
+              "kind": 5,
+              "node": "bytes"
+            }
+          }
+        },
+        {
+          "op": "pop"
+        },
+        {
+          "op": "const",
+          "payload": {
+            "constant": "length"
+          }
+        },
+        {
+          "op": "make_slice",
+          "payload": {
+            "type": {
+              "kind": 5,
+              "node": "bytes"
+            }
+          }
+        },
+        {
+          "op": "pop"
+        },
+        {
+          "op": "zero",
+          "payload": {
+            "type": {
+              "kind": 3,
+              "primitive": 3
+            }
+          }
+        },
+        {
+          "op": "return",
+          "payload": {
+            "result_count": 1
+          }
+        }
+      ]
+    }
+  ]
+}

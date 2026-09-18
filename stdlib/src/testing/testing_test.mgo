@@ -1,0 +1,9 @@
+package testing_test
+
+import "testing"
+
+func TestStateAccessors(t *testing.T) {
+	if t.Failed() || t.Skipped() {
+		t.Fatal("unexpected initial test state")
+	}
+}

@@ -1,0 +1,142 @@
+package bytes
+
+import (
+	"unicode"
+	"unicode/utf8"
+)
+
+func trimLeftSpace(s []byte) []byte {
+	if len(s) == 0 {
+		return s
+	}
+	for i, value := range string(s) {
+		if !unicode.IsSpace(value) {
+			return s[i:]
+		}
+	}
+	return []byte{}
+}
+
+func trimRightSpace(s []byte) []byte {
+	end := len(s)
+	for end > 0 {
+		value, size := utf8.DecodeLastRune(s[:end])
+		if !unicode.IsSpace(value) {
+			break
+		}
+		end -= size
+	}
+	return s[:end]
+}
+
+func containsCutsetByte(cutset string, value byte) bool {
+	for _, candidate := range cutset {
+		if int(value) == int(candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsCutsetRune(cutset string, value rune) bool {
+	for _, candidate := range cutset {
+		if candidate == value {
+			return true
+		}
+	}
+	return false
+}
+
+// Trim returns a subslice of s by slicing off all leading and
+// trailing UTF-8-encoded code points contained in cutset.
+func Trim(s []byte, cutset string) []byte {
+	return TrimRight(TrimLeft(s, cutset), cutset)
+}
+
+// TrimLeft returns a subslice of s by slicing off all leading
+// UTF-8-encoded code points contained in cutset.
+func TrimLeft(s []byte, cutset string) []byte {
+	if len(s) == 0 || cutset == "" {
+		return s
+	}
+	text := string(s)
+	for i, value := range text {
+		if !containsCutsetRune(cutset, value) {
+			return s[i:]
+		}
+	}
+	return s[:0]
+}
+
+// TrimRight returns a subslice of s by slicing off all trailing
+// UTF-8-encoded code points that are contained in cutset.
+func TrimRight(s []byte, cutset string) []byte {
+	end := len(s)
+	for end > 0 && cutset != "" {
+		value, size := utf8.DecodeLastRune(s[:end])
+		if !containsCutsetRune(cutset, value) {
+			break
+		}
+		end -= size
+	}
+	return s[:end]
+}
+
+// TrimFunc returns a subslice of s by slicing off all leading and trailing
+// UTF-8-encoded code points c that satisfy f(c).
+func TrimFunc(s []byte, f func(rune) bool) []byte {
+	return TrimRightFunc(TrimLeftFunc(s, f), f)
+}
+
+// TrimLeftFunc treats s as UTF-8-encoded bytes and returns a subslice of s by slicing off
+// all leading UTF-8-encoded code points c that satisfy f(c).
+func TrimLeftFunc(s []byte, f func(rune) bool) []byte {
+	if len(s) == 0 {
+		return s
+	}
+	text := string(s)
+	for i, value := range text {
+		if !f(value) {
+			return s[i:]
+		}
+	}
+	return s[:0]
+}
+
+// TrimRightFunc returns a subslice of s by slicing off all trailing
+// UTF-8-encoded code points c that satisfy f(c).
+func TrimRightFunc(s []byte, f func(rune) bool) []byte {
+	end := len(s)
+	for end > 0 {
+		value, size := utf8.DecodeLastRune(s[:end])
+		if !f(value) {
+			break
+		}
+		end -= size
+	}
+	return s[:end]
+}
+
+// TrimSpace returns a subslice of s by slicing off all leading and
+// trailing white space, as defined by Unicode.
+func TrimSpace(s []byte) []byte {
+	return trimRightSpace(trimLeftSpace(s))
+}
+
+// TrimPrefix returns s without the provided leading prefix string.
+// If s doesn't start with prefix, s is returned unchanged.
+func TrimPrefix(s []byte, prefix []byte) []byte {
+	if HasPrefix(s, prefix) {
+		return s[len(prefix):]
+	}
+	return s
+}
+
+// TrimSuffix returns s without the provided trailing suffix string.
+// If s doesn't end with suffix, s is returned unchanged.
+func TrimSuffix(s []byte, suffix []byte) []byte {
+	if HasSuffix(s, suffix) {
+		return s[:len(s) - len(suffix)]
+	}
+	return s
+}

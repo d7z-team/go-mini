@@ -1,0 +1,40 @@
+package url
+
+import "testing"
+
+func TestQueryRoundTrip(t *testing.T) {
+	values, err := ParseQuery("q=mini+go&q=%E4%B8%AD%E6%96%87&empty=")
+	if err != nil || values.Get("q") != "mini go" || len(values["q"]) != 2 || values.Get("empty") != "" {
+		t.Fatalf("ParseQuery = %#v, %v", values, err)
+	}
+	if values.Encode() != "empty=&q=mini+go&q=%E4%B8%AD%E6%96%87" {
+		t.Fatalf("Encode = %q", values.Encode())
+	}
+}
+
+func TestParseResolveAndUserinfo(t *testing.T) {
+	base, err := Parse("https://user:secret@example.test/a/b?q=1#old")
+	if err != nil || base.Scheme != "https" || base.Hostname() != "example.test" || base.RequestURI() != "/a/b?q=1" {
+		t.Fatalf("Parse = %#v, %v", base, err)
+	}
+	resolved, err := base.Parse("../c?x=two")
+	if err != nil || resolved.String() != "https://user:secret@example.test/c?x=two" {
+		t.Fatalf("Resolve = %v, %v", resolved, err)
+	}
+	if base.Redacted() != "https://user:xxxxx@example.test/a/b?q=1#old" {
+		t.Fatalf("Redacted = %q", base.Redacted())
+	}
+}
+
+func TestEscapingAndBinary(t *testing.T) {
+	text := "a/b 中文"
+	escaped := PathEscape(text)
+	decoded, err := PathUnescape(escaped)
+	if err != nil || decoded != text {
+		t.Fatalf("path round trip = %q, %v", decoded, err)
+	}
+	var decodedURL URL
+	if err := decodedURL.UnmarshalBinary([]byte("https://example.test/%E4%B8%AD")); err != nil || decodedURL.Path != "/中" {
+		t.Fatalf("UnmarshalBinary = %#v, %v", decodedURL, err)
+	}
+}

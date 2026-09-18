@@ -1,0 +1,32 @@
+package maps_test
+
+import (
+	"maps"
+	"slices"
+	"testing"
+)
+
+type named map[string]int
+
+func TestMapCoreAndIterators(t *testing.T) {
+	original := named{"a": 1, "b": 2}
+	clone := maps.Clone(original)
+	if !maps.Equal(original, clone) {
+		t.Fatalf("Clone is not equal")
+	}
+	maps.DeleteFunc(clone, func(key string, value int) bool {
+		return key == "a"
+	})
+	if len(clone) != 1 || clone["b"] != 2 {
+		t.Fatalf("DeleteFunc returned %v", clone)
+	}
+	keys := slices.Collect(maps.Keys(original))
+	slices.Sort(keys)
+	if !slices.Equal(keys, []string{"a", "b"}) {
+		t.Fatalf("Keys returned %v", keys)
+	}
+	collected := maps.Collect(maps.All(original))
+	if !maps.Equal(original, collected) {
+		t.Fatalf("Collect returned %v", collected)
+	}
+}

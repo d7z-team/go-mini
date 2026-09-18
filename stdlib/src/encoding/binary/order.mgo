@@ -1,0 +1,156 @@
+// Package binary implements translation between numbers and byte sequences and
+// encoding and decoding of varints.
+package binary
+
+// ByteOrder specifies how to convert byte slices to fixed-width integers.
+type ByteOrder interface {
+	// Uint16 decodes a uint16 from its byte representation.
+	Uint16([]byte) uint16
+	// Uint32 decodes a uint32 from its byte representation.
+	Uint32([]byte) uint32
+	// Uint64 decodes a uint64 from its byte representation.
+	Uint64([]byte) uint64
+	// PutUint16 encodes a uint16 into a byte slice.
+	PutUint16([]byte, uint16)
+	// PutUint32 encodes a uint32 into a byte slice.
+	PutUint32([]byte, uint32)
+	// PutUint64 encodes a uint64 into a byte slice.
+	PutUint64([]byte, uint64)
+	// String returns the name of the byte order.
+	String() string
+}
+
+// AppendByteOrder specifies how to append fixed-width integers.
+type AppendByteOrder interface {
+	// AppendUint16 appends the encoded form of a uint16.
+	AppendUint16([]byte, uint16) []byte
+	// AppendUint32 appends the encoded form of a uint32.
+	AppendUint32([]byte, uint32) []byte
+	// AppendUint64 appends the encoded form of a uint64.
+	AppendUint64([]byte, uint64) []byte
+	// String returns the name of the byte order.
+	String() string
+}
+
+type littleEndian struct{}
+
+type bigEndian struct{}
+
+type nativeEndian struct {
+	littleEndian
+}
+
+// LittleEndian is the little-endian implementation of ByteOrder.
+var LittleEndian littleEndian
+
+// BigEndian is the big-endian implementation of ByteOrder.
+var BigEndian bigEndian
+
+// NativeEndian is the native byte order used by Mini-Go runtimes.
+var NativeEndian nativeEndian
+
+func (littleEndian) Uint16(b []byte) uint16 {
+	return uint16(b[0]) | uint16(b[1]) << 8
+}
+
+func (littleEndian) Uint32(b []byte) uint32 {
+	return uint32(b[0]) | uint32(b[1]) << 8 | uint32(b[2]) << 16 | uint32(b[3]) << 24
+}
+
+func (littleEndian) Uint64(b []byte) uint64 {
+	return uint64(b[0]) | uint64(b[1]) << 8 | uint64(b[2]) << 16 | uint64(b[3]) << 24 |
+	uint64(b[4]) << 32 | uint64(b[5]) << 40 | uint64(b[6]) << 48 | uint64(b[7]) << 56
+}
+
+func (littleEndian) PutUint16(b []byte, value uint16) {
+	b[0], b[1] = byte(value), byte(value >> 8)
+}
+
+func (littleEndian) PutUint32(b []byte, value uint32) {
+	for i := 0; i < 4; i++ {
+		b[i] = byte(value >> uint(i * 8))
+	}
+}
+
+func (littleEndian) PutUint64(b []byte, value uint64) {
+	for i := 0; i < 8; i++ {
+		b[i] = byte(value >> uint(i * 8))
+	}
+}
+
+func (littleEndian) AppendUint16(b []byte, value uint16) []byte {
+	return append(b, byte(value), byte(value >> 8))
+}
+
+func (littleEndian) AppendUint32(b []byte, value uint32) []byte {
+	for i := 0; i < 4; i++ {
+		b = append(b, byte(value >> uint(i * 8)))
+	}
+	return b
+}
+
+func (littleEndian) AppendUint64(b []byte, value uint64) []byte {
+	for i := 0; i < 8; i++ {
+		b = append(b, byte(value >> uint(i * 8)))
+	}
+	return b
+}
+
+func (littleEndian) String() string {
+	return "LittleEndian"
+}
+
+func (bigEndian) Uint16(b []byte) uint16 {
+	return uint16(b[0]) << 8 | uint16(b[1])
+}
+
+func (bigEndian) Uint32(b []byte) uint32 {
+	return uint32(b[0]) << 24 | uint32(b[1]) << 16 | uint32(b[2]) << 8 | uint32(b[3])
+}
+
+func (bigEndian) Uint64(b []byte) uint64 {
+	return uint64(b[0]) << 56 | uint64(b[1]) << 48 | uint64(b[2]) << 40 | uint64(b[3]) << 32 |
+	uint64(b[4]) << 24 | uint64(b[5]) << 16 | uint64(b[6]) << 8 | uint64(b[7])
+}
+
+func (bigEndian) PutUint16(b []byte, value uint16) {
+	b[0], b[1] = byte(value >> 8), byte(value)
+}
+
+func (bigEndian) PutUint32(b []byte, value uint32) {
+	for i := 0; i < 4; i++ {
+		b[i] = byte(value >> uint((3 - i) * 8))
+	}
+}
+
+func (bigEndian) PutUint64(b []byte, value uint64) {
+	for i := 0; i < 8; i++ {
+		b[i] = byte(value >> uint((7 - i) * 8))
+	}
+}
+
+func (bigEndian) AppendUint16(b []byte, value uint16) []byte {
+	return append(b, byte(value >> 8), byte(value))
+}
+
+func (bigEndian) AppendUint32(b []byte, value uint32) []byte {
+	for i := 3; i >= 0; i-- {
+		b = append(b, byte(value >> uint(i * 8)))
+	}
+	return b
+}
+
+func (bigEndian) AppendUint64(b []byte, value uint64) []byte {
+	for i := 7; i >= 0; i-- {
+		b = append(b, byte(value >> uint(i * 8)))
+	}
+	return b
+}
+
+func (bigEndian) String() string {
+	return "BigEndian"
+}
+
+func (nativeEndian) String() string {
+	return "NativeEndian"
+}

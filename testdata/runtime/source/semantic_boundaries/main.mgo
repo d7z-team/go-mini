@@ -1,0 +1,404 @@
+package main
+
+func RangePointerLive() int {
+	p := &[3]int{1, 2, 3}
+	n := 0
+	for i, v := range p {
+		if i == 0 {
+			p[1] = 9
+		}
+		n = n*10 + v
+	}
+	return n
+}
+
+func RangeTargets() int {
+	i := 0
+	a := []int{0, 0, 0}
+	for i, a[i] = range []int{10, 20, 30} {
+	}
+	return a[0]*10000 + a[1]*100 + a[2]
+}
+
+func NilArrayCap() int { var p *[4]int; return cap(p) }
+
+func RangeArrayNil() int {
+	var p *[4]int
+	n := 0
+	for i := range p {
+		n += i
+	}
+	return n
+}
+
+func NilFunction() (r int) {
+	defer func() {
+		if recover() != nil {
+			r = 42
+		}
+	}()
+	var f func()
+	f()
+	return
+}
+
+func RangeDelete() int {
+	m := map[int]int{1: 10, 2: 20, 3: 30}
+	n := 0
+	for k := range m {
+		n++
+		for j := range m {
+			if j != k {
+				delete(m, j)
+			}
+		}
+	}
+	return n
+}
+
+func RangeNaN() int {
+	z := 0.0
+	n := z / z
+	m := map[float64]int{n: 42}
+	r := 0
+	for _, v := range m {
+		r += v
+	}
+	return r
+}
+
+func AppendIsolation() int {
+	s := []int{1, 2, 3, 4}
+	t := s[:1:2]
+	t = append(t, 9)
+	t = append(t, 8)
+	return s[2]
+}
+
+func LenArrayCall() int { n := 0; f := func() [4]int { n++; return [4]int{} }; _ = len(f()); return n }
+
+func LenArrayDeref() int { var p *[4]int; return len(*p) }
+
+func AppendCap() int { s := make([]int, 4, 8); s = s[:1:2]; s = append(s, 9); return cap(s) }
+
+func AppendByteCap() int { s := make([]byte, 4, 8); s = s[:1:2]; s = append(s, 9); return cap(s) }
+
+func TypedNilEqual() (r int) {
+	defer func() {
+		if recover() != nil {
+			r = 42
+		}
+	}()
+	var s []int
+	var a any = s
+	if a == a {
+		return 1
+	}
+	return 0
+}
+
+func NilRead() (r int) {
+	defer func() {
+		if recover() != nil {
+			r = 42
+		}
+	}()
+	var p *int
+	return *p
+}
+
+type NilFieldStruct struct{ X int }
+
+func NilFieldRead() (r int) {
+	defer func() {
+		if recover() != nil {
+			r = 42
+		}
+	}()
+	var p *NilFieldStruct
+	return p.X
+}
+
+func NilFieldWrite() (r int) {
+	defer func() { recover() }()
+	var p *NilFieldStruct
+	r, p.X = 42, 1
+	return
+}
+
+func NilFieldAddress() (r int) {
+	defer func() {
+		if recover() != nil {
+			r = 42
+		}
+	}()
+	var p *NilFieldStruct
+	_ = &p.X
+	return
+}
+
+func NilKey() int { m := make(map[any]int); m[nil] = 42; return m[nil] }
+
+func StructNilKey() int {
+	m := make(map[struct{ V any }]int)
+	m[struct{ V any }{}] = 42
+	return m[struct{ V any }{}]
+}
+
+func BadKeyRecover() (r int) {
+	defer func() {
+		if recover() != nil {
+			r = 42
+		}
+	}()
+	m := make(map[any]int)
+	m[[]int{1}] = 1
+	return 0
+}
+
+func NilMapBadKey() (r int) {
+	defer func() {
+		if recover() != nil {
+			r = 42
+		}
+	}()
+	var m map[any]int
+	return m[[]int{1}]
+}
+
+func BadEqualRecover() (r int) {
+	defer func() {
+		if recover() != nil {
+			r = 42
+		}
+	}()
+	var a any = []int{1}
+	if a == a {
+		return 1
+	}
+	return 0
+}
+
+func AssignBounds() (r int) {
+	defer func() { recover() }()
+	s := []int{0}
+	i := 1
+	r, s[i] = 42, 1
+	return
+}
+
+func AssignNil() (r int) { defer func() { recover() }(); var p *int; r, *p = 42, 1; return }
+
+func RHSBeforePanic() (r int) {
+	defer func() { recover() }()
+	s := []int{0}
+	i := 1
+	s[i] = func() int { r = 42; return 1 }()
+	return
+}
+
+func NilArrayLen() int { var p *[4]int; return len(p) }
+
+func AppendOverlap() int {
+	s := []int{1, 2, 3, 4}
+	s = append(s[:1], s...)
+	return s[1]*1000 + s[2]*100 + s[3]*10 + s[4]
+}
+
+func Main() int {
+	if MapMutations() != 42 {
+		panic("map entry lifecycle")
+	}
+	if RangeFunctionTargets() != 203000 {
+		panic("range function assignment")
+	}
+	if BoundaryVariants() != 42 {
+		panic("boundary variants")
+	}
+	if RangePointerLive() != 193 {
+		panic("rangepointerlive")
+	}
+	if RangeTargets() != 203000 {
+		panic("rangetargets")
+	}
+	if NilArrayCap() != 4 {
+		panic("nilarraycap")
+	}
+	if RangeArrayNil() != 6 {
+		panic("rangearraynil")
+	}
+	if NilFunction() != 42 {
+		panic("nilfunction")
+	}
+	if RangeDelete() != 1 {
+		panic("rangedelete")
+	}
+	if RangeNaN() != 42 {
+		panic("rangenan")
+	}
+	if AppendIsolation() != 3 {
+		panic("appendisolation")
+	}
+	if LenArrayCall() != 1 {
+		panic("lenarraycall")
+	}
+	if LenArrayDeref() != 4 {
+		panic("lenarrayderef")
+	}
+	if AppendCap() != 2 {
+		panic("appendcap")
+	}
+	if AppendByteCap() != 2 {
+		panic("appendbytecap")
+	}
+	if TypedNilEqual() != 42 {
+		panic("typednilequal")
+	}
+	if NilRead() != 42 {
+		panic("nilread")
+	}
+	if NilFieldRead() != 42 || NilFieldWrite() != 42 || NilFieldAddress() != 42 {
+		panic("nilfield")
+	}
+	if NilKey() != 42 {
+		panic("nilkey")
+	}
+	if StructNilKey() != 42 {
+		panic("structnilkey")
+	}
+	if BadKeyRecover() != 42 {
+		panic("badkeyrecover")
+	}
+	if NilMapBadKey() != 42 {
+		panic("nilmapbadkey")
+	}
+	if BadEqualRecover() != 42 {
+		panic("badequalrecover")
+	}
+	if AssignBounds() != 42 {
+		panic("assignbounds")
+	}
+	if AssignNil() != 42 {
+		panic("assignnil")
+	}
+	if RHSBeforePanic() != 42 {
+		panic("rhsbeforepanic")
+	}
+	if NilArrayLen() != 4 {
+		panic("nilarraylen")
+	}
+	if AppendOverlap() != 1234 {
+		panic("appendoverlap")
+	}
+	return 42
+}
+
+func MapMutations() int {
+	m := map[int]int{1: 10, 2: 20, 3: 30}
+	sum, count := 0, 0
+	for k, v := range m {
+		sum += v
+		if count == 0 {
+			for j := range m {
+				if j != k {
+					m[j] += 10
+				}
+			}
+		}
+		count++
+	}
+	if sum != 80 || count != 3 {
+		return 1
+	}
+	count = 0
+	for range m {
+		clear(m)
+		m[4] = 40
+		count++
+	}
+	if count != 1 {
+		return 2
+	}
+	z := 0.0
+	nan := z / z
+	n := make(map[[1]float64]int)
+	n[[1]float64{nan}] = 20
+	n[[1]float64{nan}] = 22
+	sum = 0
+	for _, value := range n {
+		sum += value
+	}
+	if sum != 42 {
+		return 3
+	}
+	for round := 0; round < 20; round++ {
+	outer:
+		for range m {
+			for range n {
+				break outer
+			}
+		}
+	}
+	return 42
+}
+
+func RangeFunctionTargets() int {
+	i := 0
+	a := []int{0, 0, 0}
+	iterator := func(yield func(int, int) bool) {
+		for k, v := range []int{10, 20, 30} {
+			if !yield(k, v) {
+				return
+			}
+		}
+	}
+	for i, a[i] = range iterator {
+	}
+	return a[0]*10000 + a[1]*100 + a[2]
+}
+
+func BoundaryVariants() int {
+	var p *[4]int
+	const length = len(p)
+	if length != 4 {
+		return 1
+	}
+	calls := 0
+	f := func() *[4]int { calls++; return nil }
+	if cap(f()) != 4 || calls != 1 {
+		return 2
+	}
+	i := 0
+	for j := range f() {
+		i += j
+	}
+	if i != 6 || calls != 2 {
+		return 3
+	}
+	m := make(map[any]int)
+	m[nil] = 1
+	if v, ok := m[nil]; !ok || v != 1 {
+		return 4
+	}
+	delete(m, nil)
+	if _, ok := m[nil]; ok {
+		return 5
+	}
+	var pointer *int
+	m[pointer] = 42
+	if m[pointer] != 42 {
+		return 6
+	}
+	s := make([]byte, 4, 8)
+	t := s[1:2:3]
+	t = append(t)
+	if cap(t) != 2 {
+		return 7
+	}
+	t = append(t, 9)
+	t = append(t, 8)
+	if s[3] != 0 {
+		return 8
+	}
+	return 42
+}

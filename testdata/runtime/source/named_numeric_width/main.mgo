@@ -1,0 +1,4 @@
+package main
+type Tiny int8
+type SmallComplex complex64
+func Main() int { var a Tiny = 127; a++; var c SmallComplex = 16777216+2i; c += 1; if real(c) != 16777216 { return -1 }; return int(a) + int(imag(-c)) + 172 }

@@ -1,0 +1,245 @@
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license.
+// Adapted for the Mini-Go scheduler and waitable primitives.
+
+package sync
+
+// A Locker represents an object that can be locked and unlocked.
+type Locker interface {
+	// Lock acquires the lock, blocking until it is available.
+	Lock()
+	// Unlock releases the lock.
+	Unlock()
+}
+
+// A Mutex is a mutual exclusion lock.
+// The zero value for a Mutex is an unlocked mutex.
+//
+// A Mutex must not be copied after first use.
+//
+// In the terminology of [the Go memory model],
+// the n'th call to [Mutex.Unlock] “synchronizes before” the m'th call to [Mutex.Lock]
+// for any n < m.
+// A successful call to [Mutex.TryLock] is equivalent to a call to Lock.
+// A failed call to TryLock does not establish any “synchronizes before”
+// relation at all.
+//
+// [the Go memory model]: https://go.dev/ref/mem
+type Mutex struct {
+	locked bool
+	waiters []chan struct{}
+}
+
+//minigo:noswitch
+func (mutex *Mutex) enqueue() chan struct{} {
+	if !mutex.locked {
+		mutex.locked = true
+		return nil
+	}
+	waiter := make(chan struct{})
+	mutex.waiters = append(mutex.waiters, waiter)
+	return waiter
+}
+
+// Lock locks m.
+// If the lock is already in use, the calling goroutine
+// blocks until the mutex is available.
+func (mutex *Mutex) Lock() {
+	if waiter := mutex.enqueue(); waiter != nil {
+		<-waiter
+	}
+}
+
+// TryLock tries to lock m and reports whether it succeeded.
+//
+// Note that while correct uses of TryLock do exist, they are rare,
+// and use of TryLock is often a sign of a deeper problem
+// in a particular use of mutexes.
+//minigo:noswitch
+func (mutex *Mutex) TryLock() bool {
+	if mutex.locked {
+		return false
+	}
+	mutex.locked = true
+	return true
+}
+
+// Unlock unlocks m.
+// It is a run-time error if m is not locked on entry to Unlock.
+//
+// A locked [Mutex] is not associated with a particular goroutine.
+// It is allowed for one goroutine to lock a Mutex and then
+// arrange for another goroutine to unlock it.
+//minigo:noswitch
+func (mutex *Mutex) Unlock() {
+	if !mutex.locked {
+		panic("sync: unlock of unlocked mutex")
+	}
+	if len(mutex.waiters) == 0 {
+		mutex.locked = false
+		return
+	}
+	waiter := mutex.waiters[0]
+	copy(mutex.waiters, mutex.waiters[1:])
+	mutex.waiters[len(mutex.waiters) - 1] = nil
+	mutex.waiters = mutex.waiters[:len(mutex.waiters) - 1]
+	close(waiter)
+}
+
+// A RWMutex is a reader/writer mutual exclusion lock.
+// The lock can be held by an arbitrary number of readers or a single writer.
+// The zero value for a RWMutex is an unlocked mutex.
+//
+// A RWMutex must not be copied after first use.
+//
+// If any goroutine calls [RWMutex.Lock] while the lock is already held by
+// one or more readers, concurrent calls to [RWMutex.RLock] will block until
+// the writer has acquired (and released) the lock, to ensure that
+// the lock eventually becomes available to the writer.
+// Note that this prohibits recursive read-locking.
+// A [RWMutex.RLock] cannot be upgraded into a [RWMutex.Lock],
+// nor can a [RWMutex.Lock] be downgraded into a [RWMutex.RLock].
+//
+// In the terminology of [the Go memory model],
+// the n'th call to [RWMutex.Unlock] “synchronizes before” the m'th call to Lock
+// for any n < m, just as for [Mutex].
+// For any call to RLock, there exists an n such that
+// the n'th call to Unlock “synchronizes before” that call to RLock,
+// and the corresponding call to [RWMutex.RUnlock] “synchronizes before”
+// the n+1'th call to Lock.
+//
+// [the Go memory model]: https://go.dev/ref/mem
+type RWMutex struct {
+	guard Mutex
+	readers int
+	writer bool
+	waitingWriters int
+	changed chan struct{}
+}
+
+func (mutex *RWMutex) wait() {
+	if mutex.changed == nil {
+		mutex.changed = make(chan struct{})
+	}
+	changed := mutex.changed
+	mutex.guard.Unlock()
+	<-changed
+	mutex.guard.Lock()
+}
+
+func (mutex *RWMutex) notify() {
+	if mutex.changed != nil {
+		close(mutex.changed)
+		mutex.changed = nil
+	}
+}
+
+// Lock locks rw for writing.
+// If the lock is already locked for reading or writing,
+// Lock blocks until the lock is available.
+func (mutex *RWMutex) Lock() {
+	mutex.guard.Lock()
+	mutex.waitingWriters++
+	for mutex.writer || mutex.readers != 0 {
+		mutex.wait()
+	}
+	mutex.waitingWriters--
+	mutex.writer = true
+	mutex.guard.Unlock()
+}
+
+// TryLock tries to lock rw for writing and reports whether it succeeded.
+//
+// Note that while correct uses of TryLock do exist, they are rare,
+// and use of TryLock is often a sign of a deeper problem
+// in a particular use of mutexes.
+func (mutex *RWMutex) TryLock() bool {
+	mutex.guard.Lock()
+	defer mutex.guard.Unlock()
+	if mutex.writer || mutex.readers != 0 {
+		return false
+	}
+	mutex.writer = true
+	return true
+}
+
+// Unlock unlocks rw for writing. It is a run-time error if rw is
+// not locked for writing on entry to Unlock.
+//
+// As with Mutexes, a locked [RWMutex] is not associated with a particular
+// goroutine. One goroutine may [RWMutex.RLock] ([RWMutex.Lock]) a RWMutex and then
+// arrange for another goroutine to [RWMutex.RUnlock] ([RWMutex.Unlock]) it.
+func (mutex *RWMutex) Unlock() {
+	mutex.guard.Lock()
+	if !mutex.writer {
+		mutex.guard.Unlock()
+		panic("sync: Unlock of unlocked RWMutex")
+	}
+	mutex.writer = false
+	mutex.notify()
+	mutex.guard.Unlock()
+}
+
+// RLock locks rw for reading.
+//
+// It should not be used for recursive read locking; a blocked Lock
+// call excludes new readers from acquiring the lock. See the
+// documentation on the [RWMutex] type.
+func (mutex *RWMutex) RLock() {
+	mutex.guard.Lock()
+	for mutex.writer || mutex.waitingWriters != 0 {
+		mutex.wait()
+	}
+	mutex.readers++
+	mutex.guard.Unlock()
+}
+
+// TryRLock tries to lock rw for reading and reports whether it succeeded.
+//
+// Note that while correct uses of TryRLock do exist, they are rare,
+// and use of TryRLock is often a sign of a deeper problem
+// in a particular use of mutexes.
+func (mutex *RWMutex) TryRLock() bool {
+	mutex.guard.Lock()
+	defer mutex.guard.Unlock()
+	if mutex.writer || mutex.waitingWriters != 0 {
+		return false
+	}
+	mutex.readers++
+	return true
+}
+
+// RUnlock undoes a single [RWMutex.RLock] call;
+// it does not affect other simultaneous readers.
+// It is a run-time error if rw is not locked for reading
+// on entry to RUnlock.
+func (mutex *RWMutex) RUnlock() {
+	mutex.guard.Lock()
+	if mutex.readers == 0 {
+		mutex.guard.Unlock()
+		panic("sync: RUnlock of unlocked RWMutex")
+	}
+	mutex.readers--
+	if mutex.readers == 0 {
+		mutex.notify()
+	}
+	mutex.guard.Unlock()
+}
+
+type readLocker struct {
+	mutex *RWMutex
+}
+
+func (locker readLocker) Lock() {
+	locker.mutex.RLock()
+}
+
+func (locker readLocker) Unlock() {
+	locker.mutex.RUnlock()
+}
+
+// RLocker returns a [Locker] interface that implements
+// the [Locker.Lock] and [Locker.Unlock] methods by calling rw.RLock and rw.RUnlock.
+func (mutex *RWMutex) RLocker() Locker {
+	return readLocker{mutex: mutex}
+}

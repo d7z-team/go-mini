@@ -1,0 +1,2 @@
+package main
+func Main() int { var x float32 = 16777216; a := complex(x, float32(2)); a += complex(float32(1), float32(0)); b := complex128(a); return int(real(b)-16777216) + int(imag(-a)) + 44 }

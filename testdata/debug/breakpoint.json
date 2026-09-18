@@ -1,0 +1,6 @@
+{
+ "EntryPoints":[{"Name":"default","ModulePath":"sample","Function":"Answer"}],
+ "Source":"mini-go://sample/main.mgo",
+ "Line":3,
+ "StopReason":"breakpoint"
+}

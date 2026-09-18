@@ -1,0 +1,36 @@
+package textproto_test
+
+import (
+	"net/textproto"
+	"testing"
+)
+
+func TestMIMEHeader(t *testing.T) {
+	header := make(textproto.MIMEHeader)
+	header.Add("content-type", "text/plain")
+	header.Add("Content-Type", "charset=utf-8")
+	if got := header.Get("CONTENT-TYPE"); got != "text/plain" {
+		t.Fatalf("Get = %q", got)
+	}
+	values := header.Values("content-type")
+	if len(values) != 2 || values[1] != "charset=utf-8" {
+		t.Fatalf("Values = %#v", values)
+	}
+	header.Set("x-request-id", "42")
+	if header.Get("X-Request-Id") != "42" {
+		t.Fatal("Set did not canonicalize the key")
+	}
+	header.Del("CONTENT-TYPE")
+	if header.Get("Content-Type") != "" {
+		t.Fatal("Del did not remove the key")
+	}
+}
+
+func TestCanonicalMIMEHeaderKey(t *testing.T) {
+	if got := textproto.CanonicalMIMEHeaderKey("x-forwarded-for"); got != "X-Forwarded-For" {
+		t.Fatalf("canonical key = %q", got)
+	}
+	if got := textproto.CanonicalMIMEHeaderKey("bad key"); got != "bad key" {
+		t.Fatalf("invalid key = %q", got)
+	}
+}

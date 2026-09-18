@@ -1,0 +1,32 @@
+package main
+
+import "fmt"
+
+func risky(name string) {
+	if name == "" {
+		panic("empty name")
+	}
+}
+
+func main() {
+	recovered := ""
+
+	func() {
+		// recover 只能在 defer 中拦截当前调用链上的 panic。
+		defer func() {
+			if r := recover(); r != nil {
+				recovered = string(r)
+			}
+		}()
+
+		risky("")
+		// 如果前面的 panic 被错误吞掉，这里会让示例失败。
+		panic("unreachable")
+	}()
+
+	if recovered != "empty name" {
+		panic("recover failed: " + recovered)
+	}
+
+	fmt.Println("recovered panic:", recovered)
+}

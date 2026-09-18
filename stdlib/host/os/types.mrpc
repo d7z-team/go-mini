@@ -1,0 +1,24 @@
+syntax = "mrpc/v2";
+namespace std.os.v1;
+option mgo_package = "os";
+message operationFault {
+	Code string = 1;
+	Message string = 2;
+}
+message fileMetadata {
+	Name string = 1;
+	Size int64 = 2;
+	Mode uint32 = 3;
+	ModifiedSeconds int64 = 4;
+	ModifiedNanoseconds int64 = 5;
+	Directory bool = 6;
+}
+resource fileHandle {
+	Read(size int64 = 1) returns(data[] uint8 = 1, fault operationFault = 2);
+	Write(data[] uint8 = 1) returns(count int64 = 1, fault operationFault = 2);
+	ReadAt(size int64 = 1, offset int64 = 2) returns(data[] uint8 = 1, fault operationFault = 2);
+	WriteAt(data[] uint8 = 1, offset int64 = 2) returns(count int64 = 1, fault operationFault = 2);
+	Seek(offset int64 = 1, whence int64 = 2) returns(position int64 = 1, fault operationFault = 2);
+	Stat() returns(info fileMetadata = 1, fault operationFault = 2);
+	ReadDir(count int64 = 1) returns(entries[] fileMetadata = 1, fault operationFault = 2);
+}

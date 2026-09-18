@@ -1,0 +1,27 @@
+package template_test
+
+import (
+	"bytes"
+	"html/template"
+	"testing"
+)
+
+func TestContextualEscaping(t *testing.T) {
+	tmpl, err := template.New("page").Parse(`<a href="{{.URL}}" data-name="{{.Name}}"><script>let value={{.Value}};</script></a>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	data := struct {
+		URL string
+		Name string
+		Value string
+	}{URL: "javascript:alert(1)", Name: `a&"b`, Value: `</script>`}
+	if err := tmpl.Execute(&output, data); err != nil {
+		t.Fatal(err)
+	}
+	want := `<a href="#ZgotmplZ" data-name="a&amp;&#34;b"><script>let value="\u003c/script\u003e";</script></a>`
+	if output.String() != want {
+		t.Fatalf("Execute = %q, want %q", output.String(), want)
+	}
+}

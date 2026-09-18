@@ -1,0 +1,84 @@
+// Package textproto implements generic support for text-based request/response protocols.
+package textproto
+
+// A MIMEHeader represents a MIME-style header mapping keys to sets of values.
+type MIMEHeader map[string][]string
+
+// Add adds the key, value pair to the header.
+func (h MIMEHeader) Add(key, value string) {
+	key = CanonicalMIMEHeaderKey(key)
+	h[key] = append(h[key], value)
+}
+
+// Set replaces the values associated with key with value.
+func (h MIMEHeader) Set(key, value string) {
+	h[CanonicalMIMEHeaderKey(key)] = []string{value}
+}
+
+// Get returns the first value associated with key.
+func (h MIMEHeader) Get(key string) string {
+	if h == nil {
+		return ""
+	}
+	values := h[CanonicalMIMEHeaderKey(key)]
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+// Values returns all values associated with key.
+func (h MIMEHeader) Values(key string) []string {
+	if h == nil {
+		return nil
+	}
+	return h[CanonicalMIMEHeaderKey(key)]
+}
+
+// Del deletes the values associated with key.
+func (h MIMEHeader) Del(key string) {
+	delete(h, CanonicalMIMEHeaderKey(key))
+}
+
+// CanonicalMIMEHeaderKey returns the canonical format of a MIME header key.
+// Invalid header names are returned unchanged.
+func CanonicalMIMEHeaderKey(value string) string {
+	upper := true
+	changed := false
+	for i := 0; i < len(value); i++ {
+		current := value[i]
+		if !validHeaderFieldByte(current) {
+			return value
+		}
+		if upper && current >= 'a' && current <= 'z' || !upper && current >= 'A' && current <= 'Z' {
+			changed = true
+		}
+		upper = current == '-'
+	}
+	if !changed {
+		return value
+	}
+	data := []byte(value)
+	upper = true
+	for i := range data {
+		current := data[i]
+		if upper && current >= 'a' && current <= 'z' {
+			data[i] = current - ('a' - 'A')
+		} else if !upper && current >= 'A' && current <= 'Z' {
+			data[i] = current + ('a' - 'A')
+		}
+		upper = current == '-'
+	}
+	return string(data)
+}
+
+func validHeaderFieldByte(value byte) bool {
+	if value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value >= '0' && value <= '9' {
+		return true
+	}
+	switch value {
+		case '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~':
+			return true
+	}
+	return false
+}

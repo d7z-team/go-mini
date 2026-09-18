@@ -1,0 +1,152 @@
+package time_test
+
+import (
+	"encoding/binary"
+	"testing"
+	"time"
+)
+
+func TestZeroEpochLayoutsAndSaturation(t *testing.T) {
+	var zero time.Time
+	if !zero.IsZero() || zero.Unix() != -62135596800 || zero.Format(time.DateTime) != "0001-01-01 00:00:00" {
+		t.Fatal("zero epoch")
+	}
+	value := time.Date(2024, time.February, 29, 23, 7, 8, 123456789, time.FixedZone("TEST", 5400))
+	for _, layout := range []string{time.RFC3339Nano, "2006/01/02 15:04:05.000000000 -07:00", "Jan 2 2006 3:04:05.000000000 PM -0700"} {
+		text := value.Format(layout)
+		parsed, err := time.Parse(layout, text)
+		if err != nil || !parsed.Equal(value) {
+			t.Fatalf("layout %s: %s: %v", layout, text, err)
+		}
+	}
+	if _, err := time.Parse("2006/01/02", "2024-02-29"); err == nil {
+		t.Fatal("accepted wrong separator")
+	}
+	if value.Sub(zero) != time.Duration(1 << 63 - 1) || zero.Sub(value) != time.Duration(-1 << 63) {
+		t.Fatal("Sub did not saturate")
+	}
+	if !zero.Round(time.Hour).IsZero() || !zero.Truncate(time.Hour).IsZero() {
+		t.Fatal("zero rounding")
+	}
+}
+
+func TestBinaryVersionAndFailureIsAtomic(t *testing.T) {
+	value := time.Date(1900, time.March, 4, 5, 6, 7, 8, time.FixedZone("时区", -3661))
+	data, err := value.MarshalBinary()
+	if err != nil || string(data[:5]) != "MGOT\x01" {
+		t.Fatal("binary envelope")
+	}
+	var decoded time.Time
+	if decoded.UnmarshalBinary(data) != nil || !decoded.Equal(value) {
+		t.Fatal("binary roundtrip")
+	}
+	name, offset := decoded.Zone()
+	if name != "时区" || offset != -3661 {
+		t.Fatal("binary zone")
+	}
+	for end := 0; end < len(data); end++ {
+		decoded = value
+		if decoded.UnmarshalBinary(data[:end]) == nil || !decoded.Equal(value) {
+			t.Fatal("truncated input mutated receiver")
+		}
+	}
+	for _, position := range []int{0, 4, 13, 21, 25} {
+		bad := append([]byte{}, data...)
+		bad[position] = 255
+		decoded = value
+		if decoded.UnmarshalBinary(bad) == nil || !decoded.Equal(value) {
+			t.Fatalf("accepted invalid field at %d", position)
+		}
+	}
+}
+
+func TestTZifTransitionsAndValidation(t *testing.T) {
+	// Two transitions at Unix 100 and 200, standard UTC then daylight +1h.
+	data := make([]byte, 44 + 8 + 2 + 12 + 8)
+	copy(data, "TZif")
+	binary.BigEndian.PutUint32(data[32:36], 2)
+	binary.BigEndian.PutUint32(data[36:40], 2)
+	binary.BigEndian.PutUint32(data[40:44], 8)
+	binary.BigEndian.PutUint32(data[44:48], 100)
+	binary.BigEndian.PutUint32(data[48:52], 200)
+	data[52] = 1
+	binary.BigEndian.PutUint32(data[60:64], 3600)
+	data[64], data[65] = 1, 4
+	copy(data[66:], "STD\x00DST\x00")
+	loc, err := time.LoadLocationFromTZData("fixture", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, second := range []int64{99, 100, 199, 200} {
+		value := time.Unix(second, 0).In(loc)
+		_, offset := value.Zone()
+		dst := second >= 100 && second < 200
+		if value.IsDST() != dst || dst && offset != 3600 || !dst && offset != 0 {
+			t.Fatal("transition boundary")
+		}
+	}
+	start, end := time.Unix(150, 0).In(loc).ZoneBounds()
+	if start.Unix() != 100 || end.Unix() != 200 {
+		t.Fatal("zone bounds")
+	}
+	data[52] = 2
+	if _, err := time.LoadLocationFromTZData("bad", data); err == nil {
+		t.Fatal("accepted invalid zone index")
+	}
+}
+
+func TestTZifPOSIXFooterControlsFutureTransitions(t *testing.T) {
+	data := []byte{}
+	for block := 0; block < 2; block++ {
+		header := make([]byte, 44)
+		copy(header, "TZif2")
+		binary.BigEndian.PutUint32(header[36:40], 1)
+		binary.BigEndian.PutUint32(header[40:44], 4)
+		data = append(data, header...)
+		zone := make([]byte, 10)
+		var offset int32 = -18000
+		binary.BigEndian.PutUint32(zone[:4], uint32(offset))
+		copy(zone[6:], "EST\x00")
+		data = append(data, zone...)
+	}
+	data = append(data, []byte("\nEST5EDT,M3.2.0,M11.1.0\n")...)
+	location, err := time.LoadLocationFromTZData("future", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The forward transition skips 02:00..02:59; the backward transition
+	// contains two 01:30 instants. Date follows the same lookup on both paths.
+	gap := time.Date(2050, time.March, 13, 2, 30, 0, 0, location)
+	if gap.Format("15:04 MST") != "01:30 EST" {
+		t.Fatalf("spring gap: %s", gap.Format(time.RFC3339))
+	}
+	fold := time.Date(2050, time.November, 6, 1, 30, 0, 0, location)
+	if fold.Format("15:04 MST") != "01:30 EDT" || fold.Add(time.Hour).Format("15:04 MST") != "01:30 EST" {
+		t.Fatal("fall repeated hour")
+	}
+	parsed, err := time.ParseInLocation("2006-01-02 15:04 MST", "2050-11-06 01:30 EST", location)
+	if err != nil || !parsed.Equal(fold.Add(time.Hour)) {
+		t.Fatal("location abbreviation did not resolve the repeated hour")
+	}
+	for _, month := range []time.Month{time.January, time.July} {
+		value := time.Date(2050, month, 1, 12, 0, 0, 0, location)
+		name, offset := value.Zone()
+		if month == time.January && (name != "EST" || offset != -18000 || value.IsDST()) {
+			t.Fatal("future standard time")
+		}
+		if month == time.July && (name != "EDT" || offset != -14400 || !value.IsDST()) {
+			t.Fatal("future daylight time")
+		}
+		start, end := value.ZoneBounds()
+		if !start.Before(value) || !end.After(value) {
+			t.Fatal("future zone bounds")
+		}
+	}
+	for _, at := range []int{4, 5, 54 + 4, 54 + 5, 44 + 4} {
+		bad := append([]byte{}, data...)
+		bad[at] = 255
+		if _, err := time.LoadLocationFromTZData("bad", bad); err == nil {
+			t.Fatalf("accepted invalid TZif block at %d", at)
+		}
+	}
+}

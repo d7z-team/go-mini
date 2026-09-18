@@ -1,0 +1,52 @@
+package reflect_test
+
+import (
+	"reflect"
+	"testing"
+)
+
+type accessEmbedded struct {
+	Exported int
+}
+
+type accessContainer struct {
+	accessEmbedded
+	hidden accessEmbedded
+}
+
+type accessPointerContainer struct {
+	*accessEmbedded
+}
+
+func TestEmbeddedFieldAccessPreservesExportedDescendants(t *testing.T) {
+	value := accessContainer{}
+	root := reflect.ValueOf(&value).Elem()
+	embedded := root.Field(0)
+	if embedded.CanInterface() || embedded.CanSet() {
+		t.Fatal("unexported embedding became public")
+	}
+	for _, child := range []reflect.Value{embedded.Field(0), embedded.Addr().Elem().Field(0), root.FieldByIndex([]int{0, 0})} {
+		if !child.CanInterface() || !child.CanSet() {
+			t.Fatal("exported descendant remained read-only")
+		}
+		child.SetInt(42)
+	}
+	if value.Exported != 42 {
+		t.Fatal("field write did not reach the original object")
+	}
+	if hidden := root.Field(1).Field(0); hidden.CanInterface() || hidden.CanSet() {
+		t.Fatal("ordinary private field lost its access restriction")
+	}
+	if copied := reflect.ValueOf(value).Field(0).Field(0); !copied.CanInterface() || copied.CanSet() {
+		t.Fatal("unaddressable field access changed")
+	}
+	pointer := accessPointerContainer{accessEmbedded: &accessEmbedded{}}
+	child := reflect.ValueOf(&pointer).Elem().Field(0).Elem().Field(0)
+	if !child.CanSet() {
+		t.Fatal("embedded pointer lost field access")
+	}
+	child.SetInt(7)
+	if pointer.Exported != 7 {
+		t.Fatal("embedded pointer write failed")
+	}
+}

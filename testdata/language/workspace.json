@@ -1,0 +1,12 @@
+{
+  "Root": "sample",
+  "Packages": [{
+    "Namespace": "module:sample",
+    "ModulePath": "sample",
+    "Files": [{
+      "Path": "main.mgo",
+      "URI": "mini-go://sample/main.mgo",
+      "Text": "package sample\n// Answer returns a value.\nfunc Answer() int { return 42 }\n"
+    }]
+  }]
+}

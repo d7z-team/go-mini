@@ -1,0 +1,3 @@
+package main
+import "reflect"
+func Main() int { n := 20; v := reflect.ValueOf(&n).Elem(); if !v.CanAddr() || !v.CanSet() { return -1 }; v.SetInt(42); p := v.Addr().Interface().(*int); if p != &n { return -2 }; return int(v.Int()) }

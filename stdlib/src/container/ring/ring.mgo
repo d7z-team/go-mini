@@ -1,0 +1,154 @@
+// Package ring implements operations on circular lists.
+package ring
+
+// A Ring is an element of a circular list, or ring.
+// Rings do not have a beginning or end; a pointer to any ring element
+// serves as reference to the entire ring. Empty rings are represented
+// as nil Ring pointers. The zero value for a Ring is a one-element
+// ring with a nil Value.
+type Ring struct {
+	next *Ring
+	prev *Ring
+	// for use by client; untouched by this library
+	Value any
+}
+
+func newRing() *Ring {
+	return &Ring{}
+}
+
+// New creates a ring of n elements.
+func New(n int) *Ring {
+	if n <= 0 {
+		return nil
+	}
+	root := newRing()
+	current := root
+	for i := 1; i < n; i++ {
+		next := newRing()
+		current.next = next
+		next.prev = current
+		current = next
+	}
+	current.next = root
+	root.prev = current
+	return root
+}
+
+func (r *Ring) init() {
+	if r.next == nil {
+		r.next = r
+		r.prev = r
+	}
+}
+
+// Next returns the next ring element. r must not be empty.
+func (r *Ring) Next() *Ring {
+	if r == nil {
+		return nil
+	}
+	r.init()
+	return r.next
+}
+
+// Prev returns the previous ring element. r must not be empty.
+func (r *Ring) Prev() *Ring {
+	if r == nil {
+		return nil
+	}
+	r.init()
+	return r.prev
+}
+
+// Move moves n % r.Len() elements backward (n < 0) or forward (n >= 0)
+// in the ring and returns that ring element. r must not be empty.
+func (r *Ring) Move(n int) *Ring {
+	if r == nil {
+		return nil
+	}
+	length := r.Len()
+	if length == 0 {
+		return r
+	}
+	steps := n % length
+	if steps < 0 {
+		for i := 0; i < -steps; i++ {
+			r = r.prev
+		}
+		return r
+	}
+	for i := 0; i < steps; i++ {
+		r = r.next
+	}
+	return r
+}
+
+// Len computes the number of elements in ring r.
+// It executes in time proportional to the number of elements.
+func (r *Ring) Len() int {
+	if r == nil {
+		return 0
+	}
+	r.init()
+	count := 1
+	for current := r.next; current != r; current = current.next {
+		count++
+	}
+	return count
+}
+
+// Link connects ring r with ring s such that r.Next()
+// becomes s and returns the original value for r.Next().
+// r must not be empty.
+//
+// If r and s point to the same ring, linking
+// them removes the elements between r and s from the ring.
+// The removed elements form a subring and the result is a
+// reference to that subring (if no elements were removed,
+// the result is still the original value for r.Next(),
+// and not nil).
+//
+// If r and s point to different rings, linking
+// them creates a single ring with the elements of s inserted
+// after r. The result points to the element following the
+// last element of s after insertion.
+func (r *Ring) Link(s *Ring) *Ring {
+	if r == nil {
+		return nil
+	}
+	r.init()
+	next := r.next
+	if s == nil {
+		return next
+	}
+	s.init()
+	previous := s.prev
+	r.next = s
+	s.prev = r
+	next.prev = previous
+	previous.next = next
+	return next
+}
+
+// Unlink removes n % r.Len() elements from the ring r, starting
+// at r.Next(). If n % r.Len() == 0, r remains unchanged.
+// The result is the removed subring. r must not be empty.
+func (r *Ring) Unlink(n int) *Ring {
+	if r == nil || n <= 0 {
+		return nil
+	}
+	return r.Link(r.Move(n + 1))
+}
+
+// Do calls function f on each element of the ring, in forward order.
+// The behavior of Do is undefined if f changes *r.
+func (r *Ring) Do(f func(any)) {
+	if r == nil {
+		return
+	}
+	r.init()
+	f(r.Value)
+	for current := r.next; current != r; current = current.next {
+		f(current.Value)
+	}
+}

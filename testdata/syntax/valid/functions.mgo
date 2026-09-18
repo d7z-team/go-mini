@@ -1,0 +1,15 @@
+package main
+
+func apply(function func(int) int, value int) int {
+	return function(value)
+}
+
+func main() {
+	offset := 1
+	function := func(value int) int {
+		return value + offset
+	}
+	_ = apply(function, 2)
+	defer func() {}()
+	go func() {}()
+}

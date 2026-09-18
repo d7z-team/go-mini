@@ -1,0 +1,28 @@
+package main
+
+import "encoding/json"
+import "fmt"
+
+type User struct {
+	Name string
+	Age  Int64
+}
+
+func main() {
+	user := User{Name: "mini", Age: 7}
+	data, err := json.Marshal(user)
+	if err != nil {
+		panic(err)
+	}
+
+	var value User
+	if err := json.Unmarshal(data, &value); err != nil {
+		panic(err)
+	}
+
+	if value.Name != "mini" || value.Age != 7 {
+		panic("json roundtrip failed")
+	}
+
+	fmt.Println(string(data))
+}

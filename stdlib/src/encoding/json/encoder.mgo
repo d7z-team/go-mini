@@ -1,0 +1,118 @@
+package json
+
+import (
+	"bytes"
+	"io"
+	"strings"
+)
+
+// An Encoder writes JSON values to an output stream.
+type Encoder struct {
+	err error
+	writer io.Writer
+	escapeHTML bool
+	indentPrefix string
+	indentValue string
+}
+
+// NewEncoder returns a new encoder that writes to w.
+func NewEncoder(w io.Writer) *Encoder {
+	encoder := new(Encoder)
+	encoder.writer = w
+	encoder.escapeHTML = true
+	return encoder
+}
+
+// SetEscapeHTML specifies whether problematic HTML characters
+// should be escaped inside JSON quoted strings.
+// The default behavior is to escape &, <, and > to \u0026, \u003c, and \u003e
+// to avoid certain safety problems that can arise when embedding JSON in HTML.
+//
+// In non-HTML settings where the escaping interferes with the readability
+// of the output, SetEscapeHTML(false) disables this behavior.
+func (e *Encoder) SetEscapeHTML(on bool) {
+	e.escapeHTML = on
+}
+
+// SetIndent instructs the encoder to format each subsequent encoded
+// value as if indented by the package-level function Indent(dst, src, prefix, indent).
+// Calling SetIndent("", "") disables indentation.
+func (e *Encoder) SetIndent(prefix string, indent string) {
+	e.indentPrefix = prefix
+	e.indentValue = indent
+}
+
+// Encode writes the JSON encoding of v to the stream,
+// with insignificant space characters elided,
+// followed by a newline character.
+//
+// See the documentation for [Marshal] for details about the
+// conversion of Go values to JSON.
+func (e *Encoder) Encode(v any) error {
+	if e == nil || e.writer == nil {
+		return newMarshalError("json: Encoder has no writer")
+	}
+	if e.err != nil {
+		return e.err
+	}
+	data, err := marshalWithOptions(v, e.escapeHTML)
+	if err != nil {
+		return err
+	}
+	if e.indentPrefix != "" || e.indentValue != "" {
+		data = []byte(indentJSON(string(data), e.indentPrefix, e.indentValue))
+	}
+	data = append(data, byte('\n'))
+	n, writeErr := e.writer.Write(data)
+	if writeErr == nil && n != len(data) {
+		writeErr = io.ErrShortWrite
+	}
+	e.err = writeErr
+	return e.err
+}
+
+// Compact appends to dst the JSON-encoded src with
+// insignificant space characters elided.
+func Compact(dst *bytes.Buffer, src []byte) error {
+	if dst == nil {
+		return newMarshalError("json: Compact target must be a non-nil buffer")
+	}
+	scan := newScanner()
+	if err := checkValid(src, scan); err != nil {
+		return err
+	}
+	scan.reset()
+	for _, c := range src {
+		opcode := scan.step(scan, c)
+		if opcode != scanSkipSpace && !(opcode == scanEnd && isSpace(c)) {
+			dst.WriteByte(c)
+		}
+	}
+	return nil
+}
+
+// Indent appends to dst an indented form of the JSON-encoded src.
+func Indent(dst *bytes.Buffer, src []byte, prefix string, indent string) error {
+	if dst == nil {
+		return newMarshalError("json: Indent target must be a non-nil buffer")
+	}
+	if !Valid(src) {
+		return newMarshalError("json: invalid value")
+	}
+	dst.WriteString(indentJSON(string(src), prefix, indent))
+	return nil
+}
+
+// HTMLEscape appends to dst the JSON-encoded src with HTML-sensitive characters escaped.
+func HTMLEscape(dst *bytes.Buffer, src []byte) {
+	if dst == nil {
+		return
+	}
+	text := string(src)
+	text = strings.ReplaceAll(text, "&", "\\u0026")
+	text = strings.ReplaceAll(text, "<", "\\u003c")
+	text = strings.ReplaceAll(text, ">", "\\u003e")
+	text = strings.ReplaceAll(text, string(rune(8232)), "\\u2028")
+	text = strings.ReplaceAll(text, string(rune(8233)), "\\u2029")
+	dst.WriteString(text)
+}

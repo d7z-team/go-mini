@@ -1,0 +1,3 @@
+package main
+import "reflect"
+func Main() int { offset := 2; typ := reflect.TypeOf(func(int) int { return 0 }); fn := reflect.MakeFunc(typ, func(args []reflect.Value) []reflect.Value { return []reflect.Value{reflect.ValueOf(int(args[0].Int())+offset)} }); direct := fn.Interface().(func(int) int); if direct(40) != 42 { return -1 }; values := fn.Call([]reflect.Value{reflect.ValueOf(40)}); return int(values[0].Int()) }

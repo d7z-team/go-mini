@@ -1,0 +1,16 @@
+.idea
+*.iml
+coverage.txt
+bin/
+/target/
+.gradle/
+**/build/
+vscode-ext/node_modules/
+*.vsix
+*.txt
+.codex
+report
+/testdata/runtime/execution.json.gz
+/testdata/runtime/stdlib.json.gz
+/playground/runtime-rust/tooling/assets/compiler.json.gz
+.cache

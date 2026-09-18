@@ -1,0 +1,10 @@
+package strings
+
+import "errors"
+
+var (
+	errUnreadByte = errors.New("strings.Reader.UnreadByte: previous operation was not a successful read")
+	errUnreadRune = errors.New("strings.Reader.UnreadRune: previous operation was not ReadRune")
+	errInvalidWhence = errors.New("strings.Reader.Seek: invalid whence")
+	errNegativePosition = errors.New("strings.Reader.Seek: negative position")
+)

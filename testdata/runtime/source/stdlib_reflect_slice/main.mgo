@@ -1,0 +1,3 @@
+package main
+import "reflect"
+func Main() int { x := []int{20, 2}; old := x; v := reflect.ValueOf(&x).Elem(); v.Grow(3); if cap(x) < 5 { return -1 }; view := v.Slice3(1, 2, 3); view.Index(0).SetInt(42); if old[1] != 2 { return -2 }; return x[1] }

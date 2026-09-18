@@ -1,0 +1,340 @@
+// Package bits implements bit counting and manipulation functions for unsigned
+// integer types.
+package bits
+
+// UintSize is the size of a uint in bits in Mini-Go.
+const UintSize = 64
+
+// OnesCount64 returns the number of one bits in x.
+func OnesCount64(x uint64) int {
+	count := 0
+	for x != 0 {
+		x &= x - 1
+		count++
+	}
+	return count
+}
+
+// OnesCount returns the number of one bits in x.
+func OnesCount(x uint) int {
+	return OnesCount64(uint64(x))
+}
+
+// OnesCount32 returns the number of one bits in x.
+func OnesCount32(x uint32) int {
+	return OnesCount64(uint64(x))
+}
+
+// OnesCount16 returns the number of one bits in x.
+func OnesCount16(x uint16) int {
+	return OnesCount64(uint64(x))
+}
+
+// OnesCount8 returns the number of one bits in x.
+func OnesCount8(x uint8) int {
+	return OnesCount64(uint64(x))
+}
+
+// Len64 returns the minimum number of bits required to represent x.
+func Len64(x uint64) int {
+	length := 0
+	for x != 0 {
+		x >>= 1
+		length++
+	}
+	return length
+}
+
+// Len returns the minimum number of bits required to represent x.
+func Len(x uint) int {
+	return Len64(uint64(x))
+}
+
+// Len32 returns the minimum number of bits required to represent x.
+func Len32(x uint32) int {
+	return Len64(uint64(x))
+}
+
+// Len16 returns the minimum number of bits required to represent x.
+func Len16(x uint16) int {
+	return Len64(uint64(x))
+}
+
+// Len8 returns the minimum number of bits required to represent x.
+func Len8(x uint8) int {
+	return Len64(uint64(x))
+}
+
+// LeadingZeros64 returns the number of leading zero bits in x.
+func LeadingZeros64(x uint64) int {
+	return 64 - Len64(x)
+}
+
+// LeadingZeros returns the number of leading zero bits in x.
+func LeadingZeros(x uint) int {
+	return LeadingZeros64(uint64(x))
+}
+
+// LeadingZeros32 returns the number of leading zero bits in x.
+func LeadingZeros32(x uint32) int {
+	return 32 - Len32(x)
+}
+
+// LeadingZeros16 returns the number of leading zero bits in x.
+func LeadingZeros16(x uint16) int {
+	return 16 - Len16(x)
+}
+
+// LeadingZeros8 returns the number of leading zero bits in x.
+func LeadingZeros8(x uint8) int {
+	return 8 - Len8(x)
+}
+
+// TrailingZeros64 returns the number of trailing zero bits in x.
+func TrailingZeros64(x uint64) int {
+	if x == 0 {
+		return 64
+	}
+	count := 0
+	for x & 1 == 0 {
+		x >>= 1
+		count++
+	}
+	return count
+}
+
+// TrailingZeros returns the number of trailing zero bits in x.
+func TrailingZeros(x uint) int {
+	return TrailingZeros64(uint64(x))
+}
+
+// TrailingZeros32 returns the number of trailing zero bits in x.
+func TrailingZeros32(x uint32) int {
+	if x == 0 {
+		return 32
+	}
+	return TrailingZeros64(uint64(x))
+}
+
+// TrailingZeros16 returns the number of trailing zero bits in x.
+func TrailingZeros16(x uint16) int {
+	if x == 0 {
+		return 16
+	}
+	return TrailingZeros64(uint64(x))
+}
+
+// TrailingZeros8 returns the number of trailing zero bits in x.
+func TrailingZeros8(x uint8) int {
+	if x == 0 {
+		return 8
+	}
+	return TrailingZeros64(uint64(x))
+}
+
+// RotateLeft64 returns x rotated left by k bits.
+func RotateLeft64(x uint64, k int) uint64 {
+	s := uint(k) & 63
+	return x << s | x >> (64 - s)
+}
+
+// RotateLeft returns x rotated left by k bits.
+func RotateLeft(x uint, k int) uint {
+	return uint(RotateLeft64(uint64(x), k))
+}
+
+// RotateLeft32 returns x rotated left by k bits.
+func RotateLeft32(x uint32, k int) uint32 {
+	s := uint(k) & 31
+	return x << s | x >> (32 - s)
+}
+
+// RotateLeft16 returns x rotated left by k bits.
+func RotateLeft16(x uint16, k int) uint16 {
+	s := uint(k) & 15
+	return x << s | x >> (16 - s)
+}
+
+// RotateLeft8 returns x rotated left by k bits.
+func RotateLeft8(x uint8, k int) uint8 {
+	s := uint(k) & 7
+	return x << s | x >> (8 - s)
+}
+
+// Reverse64 returns x with its bits in reversed order.
+func Reverse64(x uint64) uint64 {
+	var out uint64
+	for i := 0; i < 64; i++ {
+		out = out << 1 | x & 1
+		x >>= 1
+	}
+	return out
+}
+
+// Reverse returns x with its bits in reversed order.
+func Reverse(x uint) uint {
+	return uint(Reverse64(uint64(x)))
+}
+
+// Reverse32 returns x with its bits in reversed order.
+func Reverse32(x uint32) uint32 {
+	return uint32(Reverse64(uint64(x)) >> 32)
+}
+
+// Reverse16 returns x with its bits in reversed order.
+func Reverse16(x uint16) uint16 {
+	return uint16(Reverse64(uint64(x)) >> 48)
+}
+
+// Reverse8 returns x with its bits in reversed order.
+func Reverse8(x uint8) uint8 {
+	return uint8(Reverse64(uint64(x)) >> 56)
+}
+
+// ReverseBytes64 returns x with its bytes in reversed order.
+func ReverseBytes64(x uint64) uint64 {
+	return x >> 56 | x >> 40 & 0x000000000000ff00 | x >> 24 & 0x0000000000ff0000 | x >> 8 & 0x00000000ff000000 |
+	x << 8 & 0x000000ff00000000 | x << 24 & 0x0000ff0000000000 | x << 40 & 0x00ff000000000000 | x << 56
+}
+
+// ReverseBytes returns x with its bytes in reversed order.
+func ReverseBytes(x uint) uint {
+	return uint(ReverseBytes64(uint64(x)))
+}
+
+// ReverseBytes32 returns x with its bytes in reversed order.
+func ReverseBytes32(x uint32) uint32 {
+	return x >> 24 | x >> 8 & 0x0000ff00 | x << 8 & 0x00ff0000 | x << 24
+}
+
+// ReverseBytes16 returns x with its bytes in reversed order.
+func ReverseBytes16(x uint16) uint16 {
+	return x >> 8 | x << 8
+}
+
+// Add64 returns x plus y plus carry and the resulting carry bit.
+func Add64(x, y, carry uint64) (sum, carryOut uint64) {
+	sum = x + y + carry
+	if sum < x || carry != 0 && sum == x {
+		carryOut = 1
+	}
+	return
+}
+
+// Add returns x plus y plus carry and the resulting carry bit.
+func Add(x, y, carry uint) (uint, uint) {
+	sum, out := Add64(uint64(x), uint64(y), uint64(carry))
+	return uint(sum), uint(out)
+}
+
+// Add32 returns x plus y plus carry and the resulting carry bit.
+func Add32(x, y, carry uint32) (uint32, uint32) {
+	sum := uint64(x) + uint64(y) + uint64(carry)
+	return uint32(sum), uint32(sum >> 32)
+}
+
+// Sub64 returns x minus y minus borrow and the resulting borrow bit.
+func Sub64(x, y, borrow uint64) (diff, borrowOut uint64) {
+	diff = x - y - borrow
+	if x < y || borrow != 0 && x == y {
+		borrowOut = 1
+	}
+	return
+}
+
+// Sub returns x minus y minus borrow and the resulting borrow bit.
+func Sub(x, y, borrow uint) (uint, uint) {
+	diff, out := Sub64(uint64(x), uint64(y), uint64(borrow))
+	return uint(diff), uint(out)
+}
+
+// Sub32 returns x minus y minus borrow and the resulting borrow bit.
+func Sub32(x, y, borrow uint32) (uint32, uint32) {
+	diff := x - y - borrow
+	out := uint32(0)
+	if x < y || borrow != 0 && x == y {
+		out = 1
+	}
+	return diff, out
+}
+
+// Mul64 returns the 128-bit product of x and y as high and low words.
+func Mul64(x, y uint64) (hi, lo uint64) {
+	const mask = uint64(1 << 32 - 1)
+	x0, x1 := x & mask, x >> 32
+	y0, y1 := y & mask, y >> 32
+	w0 := x0 * y0
+	t := x1 * y0 + w0 >> 32
+	w1, w2 := t & mask, t >> 32
+	w1 += x0 * y1
+	hi = x1 * y1 + w2 + w1 >> 32
+	lo = x * y
+	return
+}
+
+// Mul returns the double-width product of x and y as high and low words.
+func Mul(x, y uint) (uint, uint) {
+	hi, lo := Mul64(uint64(x), uint64(y))
+	return uint(hi), uint(lo)
+}
+
+// Mul32 returns the 64-bit product of x and y as high and low words.
+func Mul32(x, y uint32) (uint32, uint32) {
+	product := uint64(x) * uint64(y)
+	return uint32(product >> 32), uint32(product)
+}
+
+// Div64 divides the 128-bit value formed by hi and lo by y.
+func Div64(hi, lo, y uint64) (quo, rem uint64) {
+	if y == 0 {
+		panic("runtime error: integer divide by zero")
+	}
+	if hi >= y {
+		panic("runtime error: integer overflow")
+	}
+	rem = hi
+	for i := 63; i >= 0; i-- {
+		overflow := rem >> 63 != 0
+		rem = rem << 1 | lo >> uint(i) & 1
+		if overflow || rem >= y {
+			rem -= y
+			quo |= uint64(1) << uint(i)
+		}
+	}
+	return
+}
+
+// Div divides the double-width value formed by hi and lo by y.
+func Div(hi, lo, y uint) (uint, uint) {
+	quo, rem := Div64(uint64(hi), uint64(lo), uint64(y))
+	return uint(quo), uint(rem)
+}
+
+// Div32 divides the 64-bit value formed by hi and lo by y.
+func Div32(hi, lo, y uint32) (uint32, uint32) {
+	if y == 0 {
+		panic("runtime error: integer divide by zero")
+	}
+	if hi >= y {
+		panic("runtime error: integer overflow")
+	}
+	value := uint64(hi) << 32 | uint64(lo)
+	return uint32(value / uint64(y)), uint32(value % uint64(y))
+}
+
+// Rem64 returns the remainder of the 128-bit value formed by hi and lo divided by y.
+func Rem64(hi, lo, y uint64) uint64 {
+	_, rem := Div64(hi, lo, y)
+	return rem
+}
+
+// Rem returns the remainder of the double-width value formed by hi and lo divided by y.
+func Rem(hi, lo, y uint) uint {
+	return uint(Rem64(uint64(hi), uint64(lo), uint64(y)))
+}
+
+// Rem32 returns the remainder of the 64-bit value formed by hi and lo divided by y.
+func Rem32(hi, lo, y uint32) uint32 {
+	_, rem := Div32(hi, lo, y)
+	return rem
+}

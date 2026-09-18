@@ -1,0 +1,29 @@
+// Package rand implements a cryptographically secure
+// random number generator.
+package rand
+
+import (
+	"errors"
+	"io"
+)
+
+type runtimeReader struct{}
+
+// Reader is a global, shared instance of a cryptographically
+// secure random number generator. It is safe for concurrent use.
+// The runtime supplies its entropy source through InstanceOptions.Entropy.
+var Reader io.Reader = runtimeReader{}
+
+func (runtimeReader) Read(data []byte) (int, error) {
+	n, message, ok := runtimeRead(data)
+	if !ok {
+		return n, errors.New(message)
+	}
+	return n, nil
+}
+
+// Read fills b with bytes from the runtime's cryptographically secure random
+// source. It returns the error reported by Reader.
+func Read(data []byte) (int, error) {
+	return io.ReadFull(Reader, data)
+}

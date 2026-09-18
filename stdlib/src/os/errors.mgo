@@ -1,0 +1,36 @@
+// Package os provides portable operating-system interfaces. Host-backed
+// operations are supplied by source libraries with registered host capabilities.
+package os
+
+import (
+	"errors"
+	"io/fs"
+)
+
+// A FileMode represents a file's mode and permission bits.
+type FileMode = fs.FileMode
+
+// A FileInfo describes a file and is returned by Stat and Lstat.
+type FileInfo = fs.FileInfo
+
+// A DirEntry is an entry read from a directory.
+type DirEntry = fs.DirEntry
+
+// PathError records an error and the operation and file path that caused it.
+type PathError = fs.PathError
+
+var (
+	// ErrInvalid indicates an invalid argument.
+	ErrInvalid = fs.ErrInvalid
+	// ErrPermission indicates that permission was denied.
+	ErrPermission = fs.ErrPermission
+	// ErrExist indicates that a file or directory already exists.
+	ErrExist = fs.ErrExist
+	// ErrNotExist indicates that a file or directory does not exist.
+	ErrNotExist = fs.ErrNotExist
+	// ErrClosed indicates use of a file after it has been closed.
+	ErrClosed = fs.ErrClosed
+
+	// ErrDeadlineExceeded is the error for operations that fail because a deadline expired.
+	ErrDeadlineExceeded = errors.New("i/o timeout")
+)

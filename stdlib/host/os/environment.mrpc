@@ -1,0 +1,6 @@
+syntax = "mrpc/v2";
+namespace std.os.v1;
+option mgo_package = "os";
+service environment {
+	Lookup(key string = 1) returns(value string = 1, found bool = 2);
+}

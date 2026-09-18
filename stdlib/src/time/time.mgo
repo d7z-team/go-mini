@@ -1,0 +1,447 @@
+package time
+
+import "math/bits"
+
+const unixEpochSeconds int64 = 62135596800
+
+// A Time represents a wall-clock instant with nanosecond precision and an
+// associated fixed-offset Location. Time values are safe to pass by value.
+type Time struct {
+	absSec int64
+	nsec int
+	loc *Location
+}
+
+func normalizeUnix(sec int64, nsec int64) (int64, int) {
+	sec += nsec / int64(Second)
+	nsec %= int64(Second)
+	if nsec < 0 {
+		nsec += int64(Second)
+		sec--
+	}
+	return sec, int(nsec)
+}
+
+// Unix returns the local Time corresponding to the given Unix time,
+// sec seconds and nsec nanoseconds since January 1, 1970 UTC.
+// It is valid to pass nsec outside the range [0, 999999999].
+// Not all sec values have a corresponding time value. One such
+// value is 1<<63-1 (the largest int64 value).
+func Unix(sec int64, nsec int64) Time {
+	sec, nanos := normalizeUnix(sec, nsec)
+	return Time{absSec: sec + unixEpochSeconds, nsec: nanos, loc: Local}
+}
+
+// UnixMilli returns the local Time corresponding to the given Unix time,
+// msec milliseconds since January 1, 1970 UTC.
+func UnixMilli(milliseconds int64) Time {
+	return Unix(milliseconds / 1000, milliseconds % 1000 * int64(Millisecond))
+}
+
+// UnixMicro returns the local Time corresponding to the given Unix time,
+// usec microseconds since January 1, 1970 UTC.
+func UnixMicro(microseconds int64) Time {
+	return Unix(microseconds / 1000000, microseconds % 1000000 * int64(Microsecond))
+}
+
+// Date returns the Time corresponding to
+//
+// 	yyyy-mm-dd hh:mm:ss + nsec nanoseconds
+//
+// in the appropriate zone for that time in the given location.
+//
+// The month, day, hour, min, sec, and nsec values may be outside
+// their usual ranges and will be normalized during the conversion.
+// For example, October 32 converts to November 1.
+//
+// A daylight savings time transition skips or repeats times.
+// For example, in the United States, March 13, 2011 2:15am never occurred,
+// while November 6, 2011 1:15am occurred twice. In such cases, the
+// choice of time zone, and therefore the time, is not well-defined.
+// Date returns a time that is correct in one of the two zones involved
+// in the transition, but it does not guarantee which.
+//
+// Date panics if loc is nil.
+func Date(year int, month Month, day int, hour int, minute int, second int, nanosecond int, location *Location) Time {
+	if location == nil {
+		panic("time: missing Location in call to Date")
+	}
+	total := unixDays(year, month, day) * 86400 + int64(hour) * 3600 + int64(minute) * 60 + int64(second)
+	_, offset, start, end, _ := location.lookup(total)
+	utc := total - int64(offset)
+	if utc < start || utc >= end {
+		_, offset, _, _, _ = location.lookup(utc)
+	}
+	total -= int64(offset)
+	sec, nanos := normalizeUnix(total, int64(nanosecond))
+	return Time{absSec: sec + unixEpochSeconds, nsec: nanos, loc: location}
+}
+
+// Now returns the current local time.
+func Now() Time {
+	sec, nsec := runtimeNow()
+	return Unix(sec, nsec)
+}
+
+func (t Time) location() *Location {
+	if t.loc == nil {
+		return UTC
+	}
+	return t.loc
+}
+
+func (t Time) localSeconds() int64 {
+	_, offset := t.Zone()
+	return t.Unix() + int64(offset)
+}
+
+func splitDay(seconds int64) (int64, int) {
+	days := seconds / 86400
+	inside := seconds % 86400
+	if inside < 0 {
+		inside += 86400
+		days--
+	}
+	return days, int(inside)
+}
+
+// Date returns the year, month, and day in which t occurs.
+func (t Time) Date() (int, Month, int) {
+	days, _ := splitDay(t.localSeconds())
+	return civilDate(days)
+}
+
+// Clock returns the hour, minute, and second within the day specified by t.
+func (t Time) Clock() (int, int, int) {
+	_, inside := splitDay(t.localSeconds())
+	return inside / 3600, inside % 3600 / 60, inside % 60
+}
+
+// Year returns the year in which t occurs.
+func (t Time) Year() int {
+	year, _, _ := t.Date()
+	return year
+}
+
+// Month returns the month of the year specified by t.
+func (t Time) Month() Month {
+	_, month, _ := t.Date()
+	return month
+}
+
+// Day returns the day of the month specified by t.
+func (t Time) Day() int {
+	_, _, day := t.Date()
+	return day
+}
+
+// Hour returns the hour within the day specified by t, in the range [0, 23].
+func (t Time) Hour() int {
+	hour, _, _ := t.Clock()
+	return hour
+}
+
+// Minute returns the minute offset within the hour specified by t, in the range [0, 59].
+func (t Time) Minute() int {
+	_, minute, _ := t.Clock()
+	return minute
+}
+
+// Second returns the second offset within the minute specified by t, in the range [0, 59].
+func (t Time) Second() int {
+	_, _, second := t.Clock()
+	return second
+}
+
+// Nanosecond returns the nanosecond offset within the second specified by t,
+// in the range [0, 999999999].
+func (t Time) Nanosecond() int {
+	return t.nsec
+}
+
+// Weekday returns the day of the week specified by t.
+func (t Time) Weekday() Weekday {
+	days, _ := splitDay(t.localSeconds())
+	day := (days + 4) % 7
+	if day < 0 {
+		day += 7
+	}
+	return Weekday(day)
+}
+
+// YearDay returns the day of the year specified by t, in the range [1,365] for non-leap years,
+// and [1,366] in leap years.
+func (t Time) YearDay() int {
+	year, month, day := t.Date()
+	out := day
+	for current := January; current < month; current++ {
+		out += daysIn(current, year)
+	}
+	return out
+}
+
+// ISOWeek returns the ISO 8601 year and week number in which t occurs.
+// Week ranges from 1 to 53. Jan 01 to Jan 03 of year n might belong to
+// week 52 or 53 of year n-1, and Dec 29 to Dec 31 might belong to week 1
+// of year n+1.
+func (t Time) ISOWeek() (int, int) {
+	year, _, _ := t.Date()
+	weekday := int(t.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	thursday := t.AddDate(0, 0, 4 - weekday)
+	isoYear := thursday.Year()
+	first := Date(isoYear, January, 4, 0, 0, 0, 0, t.location())
+	firstWeekday := int(first.Weekday())
+	if firstWeekday == 0 {
+		firstWeekday = 7
+	}
+	first = first.AddDate(0, 0, 1 - firstWeekday)
+	week := int(thursday.Sub(first) / (7 * 24 * Hour)) + 1
+	_ = year
+	return isoYear, week
+}
+
+// Add returns the time t+d.
+func (t Time) Add(duration Duration) Time {
+	delta, nsec := normalizeUnix(int64(duration / Second), int64(t.nsec) + int64(duration % Second))
+	sec := t.absSec + delta
+	if delta > 0 && sec < t.absSec {
+		sec = 1 << 63 - 1
+	}
+	if delta < 0 && sec > t.absSec {
+		sec = -1 << 63
+	}
+	return Time{absSec: sec, nsec: nsec, loc: t.loc}
+}
+
+// AddDate returns the time corresponding to adding the
+// given number of years, months, and days to t.
+// For example, AddDate(-1, 2, 3) applied to January 1, 2011
+// returns March 4, 2010.
+//
+// Note that dates are fundamentally coupled to timezones, and calendrical
+// periods like days don't have fixed durations. AddDate uses the Location of
+// the Time value to determine these durations. That means that the same
+// AddDate arguments can produce a different shift in absolute time depending on
+// the base Time value and its Location. For example, AddDate(0, 0, 1) applied
+// to 12:00 on March 27 always returns 12:00 on March 28. At some locations and
+// in some years this is a 24 hour shift. In others it's a 23 hour shift due to
+// daylight savings time transitions.
+//
+// AddDate normalizes its result in the same way that Date does,
+// so, for example, adding one month to October 31 yields
+// December 1, the normalized form for November 31.
+func (t Time) AddDate(years int, months int, days int) Time {
+	year, month, day := t.Date()
+	hour, minute, second := t.Clock()
+	return Date(year + years, month + Month(months), day + days, hour, minute, second, t.nsec, t.location())
+}
+
+// Sub returns the duration t-u. If the result exceeds the maximum (or minimum)
+// value that can be stored in a [Duration], the maximum (or minimum) duration
+// will be returned.
+// To compute t-d for a duration d, use t.Add(-d).
+func (t Time) Sub(other Time) Duration {
+	duration := Duration((t.absSec - other.absSec) * int64(Second) + int64(t.nsec - other.nsec))
+	if other.Add(duration).Equal(t) {
+		return duration
+	}
+	if t.Before(other) {
+		return Duration(-1 << 63)
+	}
+	return Duration(1 << 63 - 1)
+}
+
+// Compare compares the time instant t with u. If t is before u, it returns -1;
+// if t is after u, it returns +1; if they're the same, it returns 0.
+func (t Time) Compare(other Time) int {
+	if t.absSec < other.absSec || t.absSec == other.absSec && t.nsec < other.nsec {
+		return -1
+	}
+	if t.absSec > other.absSec || t.absSec == other.absSec && t.nsec > other.nsec {
+		return 1
+	}
+	return 0
+}
+
+// Before reports whether the time instant t is before u.
+func (t Time) Before(other Time) bool {
+	return t.Compare(other) < 0
+}
+
+// After reports whether the time instant t is after u.
+func (t Time) After(other Time) bool {
+	return t.Compare(other) > 0
+}
+
+// Equal reports whether t and u represent the same time instant.
+// Two times can be equal even if they are in different locations.
+// For example, 6:00 +0200 and 4:00 UTC are Equal.
+// See the documentation on the Time type for the pitfalls of using == with
+// Time values; most code should use Equal instead.
+func (t Time) Equal(other Time) bool {
+	return t.Compare(other) == 0
+}
+
+// IsZero reports whether t represents the zero time instant,
+// January 1, year 1, 00:00:00 UTC.
+func (t Time) IsZero() bool {
+	return t.absSec == 0 && t.nsec == 0
+}
+
+// Unix returns t as a Unix time, the number of seconds elapsed
+// since January 1, 1970 UTC. The result does not depend on the
+// location associated with t.
+// Unix-like operating systems often record time as a 32-bit
+// count of seconds, but since the method here returns a 64-bit
+// value it is valid for billions of years into the past or future.
+func (t Time) Unix() int64 {
+	return t.absSec - unixEpochSeconds
+}
+
+// UnixMilli returns t as a Unix time, the number of milliseconds elapsed since
+// January 1, 1970 UTC. The result is undefined if the Unix time in
+// milliseconds cannot be represented by an int64 (a date more than 292 million
+// years before or after 1970). The result does not depend on the
+// location associated with t.
+func (t Time) UnixMilli() int64 {
+	return t.Unix() * 1000 + int64(t.nsec) / int64(Millisecond)
+}
+
+// UnixMicro returns t as a Unix time, the number of microseconds elapsed since
+// January 1, 1970 UTC. The result is undefined if the Unix time in
+// microseconds cannot be represented by an int64 (a date before year -290307 or
+// after year 294246). The result does not depend on the location associated
+// with t.
+func (t Time) UnixMicro() int64 {
+	return t.Unix() * 1000000 + int64(t.nsec) / int64(Microsecond)
+}
+
+// UnixNano returns t as a Unix time, the number of nanoseconds elapsed
+// since January 1, 1970 UTC. The result is undefined if the Unix time
+// in nanoseconds cannot be represented by an int64 (a date before the year
+// 1678 or after 2262). Note that this means the result of calling UnixNano
+// on the zero Time is undefined. The result does not depend on the
+// location associated with t.
+func (t Time) UnixNano() int64 {
+	return t.Unix() * int64(Second) + int64(t.nsec)
+}
+
+// Location returns the time zone information associated with t.
+func (t Time) Location() *Location {
+	return t.location()
+}
+
+// In returns a copy of t representing the same time instant, but
+// with the copy's location information set to loc for display
+// purposes.
+//
+// In panics if loc is nil.
+func (t Time) In(location *Location) Time {
+	if location == nil {
+		panic("time: missing Location in call to Time.In")
+	}
+	t.loc = location
+	return t
+}
+
+// UTC returns t with the location set to UTC.
+func (t Time) UTC() Time {
+	return t.In(UTC)
+}
+
+// Local returns t with the location set to local time.
+func (t Time) Local() Time {
+	return t.In(Local)
+}
+
+// Zone computes the time zone in effect at time t, returning the abbreviated
+// name of the zone (such as "CET") and its offset in seconds east of UTC.
+func (t Time) Zone() (string, int) {
+	name, offset, _, _, _ := t.location().lookup(t.Unix())
+	return name, offset
+}
+
+// ZoneBounds returns the bounds of the time zone in effect at time t.
+// The zone begins at start and the next zone begins at end.
+// If the zone begins at the beginning of time, start will be returned as a zero Time.
+// If the zone goes on forever, end will be returned as a zero Time.
+// The Location of the returned times will be the same as t.
+func (t Time) ZoneBounds() (Time, Time) {
+	_, _, start, end, _ := t.location().lookup(t.Unix())
+	var first, last Time
+	if start != -1 << 63 {
+		first = Unix(start, 0).In(t.location())
+	}
+	if end != 1 << 63 - 1 {
+		last = Unix(end, 0).In(t.location())
+	}
+	return first, last
+}
+
+// IsDST reports whether the time in the configured location is in Daylight Savings Time.
+func (t Time) IsDST() bool {
+	_, _, _, _, dst := t.location().lookup(t.Unix())
+	return dst
+}
+
+// Truncate returns the result of rounding t down to a multiple of d (since the zero time).
+// If d <= 0, Truncate returns t unchanged.
+//
+// Truncate operates on the time as an absolute duration since the
+// zero time; it does not operate on the presentation form of the
+// time. Thus, Truncate(Hour) may return a time with a non-zero
+// minute, depending on the time's Location.
+func (t Time) Truncate(duration Duration) Time {
+	if duration <= 0 {
+		return t
+	}
+	return t.Add(-t.durationRemainder(duration))
+}
+
+// Round returns the result of rounding t to the nearest multiple of d (since the zero time).
+// The rounding behavior for halfway values is to round up.
+// If d <= 0, Round returns t unchanged.
+//
+// Round operates on the time as an absolute duration since the
+// zero time; it does not operate on the presentation form of the
+// time. Thus, Round(Hour) may return a time with a non-zero
+// minute, depending on the time's Location.
+func (t Time) Round(duration Duration) Time {
+	if duration <= 0 {
+		return t
+	}
+	remainder := t.durationRemainder(duration)
+	if remainder < duration - remainder {
+		return t.Add(-remainder)
+	}
+	return t.Add(duration - remainder)
+}
+
+func (t Time) durationRemainder(duration Duration) Duration {
+	seconds := uint64(t.absSec)
+	if t.absSec < 0 {
+		seconds = -seconds
+	}
+	modulus := uint64(duration)
+	hi, lo := bits.Mul64(seconds % modulus, uint64(Second))
+	_, rem := bits.Div64(hi, lo, modulus)
+	if t.absSec < 0 && rem != 0 {
+		rem = modulus - rem
+	}
+	return Duration((rem + uint64(t.nsec)) % modulus)
+}
+
+// Since returns the time elapsed since t.
+// It is shorthand for time.Now().Sub(t).
+func Since(t Time) Duration {
+	return Now().Sub(t)
+}
+
+// Until returns the duration until t.
+// It is shorthand for t.Sub(time.Now()).
+func Until(t Time) Duration {
+	return t.Sub(Now())
+}

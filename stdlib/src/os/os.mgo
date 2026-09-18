@@ -1,0 +1,591 @@
+package os
+
+import (
+	"errors"
+	"io"
+	"path"
+	"rpc"
+	"sync"
+	"time"
+)
+
+var filesystem *filesystemClient
+
+var filesystemMu sync.Mutex
+
+func hostFilesystem() *filesystemClient {
+	filesystemMu.Lock()
+	defer filesystemMu.Unlock()
+	if filesystem == nil {
+		filesystem = newFilesystemClient(rpc.ClientOptions{})
+	}
+	return filesystem
+}
+
+// Flags to OpenFile wrapping those of the underlying system. Not all
+// flags may be implemented on a given system.
+const (
+	// Exactly one of O_RDONLY, O_WRONLY, or O_RDWR must be specified.
+	O_RDONLY int = 0
+
+	O_WRONLY int = 1
+
+	O_RDWR int = 2
+
+	// The remaining values may be or'ed in to control behavior.
+	O_APPEND int = 1024
+
+	O_CREATE int = 64
+
+	O_EXCL int = 128
+
+	O_SYNC int = 1052672
+
+	O_TRUNC int = 512
+)
+
+// File represents an open file provided by the injected filesystem.
+//
+// The methods of File are safe for concurrent use.
+type File struct {
+	name string
+	handle fileHandle
+	closed bool
+}
+
+// Open opens the named file for reading. If successful, methods on
+// the returned file can be used for reading; the associated file
+// resource has mode [O_RDONLY].
+// If there is an error, it will be of type [*PathError].
+func Open(name string) (*File, error) {
+	return OpenFile(name, O_RDONLY, 0)
+}
+
+// Create creates or truncates the named file. If the file already exists,
+// it is truncated. If the file does not exist, it is created with mode 0o666
+// according to the injected filesystem's permission policy. If successful,
+// methods on the returned File can be used for I/O with mode [O_RDWR].
+// The directory containing the file must already exist.
+// If there is an error, it will be of type [*PathError].
+func Create(name string) (*File, error) {
+	return OpenFile(name, O_RDWR | O_CREATE | O_TRUNC, 0666)
+}
+
+// OpenFile is the generalized open call; most users will use Open
+// or Create instead. It opens the named file with specified flag
+// ([O_RDONLY] etc.). If the file does not exist, and the [O_CREATE] flag
+// is passed, it is created with mode perm;
+// the containing directory must exist. If successful,
+// methods on the returned File can be used for I/O.
+// If there is an error, it will be of type [*PathError].
+func OpenFile(name string, flag int, perm FileMode) (*File, error) {
+	handle, fault, err := hostFilesystem().Open(name, int64(flag), uint32(perm))
+	if err != nil || fault.Code != "" {
+		return nil, operationPathError("open", name, fault, err)
+	}
+	return &File{name: name, handle: handle}, nil
+}
+
+// Name returns the name of the file as presented to Open.
+//
+// It is safe to call Name after [Close].
+func (file *File) Name() string {
+	if file == nil {
+		return ""
+	}
+	return file.name
+}
+
+// Read reads up to len(b) bytes from the File and stores them in b.
+// It returns the number of bytes read and any error encountered.
+// At end of file, Read returns 0, io.EOF.
+func (file *File) Read(buffer []byte) (int, error) {
+	if file == nil || file.closed {
+		return 0, ErrClosed
+	}
+	if len(buffer) == 0 {
+		return 0, nil
+	}
+	data, fault, err := file.handle.Read(int64(len(buffer)))
+	count := copy(buffer, data)
+	if err != nil || fault.Code != "" {
+		return count, operationPathError("read", file.name, fault, err)
+	}
+	if count == 0 {
+		return 0, io.EOF
+	}
+	return count, nil
+}
+
+// ReadAt reads len(b) bytes from the File starting at byte offset off.
+// It returns the number of bytes read and the error, if any.
+// ReadAt always returns a non-nil error when n < len(b).
+// At end of file, that error is io.EOF.
+func (file *File) ReadAt(buffer []byte, offset int64) (int, error) {
+	if file == nil || file.closed {
+		return 0, ErrClosed
+	}
+	data, fault, err := file.handle.ReadAt(int64(len(buffer)), offset)
+	count := copy(buffer, data)
+	if err != nil || fault.Code != "" {
+		if err == nil && fault.Code == "eof" {
+			return count, io.EOF
+		}
+		return count, operationPathError("readat", file.name, fault, err)
+	}
+	if count < len(buffer) {
+		return count, io.EOF
+	}
+	return count, nil
+}
+
+// Write writes len(b) bytes from b to the File.
+// It returns the number of bytes written and an error, if any.
+// Write returns a non-nil error when n != len(b).
+func (file *File) Write(data []byte) (int, error) {
+	if file == nil || file.closed {
+		return 0, ErrClosed
+	}
+	count, fault, err := file.handle.Write(data)
+	if err != nil || fault.Code != "" {
+		return int(count), operationPathError("write", file.name, fault, err)
+	}
+	if count != int64(len(data)) {
+		return int(count), io.ErrShortWrite
+	}
+	return int(count), nil
+}
+
+// WriteString is like Write, but writes the contents of string s rather than
+// a slice of bytes.
+func (file *File) WriteString(value string) (int, error) {
+	return file.Write([]byte(value))
+}
+
+// WriteAt writes len(b) bytes to the File starting at byte offset off.
+// It returns the number of bytes written and an error, if any.
+// WriteAt returns a non-nil error when n != len(b).
+//
+// If file was opened with the [O_APPEND] flag, WriteAt returns an error.
+func (file *File) WriteAt(data []byte, offset int64) (int, error) {
+	if file == nil || file.closed {
+		return 0, ErrClosed
+	}
+	count, fault, err := file.handle.WriteAt(data, offset)
+	if err != nil || fault.Code != "" {
+		return int(count), operationPathError("writeat", file.name, fault, err)
+	}
+	if count != int64(len(data)) {
+		return int(count), io.ErrShortWrite
+	}
+	return int(count), nil
+}
+
+// Seek sets the offset for the next Read or Write on file to offset, interpreted
+// according to whence: 0 means relative to the origin of the file, 1 means
+// relative to the current offset, and 2 means relative to the end.
+// It returns the new offset and an error, if any.
+// The behavior of Seek on a file opened with [O_APPEND] is not specified.
+func (file *File) Seek(offset int64, whence int) (int64, error) {
+	if file == nil || file.closed {
+		return 0, ErrClosed
+	}
+	position, fault, err := file.handle.Seek(offset, int64(whence))
+	if err != nil || fault.Code != "" {
+		return position, operationPathError("seek", file.name, fault, err)
+	}
+	return position, nil
+}
+
+// Close closes the [File], rendering it unusable for I/O.
+// Close will return an error if it has already been called.
+func (file *File) Close() error {
+	if file == nil || file.closed {
+		return ErrClosed
+	}
+	file.closed = true
+	if err := file.handle.Close(); err != nil {
+		return &PathError{Op: "close", Path: file.name, Err: err}
+	}
+	return nil
+}
+
+// Stat returns the [FileInfo] structure describing file.
+// If there is an error, it will be of type [*PathError].
+func (file *File) Stat() (FileInfo, error) {
+	if file == nil || file.closed {
+		return nil, ErrClosed
+	}
+	info, fault, err := file.handle.Stat()
+	if err != nil || fault.Code != "" {
+		return nil, operationPathError("stat", file.name, fault, err)
+	}
+	return metadataFileInfo(info), nil
+}
+
+// ReadDir reads the contents of the directory associated with the file f
+// and returns a slice of [DirEntry] values in directory order.
+// Subsequent calls on the same file will yield later DirEntry records in the directory.
+//
+// If n > 0, ReadDir returns at most n DirEntry records.
+// In this case, if ReadDir returns an empty slice, it will return an error explaining why.
+// At the end of a directory, the error is [io.EOF].
+//
+// If n <= 0, ReadDir returns all the DirEntry records remaining in the directory.
+// When it succeeds, it returns a nil error (not io.EOF).
+func (file *File) ReadDir(count int) ([]DirEntry, error) {
+	if file == nil || file.closed {
+		return nil, ErrClosed
+	}
+	metadata, fault, err := file.handle.ReadDir(int64(count))
+	entries := metadataDirEntries(metadata)
+	if err != nil || fault.Code != "" {
+		return entries, operationHostError(fault, err)
+	}
+	return entries, nil
+}
+
+type fileInfo struct {
+	name string
+	size int64
+	mode FileMode
+	modified time.Time
+	directory bool
+}
+
+func (info fileInfo) Name() string {
+	return info.name
+}
+
+func (info fileInfo) Size() int64 {
+	return info.size
+}
+
+func (info fileInfo) Mode() FileMode {
+	return info.mode
+}
+
+func (info fileInfo) ModTime() time.Time {
+	return info.modified
+}
+
+func (info fileInfo) IsDir() bool {
+	return info.directory
+}
+
+func (info fileInfo) Sys() any {
+	return nil
+}
+
+type dirEntry struct {
+	info fileInfo
+}
+
+func (entry dirEntry) Name() string {
+	return entry.info.Name()
+}
+
+func (entry dirEntry) IsDir() bool {
+	return entry.info.IsDir()
+}
+
+func (entry dirEntry) Type() FileMode {
+	return entry.info.Mode().Type()
+}
+
+func (entry dirEntry) Info() (FileInfo, error) {
+	return entry.info, nil
+}
+
+// Stat returns a [FileInfo] describing the named file.
+// If there is an error, it will be of type [*PathError].
+func Stat(name string) (FileInfo, error) {
+	return stat(name, true)
+}
+
+// Lstat returns a [FileInfo] describing the named file.
+// If the file is a symbolic link, the returned FileInfo
+// describes the symbolic link. Lstat makes no attempt to follow the link.
+// If there is an error, it will be of type [*PathError].
+func Lstat(name string) (FileInfo, error) {
+	return stat(name, false)
+}
+
+func stat(name string, follow bool) (FileInfo, error) {
+	info, fault, err := hostFilesystem().Stat(name, follow)
+	if err != nil || fault.Code != "" {
+		return nil, operationPathError("stat", name, fault, err)
+	}
+	return metadataFileInfo(info), nil
+}
+
+// ReadFile reads the named file and returns the contents.
+// A successful call returns err == nil, not err == EOF.
+// Because ReadFile reads the whole file, it does not treat an EOF from Read
+// as an error to be reported.
+func ReadFile(name string) ([]byte, error) {
+	file, err := Open(name)
+	if err != nil {
+		return nil, err
+	}
+	data, readErr := io.ReadAll(file)
+	closeErr := file.Close()
+	if readErr != nil {
+		return data, readErr
+	}
+	return data, closeErr
+}
+
+// WriteFile writes data to the named file, creating it if necessary.
+// If the file does not exist, WriteFile creates it with permissions perm;
+// otherwise WriteFile truncates it before writing, without changing permissions.
+// Since WriteFile requires multiple system calls to complete, a failure mid-operation
+// can leave the file in a partially written state.
+func WriteFile(name string, data []byte, perm FileMode) error {
+	file, err := OpenFile(name, O_WRONLY | O_CREATE | O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	_, writeErr := file.Write(data)
+	closeErr := file.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	return closeErr
+}
+
+// ReadDir reads the named directory,
+// returning all its directory entries sorted by filename.
+// If an error occurs reading the directory,
+// ReadDir returns the entries it was able to read before the error,
+// along with the error.
+func ReadDir(name string) ([]DirEntry, error) {
+	metadata, fault, err := hostFilesystem().ReadDir(name)
+	entries := metadataDirEntries(metadata)
+	if err != nil || fault.Code != "" {
+		return entries, operationPathError("readdir", name, fault, err)
+	}
+	return entries, nil
+}
+
+func metadataFileInfo(info fileMetadata) fileInfo {
+	return fileInfo{name: info.Name, size: info.Size, mode: FileMode(info.Mode), modified: time.Unix(info.ModifiedSeconds, info.ModifiedNanoseconds), directory: info.Directory}
+}
+
+func metadataDirEntries(metadata []fileMetadata) []DirEntry {
+	entries := make([]DirEntry, len(metadata))
+	for index, info := range metadata {
+		entries[index] = dirEntry{info: metadataFileInfo(info)}
+	}
+	return entries
+}
+
+// Mkdir creates a new directory with the specified name and permission
+// bits.
+// If there is an error, it will be of type [*PathError].
+func Mkdir(name string, perm FileMode) error {
+	fault, err := hostFilesystem().Mkdir(name, uint32(perm))
+	if err != nil || fault.Code != "" {
+		return operationPathError("mkdir", name, fault, err)
+	}
+	return nil
+}
+
+// MkdirAll creates a directory named path,
+// along with any necessary parents, and returns nil,
+// or else returns an error.
+// The permission bits perm are used for all
+// directories that MkdirAll creates.
+// If path is already a directory, MkdirAll does nothing
+// and returns nil.
+func MkdirAll(name string, perm FileMode) error {
+	name = path.Clean(name)
+	if name == "." || name == "" {
+		return nil
+	}
+	if info, err := Stat(name); err == nil {
+		if info.IsDir() {
+			return nil
+		}
+		return pathError("mkdir", name, "exist", "path exists and is not a directory")
+	}
+	parent := path.Dir(name)
+	if parent != name {
+		if err := MkdirAll(parent, perm); err != nil {
+			return err
+		}
+	}
+	if err := Mkdir(name, perm); err != nil && !errors.Is(err, ErrExist) {
+		return err
+	}
+	return nil
+}
+
+// Remove removes the named file or (empty) directory.
+// If there is an error, it will be of type [*PathError].
+func Remove(name string) error {
+	fault, err := hostFilesystem().Remove(name)
+	if err != nil || fault.Code != "" {
+		return operationPathError("remove", name, fault, err)
+	}
+	return nil
+}
+
+// RemoveAll removes path and any children it contains.
+// It removes everything it can but returns the first error
+// it encounters. If the path does not exist, RemoveAll
+// returns nil (no error).
+// If there is an error, it will be of type [*PathError].
+func RemoveAll(name string) error {
+	info, err := Lstat(name)
+	if errors.Is(err, ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		entries, readErr := ReadDir(name)
+		if readErr != nil {
+			return readErr
+		}
+		for _, entry := range entries {
+			if err := RemoveAll(path.Join(name, entry.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return Remove(name)
+}
+
+// Rename renames (moves) oldpath to newpath.
+// If newpath already exists and is not a directory, Rename replaces it.
+// If newpath already exists and is a directory, Rename returns an error.
+// Backend-specific restrictions and atomicity guarantees are defined by the
+// injected filesystem.
+// If there is an error, it will be of type *LinkError.
+func Rename(oldName string, newName string) error {
+	fault, err := hostFilesystem().Rename(oldName, newName)
+	if err != nil || fault.Code != "" {
+		return &LinkError{Op: "rename", Old: oldName, New: newName, Err: operationHostError(fault, err)}
+	}
+	return nil
+}
+
+// LinkError records an error during a link or symlink or rename
+// system call and the paths that caused it.
+type LinkError struct {
+	// Op is the operation that failed.
+	Op string
+	// Old is the source path used by the failed operation.
+	Old string
+	// New is the destination path used by the failed operation.
+	New string
+	// Err is the underlying error.
+	Err error
+}
+
+// Error returns a description of the failed link operation.
+func (err *LinkError) Error() string {
+	if err == nil {
+		return "<nil>"
+	}
+	return err.Op + " " + err.Old + " " + err.New + ": " + err.Err.Error()
+}
+
+// Unwrap returns the underlying error.
+func (err *LinkError) Unwrap() error {
+	if err == nil {
+		return nil
+	}
+	return err.Err
+}
+
+// Readlink returns the destination of the named symbolic link.
+// If there is an error, it will be of type [*PathError].
+//
+// If the link destination is relative, Readlink returns the relative path
+// without resolving it to an absolute one.
+func Readlink(name string) (string, error) {
+	target, fault, err := hostFilesystem().Readlink(name)
+	if err != nil || fault.Code != "" {
+		return "", operationPathError("readlink", name, fault, err)
+	}
+	return target, nil
+}
+
+// Chtimes changes the access and modification times of the named file.
+// A zero [time.Time] value will leave the corresponding file time unchanged.
+//
+// The underlying filesystem may truncate or round the values to a
+// less precise time unit.
+// If there is an error, it will be of type [*PathError].
+func Chtimes(name string, atime time.Time, mtime time.Time) error {
+	fault, err := hostFilesystem().Chtimes(name, atime.Unix(), int64(atime.Nanosecond()), mtime.Unix(), int64(mtime.Nanosecond()))
+	if err != nil || fault.Code != "" {
+		return operationPathError("chtimes", name, fault, err)
+	}
+	return nil
+}
+
+// Getwd returns an absolute path name corresponding to the
+// current directory as reported by the injected filesystem.
+func Getwd() (string, error) {
+	value, fault, err := hostFilesystem().Getwd()
+	if err != nil || fault.Code != "" {
+		return "", operationHostError(fault, err)
+	}
+	return value, nil
+}
+
+// UserCacheDir returns the default root directory to use for user-specific
+// cached data. Users should create their own application-specific subdirectory
+// within this one and use that.
+//
+// The injected filesystem defines how the location is selected. UserCacheDir
+// returns an error when that backend cannot determine a location.
+func UserCacheDir() (string, error) {
+	value, fault, err := hostFilesystem().UserCacheDir()
+	if err != nil || fault.Code != "" {
+		return "", operationHostError(fault, err)
+	}
+	return value, nil
+}
+
+func operationPathError(op string, name string, fault operationFault, err error) error {
+	return &PathError{Op: op, Path: name, Err: operationHostError(fault, err)}
+}
+
+func operationHostError(fault operationFault, err error) error {
+	if err != nil {
+		return err
+	}
+	return hostError(fault.Code, fault.Message)
+}
+
+func pathError(op string, name string, code string, message string) error {
+	return &PathError{Op: op, Path: name, Err: hostError(code, message)}
+}
+
+func hostError(code string, message string) error {
+	switch code {
+		case "unsupported":
+			return errors.ErrUnsupported
+		case "invalid":
+			return ErrInvalid
+		case "permission":
+			return ErrPermission
+		case "exist":
+			return ErrExist
+		case "not_exist":
+			return ErrNotExist
+		case "closed":
+			return ErrClosed
+		case "eof":
+			return io.EOF
+	}
+	if message == "" {
+		message = code
+	}
+	return errors.New(message)
+}

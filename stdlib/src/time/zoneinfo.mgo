@@ -1,0 +1,203 @@
+package time
+
+import (
+	"encoding/binary"
+	"errors"
+	"unicode/utf8"
+)
+
+type timeZone struct {
+	name string
+	offset int
+	dst bool
+}
+
+type zoneTransition struct {
+	at int64
+	zone int
+}
+
+// LoadLocationFromTZData returns a location decoded from a TZif version 1, 2,
+// or 3 data file. Input storage is not retained by the location.
+func LoadLocationFromTZData(name string, data []byte) (*Location, error) {
+	malformed := errors.New("malformed time zone information")
+	position := 0
+	width := 4
+	var expectedVersion byte
+	for block := 0; block < 2; block++ {
+		if len(data) - position < 44 || string(data[position:position + 4]) != "TZif" {
+			return nil, malformed
+		}
+		version := data[position + 4]
+		if version != 0 && version != '2' && version != '3' {
+			return nil, malformed
+		}
+		if block > 0 && version != expectedVersion {
+			return nil, malformed
+		}
+		expectedVersion = version
+		for _, reserved := range data[position + 5:position + 20] {
+			if reserved != 0 {
+				return nil, malformed
+			}
+		}
+		var counts [6]int
+		for i := range counts {
+			counts[i] = int(binary.BigEndian.Uint32(data[position + 20 + i * 4:position + 24 + i * 4]))
+		}
+		gmt, standard, leaps, transitions, zones, chars := counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]
+		// Time uses POSIX seconds; leap-adjusted TZif records are not supported.
+		if leaps != 0 {
+			return nil, errors.New("time: leap-second TZif data is unsupported")
+		}
+		if zones < 1 || zones > 256 || chars < 1 || (gmt != 0 && gmt != zones) || (standard != 0 && standard != zones) {
+			return nil, malformed
+		}
+		length := int64(transitions) * int64(width + 1) + int64(zones) * 6 + int64(chars) + int64(leaps) * int64(width + 4) + int64(gmt + standard)
+		position += 44
+		if length > int64(len(data) - position) {
+			return nil, malformed
+		}
+		result := &Location{name: name}
+		indices := position + transitions * width
+		zoneStart := indices + transitions
+		nameStart := zoneStart + zones * 6
+		for i := 0; i < zones; i++ {
+			p := zoneStart + i * 6
+			offset := int(int32(binary.BigEndian.Uint32(data[p:p + 4])))
+			dst := data[p + 4]
+			n := int(data[p + 5])
+			if dst > 1 || n >= chars {
+				return nil, malformed
+			}
+			end := n
+			for end < chars && data[nameStart + end] != 0 {
+				end++
+			}
+			if end == chars || !utf8.Valid(data[nameStart + n:nameStart + end]) {
+				return nil, malformed
+			}
+			result.zones = append(result.zones, timeZone{name: string(data[nameStart + n:nameStart + end]), offset: offset, dst: dst == 1})
+		}
+		for i := 0; i < transitions; i++ {
+			p := position + i * width
+			at := int64(int32(binary.BigEndian.Uint32(data[p:p + 4])))
+			if width == 8 {
+				at = int64(binary.BigEndian.Uint64(data[p:p + 8]))
+			}
+			index := int(data[indices + i])
+			if index >= zones || i > 0 && at <= result.transitions[i - 1].at {
+				return nil, malformed
+			}
+			result.transitions = append(result.transitions, zoneTransition{at: at, zone: index})
+		}
+		flagsStart := nameStart + chars + leaps * (width + 4)
+		for _, flag := range data[flagsStart:flagsStart + standard + gmt] {
+			if flag > 1 {
+				return nil, malformed
+			}
+		}
+		if version != 0 && block == 0 {
+			position += int(length)
+			width = 8
+			continue
+		}
+		remaining := data[position + int(length):]
+		if version != 0 {
+			if len(remaining) < 2 || remaining[0] != '\n' || remaining[len(remaining) - 1] != '\n' {
+				return nil, malformed
+			}
+			result.extend = string(remaining[1:len(remaining) - 1])
+			if result.extend != "" {
+				if _, _, _, _, _, ok := tzset(result.extend, 0, 0); !ok {
+					return nil, malformed
+				}
+			}
+		} else if len(remaining) != 0 {
+			return nil, malformed
+		}
+		return result, nil
+	}
+	return nil, malformed
+}
+
+func (l *Location) lookup(sec int64) (string, int, int64, int64, bool) {
+	if l == nil {
+		l = UTC
+	}
+	start, end := int64(-1 << 63), int64(1 << 63 - 1)
+	if len(l.zones) == 0 {
+		return l.name, l.offset, start, end, false
+	}
+	index := 0
+	firstZoneUsed := false
+	for _, transition := range l.transitions {
+		if transition.zone == 0 {
+			firstZoneUsed = true
+			break
+		}
+	}
+	if firstZoneUsed {
+		for i, zone := range l.zones {
+			if !zone.dst {
+				index = i
+				break
+			}
+		}
+		if len(l.transitions) > 0 && l.zones[l.transitions[0].zone].dst {
+			for i := l.transitions[0].zone - 1; i >= 0; i-- {
+				if !l.zones[i].dst {
+					index = i
+					break
+				}
+			}
+		}
+	}
+	low, high := 0, len(l.transitions)
+	for low < high {
+		mid := low + (high - low) / 2
+		if l.transitions[mid].at <= sec {
+			low = mid + 1
+		} else {
+			high = mid
+		}
+	}
+	if low > 0 {
+		transition := l.transitions[low - 1]
+		index = transition.zone
+		start = transition.at
+	}
+	if low < len(l.transitions) {
+		end = l.transitions[low].at
+	}
+	if low == len(l.transitions) && l.extend != "" {
+		if name, offset, first, last, dst, ok := tzset(l.extend, start, sec); ok {
+			return name, offset, first, last, dst
+		}
+	}
+	zone := l.zones[index]
+	return zone.name, zone.offset, start, end, zone.dst
+}
+
+func (l *Location) lookupName(name string, sec int64) (int, bool) {
+	if l == nil {
+		l = UTC
+	}
+	if len(l.zones) == 0 {
+		return l.offset, l.name == name
+	}
+	for _, zone := range l.zones {
+		if zone.name == name {
+			actual, offset, _, _, _ := l.lookup(sec - int64(zone.offset))
+			if actual == name {
+				return offset, true
+			}
+		}
+	}
+	for _, zone := range l.zones {
+		if zone.name == name {
+			return zone.offset, true
+		}
+	}
+	return 0, false
+}

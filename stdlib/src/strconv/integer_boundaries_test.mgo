@@ -1,0 +1,37 @@
+package strconv_test
+
+import (
+	"errors"
+	"strconv"
+	"testing"
+)
+
+func TestIntegerRangeAndSyntax(t *testing.T) {
+	for _, text := range []string{"18446744073709551616", "340282356779733661637539395458142568448"} {
+		value, err := strconv.ParseUint(text, 10, 64)
+		if value != ^uint64(0) || !errors.Is(err, strconv.ErrRange) {
+			t.Fatal("unsigned overflow was not saturated")
+		}
+	}
+	for _, text := range []string{"+1", "1_0", "-1"} {
+		if _, err := strconv.ParseUint(text, 10, 64); !errors.Is(err, strconv.ErrSyntax) {
+			t.Fatal("unsigned syntax accepted")
+		}
+	}
+	value, err := strconv.ParseUint("0xffff_ffff_ffff_ffff", 0, 64)
+	if err != nil || value != ^uint64(0) {
+		t.Fatal("hex boundary")
+	}
+	for _, test := range []struct {
+		text string
+		want int64
+	}{ {"9223372036854775808", 1 << 63 - 1}, {"-9223372036854775809", -1 << 63}} {
+		value, err := strconv.ParseInt(test.text, 10, 64)
+		if value != test.want || !errors.Is(err, strconv.ErrRange) {
+			t.Fatal("signed overflow")
+		}
+	}
+	if value, err := strconv.ParseInt("-9223372036854775808", 10, 64); err != nil || value != -1 << 63 {
+		t.Fatal("signed minimum")
+	}
+}

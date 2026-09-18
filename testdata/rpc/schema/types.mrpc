@@ -1,0 +1,17 @@
+syntax = "mrpc/v2";
+namespace conformance.types.v1;
+option go_package = "github.com/d7z-team/mini-go/testdata/rpc/generated/go/types;rpctypes";
+option mgo_package = "rpcfixture/generated/mgo/types";
+option rust_module = "crate::rpctypes";
+
+enum Mode { Ready = 0; Busy = 1; }
+message Details { label string = 1; mode Mode = 2; }
+message Scalars {
+  i8 int8 = 1; i16 int16 = 2; i32 int32 = 3; i64 int64 = 4;
+  u8 uint8 = 5; u16 uint16 = 6; u32 uint32 = 7; u64 uint64 = 8;
+  f32 float32 = 9; f64 float64 = 10;
+  c64 complex64 = 11; c128 complex128 = 12;
+  flags map[bool]string = 13; numbers map[int64]string = 14;
+  type string = 15; next optional[Scalars] = 16;
+}
+resource Counter { Add(delta int64 = 1) returns (value int64 = 1); }

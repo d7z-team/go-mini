@@ -1,0 +1,71 @@
+package math
+
+// Abs returns the absolute value of x.
+//
+// Special cases are:
+//
+// 	Abs(±Inf) = +Inf
+// 	Abs(NaN) = NaN
+func Abs(f float64) float64 {
+	if f < 0 {
+		return -f
+	}
+	return f
+}
+
+// Floor returns the greatest integer value less than or equal to x.
+//
+// Special cases are:
+//
+// 	Floor(±0) = ±0
+// 	Floor(±Inf) = ±Inf
+// 	Floor(NaN) = NaN
+func Floor(f float64) float64 {
+	if IsNaN(f) || IsInf(f, 0) || f == 0 {
+		return f
+	}
+	truncated := Trunc(f)
+	if f < truncated {
+		return truncated - 1
+	}
+	return truncated
+}
+
+// Ceil returns the least integer value greater than or equal to x.
+//
+// Special cases are:
+//
+// 	Ceil(±0) = ±0
+// 	Ceil(±Inf) = ±Inf
+// 	Ceil(NaN) = NaN
+func Ceil(f float64) float64 {
+	if IsNaN(f) || IsInf(f, 0) || f == 0 {
+		return f
+	}
+	truncated := Trunc(f)
+	if f > truncated {
+		return truncated + 1
+	}
+	return truncated
+}
+
+// Round returns the nearest integer, rounding half away from zero.
+//
+// Special cases are:
+//
+// 	Round(±0) = ±0
+// 	Round(±Inf) = ±Inf
+// 	Round(NaN) = NaN
+func Round(f float64) float64 {
+	if IsNaN(f) || IsInf(f, 0) || f == 0 {
+		return f
+	}
+	truncated := Trunc(f)
+	if f > 0 && f - truncated >= 0.5 {
+		return truncated + 1
+	}
+	if f < 0 && truncated - f >= 0.5 {
+		return truncated - 1
+	}
+	return truncated
+}

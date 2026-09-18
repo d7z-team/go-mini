@@ -1,0 +1,37 @@
+package io
+
+type errorString struct {
+	text string
+}
+
+func (e errorString) Error() string {
+	return e.text
+}
+
+// EOF is the error returned by Read when no more input is available.
+// (Read must return EOF itself, not an error wrapping EOF,
+// because callers will test for EOF using ==.)
+// Functions should return EOF only to signal a graceful end of input.
+// If the EOF occurs unexpectedly in a structured data stream,
+// the appropriate error is either [ErrUnexpectedEOF] or some other error
+// giving more detail.
+var EOF error = errorString{text: "EOF"}
+
+// ErrUnexpectedEOF means that EOF was encountered in the
+// middle of reading a fixed-size block or data structure.
+var ErrUnexpectedEOF error = errorString{text: "unexpected EOF"}
+
+// ErrShortWrite means that a write accepted fewer bytes than requested
+// but failed to return an explicit error.
+var ErrShortWrite error = errorString{text: "short write"}
+
+// ErrShortBuffer means that a read required a longer buffer than was provided.
+var ErrShortBuffer error = errorString{text: "short buffer"}
+
+// ErrNoProgress is returned by some clients of a [Reader] when
+// many calls to Read have failed to return any data or error,
+// usually the sign of a broken [Reader] implementation.
+var ErrNoProgress error = errorString{text: "multiple Read calls return no data or error"}
+
+// ErrClosedPipe is the error used for read or write operations on a closed pipe.
+var ErrClosedPipe error = errorString{text: "io: read/write on closed pipe"}

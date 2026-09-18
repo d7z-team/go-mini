@@ -1,0 +1,81 @@
+// Copyright 2011 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license.
+
+// Package hmac implements the Keyed-Hash Message Authentication Code (HMAC)
+// as defined in U.S. Federal Information Processing Standards Publication 198.
+package hmac
+
+import "hash"
+
+type hmac struct {
+	newHash func() hash.Hash
+	inner hash.Hash
+	ipad []byte
+	opad []byte
+}
+
+// New returns a new HMAC hash using the given hash constructor and key.
+// New panics when the constructor returns hashes with inconsistent sizes.
+func New(h func() hash.Hash, key []byte) hash.Hash {
+	inner := h()
+	outer := h()
+	if inner.Size() != outer.Size() || inner.BlockSize() != outer.BlockSize() {
+		panic("crypto/hmac: hash generation function does not produce unique values")
+	}
+	blockSize := inner.BlockSize()
+	if blockSize <= 0 {
+		panic("crypto/hmac: invalid hash block size")
+	}
+	if len(key) > blockSize {
+		inner.Write(key)
+		key = inner.Sum(nil)
+		inner.Reset()
+	}
+	ipad := make([]byte, blockSize)
+	opad := make([]byte, blockSize)
+	copy(ipad, key)
+	copy(opad, key)
+	for i := range ipad {
+		ipad[i] ^= 0x36
+		opad[i] ^= 0x5c
+	}
+	inner.Write(ipad)
+	return &hmac{newHash: h, inner: inner, ipad: ipad, opad: opad}
+}
+
+func (h *hmac) Write(p []byte) (int, error) {
+	return h.inner.Write(p)
+}
+
+func (h *hmac) Sum(in []byte) []byte {
+	outer := h.newHash()
+	outer.Write(h.opad)
+	outer.Write(h.inner.Sum(nil))
+	return outer.Sum(in)
+}
+
+func (h *hmac) Reset() {
+	h.inner.Reset()
+	h.inner.Write(h.ipad)
+}
+
+func (h *hmac) Size() int {
+	return h.inner.Size()
+}
+
+func (h *hmac) BlockSize() int {
+	return h.inner.BlockSize()
+}
+
+// Equal compares two message authentication codes without leaking the index
+// of the first different byte through an early return.
+func Equal(mac1, mac2 []byte) bool {
+	if len(mac1) != len(mac2) {
+		return false
+	}
+	var diff byte
+	for i := range mac1 {
+		diff |= mac1[i] ^ mac2[i]
+	}
+	return diff == 0
+}

@@ -1,0 +1,7 @@
+package main
+
+const value = 0
+
+func identity(value int) int { return value }
+
+func Result() int { return identity(42) }

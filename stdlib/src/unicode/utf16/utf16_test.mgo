@@ -1,0 +1,33 @@
+package utf16_test
+
+import (
+	"testing"
+	"unicode/utf16"
+)
+
+func TestUTF16RoundTrip(t *testing.T) {
+	runes := []rune{'A', '世', '😀'}
+	encoded := utf16.Encode(runes)
+	if len(encoded) != 4 || encoded[0] != 65 || encoded[2] != 0xd83d || encoded[3] != 0xde00 {
+		t.Fatalf("Encode = %v", encoded)
+	}
+	decoded := utf16.Decode(encoded)
+	if len(decoded) != len(runes) {
+		t.Fatalf("Decode length = %d", len(decoded))
+	}
+	for i := range runes {
+		if decoded[i] != runes[i] {
+			t.Fatalf("Decode rune %d = %U", i, decoded[i])
+		}
+	}
+}
+
+func TestUTF16Surrogates(t *testing.T) {
+	first, second := utf16.EncodeRune('😀')
+	if !utf16.IsSurrogate(first) || !utf16.IsSurrogate(second) || utf16.DecodeRune(first, second) != '😀' {
+		t.Fatal("surrogate helpers did not round trip")
+	}
+	if utf16.RuneLen(-1) != -1 || utf16.RuneLen('A') != 1 || utf16.RuneLen('😀') != 2 {
+		t.Fatal("RuneLen returned the wrong length")
+	}
+}

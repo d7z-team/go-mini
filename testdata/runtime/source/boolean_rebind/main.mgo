@@ -1,0 +1,26 @@
+package main
+
+func Main() int {
+	var closures []func() bool
+	result := 0
+	for i := 0; i < 3; i++ {
+		flag := false
+		if flag {
+			result += 100
+		} else {
+			result += 10
+		}
+		closures = append(closures, func() bool { return flag })
+		flag = i == 1
+	}
+	for i, closure := range closures {
+		if closure() {
+			result += i + 1
+		}
+	}
+	flag := true
+	if flag {
+		result += 10
+	}
+	return result
+}

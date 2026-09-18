@@ -1,0 +1,6 @@
+package main
+
+import "example/dependency/lib"
+
+func Body() int     { return lib.Value() }
+func Constant() int { return lib.Number }

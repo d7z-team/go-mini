@@ -1,0 +1,126 @@
+package bytes
+
+// Index returns the index of the first instance of sep in s, or -1 if sep is not present in s.
+func Index(s []byte, sep []byte) int {
+	n := len(sep)
+	if n == 0 {
+		return 0
+	}
+	if n > len(s) {
+		return -1
+	}
+	limit := len(s) - n
+	for i := 0; i <= limit; i++ {
+		if Equal(s[i:i + n], sep) {
+			return i
+		}
+	}
+	return -1
+}
+
+// LastIndex returns the index of the last instance of sep in s, or -1 if sep is not present in s.
+func LastIndex(s []byte, sep []byte) int {
+	n := len(sep)
+	if n == 0 {
+		return len(s)
+	}
+	if n > len(s) {
+		return -1
+	}
+	for i := len(s) - n; i >= 0; i-- {
+		if Equal(s[i:i + n], sep) {
+			return i
+		}
+	}
+	return -1
+}
+
+// IndexByte returns the index of the first instance of c in b, or -1 if c is not present in b.
+func IndexByte(s []byte, c byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
+// LastIndexByte returns the index of the last instance of c in s, or -1 if c is not present in s.
+func LastIndexByte(s []byte, c byte) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
+// IndexRune interprets s as a sequence of UTF-8-encoded code points.
+// It returns the byte index of the first occurrence in s of the given rune.
+// It returns -1 if rune is not present in s.
+// If r is [utf8.RuneError], it returns the first instance of any
+// invalid UTF-8 byte sequence.
+func IndexRune(s []byte, r rune) int {
+	for i, value := range string(s) {
+		if value == r {
+			return i
+		}
+	}
+	return -1
+}
+
+// IndexAny interprets s as a sequence of UTF-8-encoded Unicode code points.
+// It returns the byte index of the first occurrence in s of any of the Unicode
+// code points in chars. It returns -1 if chars is empty or if there is no code
+// point in common.
+func IndexAny(s []byte, chars string) int {
+	if chars == "" {
+		return -1
+	}
+	text := string(s)
+	for i, value := range text {
+		if containsCutsetRune(chars, value) {
+			return i
+		}
+	}
+	return -1
+}
+
+// LastIndexAny returns the byte index of the last occurrence in s of any
+// Unicode code point from chars.
+func LastIndexAny(s []byte, chars string) int {
+	last := -1
+	for i, value := range string(s) {
+		if containsCutsetRune(chars, value) {
+			last = i
+		}
+	}
+	return last
+}
+
+// IndexFunc interprets s as a sequence of UTF-8-encoded code points.
+// It returns the byte index in s of the first Unicode
+// code point satisfying f(c), or -1 if none do.
+func IndexFunc(s []byte, f func(rune) bool) int {
+	text := string(s)
+	for i, value := range text {
+		if f(value) {
+			return i
+		}
+	}
+	return -1
+}
+
+// LastIndexFunc interprets s as a sequence of UTF-8-encoded code points.
+// It returns the byte index in s of the last Unicode
+// code point satisfying f(c), or -1 if none do.
+func LastIndexFunc(s []byte, f func(rune) bool) int {
+	text := string(s)
+	last := -1
+	for i, value := range text {
+		if f(value) {
+			last = i
+		}
+	}
+	return last
+}

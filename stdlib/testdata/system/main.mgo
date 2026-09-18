@@ -1,0 +1,35 @@
+package main
+
+import (
+	"crypto/rand"
+	"fmt"
+	"os"
+	"time"
+)
+
+func require(ok bool, message string) {
+	if !ok {
+		panic(message)
+	}
+}
+
+func main() {
+	data, err := os.ReadFile("input.txt")
+	require(err == nil && string(data) == "input", "read file")
+	require(os.WriteFile("output.txt", append(data, '!'), 0o600) == nil, "write file")
+
+	value, found := os.LookupEnv("MINIGO_TEST")
+	require(found && value == "rpc", "environment")
+
+	now := time.Now()
+	require(now.UnixNano() == 123000000456, "clock now")
+	time.Sleep(2500)
+	require(time.Now().UnixNano() == 123000002956, "clock sleep")
+
+	random := make([]byte, 8)
+	n, err := rand.Read(random)
+	require(err == nil && n == len(random), "entropy")
+
+	_, err = fmt.Printf("%s|%s|%d\n", string(data), value, n)
+	require(err == nil, "output")
+}

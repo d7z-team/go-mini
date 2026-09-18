@@ -1,0 +1,116 @@
+package reflect
+
+type fieldScan struct {
+	typ Type
+	index []int
+	count int
+}
+
+func fieldByNameFunc(typ Type, match func(string) bool) (StructField, bool) {
+	if typ.Kind() != Struct {
+		panic("reflect: FieldByNameFunc of non-struct type " + typ.String())
+	}
+
+	current := []fieldScan{{typ: typ, count: 1}}
+	visited := []string{}
+	for len(current) != 0 {
+		next := []fieldScan{}
+		var result StructField
+		found := false
+		for scanIndex := 0; scanIndex < len(current); scanIndex++ {
+			scan := current[scanIndex]
+			identity := typeIdentity(scan.typ)
+			alreadyVisited := false
+			for i := 0; i < len(visited); i++ {
+				if visited[i] == identity {
+					alreadyVisited = true
+					break
+				}
+			}
+			if alreadyVisited {
+				continue
+			}
+			visited = append(visited, identity)
+
+			for i := 0; i < scan.typ.NumField(); i++ {
+				field := scan.typ.Field(i)
+				if match(field.Name) {
+					if scan.count > 1 || found {
+						return StructField{}, false
+					}
+					field.Index = joinIndex(scan.index, []int{i})
+					result = field
+					found = true
+					continue
+				}
+				if found || !field.Anonymous {
+					continue
+				}
+				embedded, ok := embeddedStructFieldType(field)
+				if !ok {
+					continue
+				}
+				embeddedIdentity := typeIdentity(embedded)
+				queued := false
+				for j := 0; j < len(next); j++ {
+					if typeIdentity(next[j].typ) == embeddedIdentity {
+						next[j].count = 2
+						queued = true
+						break
+					}
+				}
+				if queued {
+					continue
+				}
+				count := 1
+				if scan.count > 1 {
+					count = 2
+				}
+				next = append(next, fieldScan{
+					typ: embedded,
+					index: joinIndex(scan.index, []int{i}),
+					count: count,
+				})
+			}
+		}
+		if found {
+			return result, true
+		}
+		current = next
+	}
+	return StructField{}, false
+}
+
+func embeddedStructFieldType(field StructField) (Type, bool) {
+	return fieldStructType(field)
+}
+
+func fieldStructType(field StructField) (Type, bool) {
+	typ := field.Type
+	if typ.Kind() == Pointer {
+		typ = typ.Elem()
+	}
+	if typ.Kind() != Struct {
+		return nil, false
+	}
+	return typ, true
+}
+
+func joinIndex(prefix []int, suffix []int) []int {
+	out := []int{}
+	for i := 0; i < len(prefix); i++ {
+		out = append(out, prefix[i])
+	}
+	for i := 0; i < len(suffix); i++ {
+		out = append(out, suffix[i])
+	}
+	return out
+}
+
+func copyIndex(index []int) []int {
+	out := []int{}
+	for i := 0; i < len(index); i++ {
+		out = append(out, index[i])
+	}
+	return out
+}

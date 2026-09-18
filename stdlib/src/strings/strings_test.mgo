@@ -1,0 +1,31 @@
+package strings_test
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestStringsSearchSplitTrim(t *testing.T) {
+	if !strings.Contains("mini-go", "mini") {
+		t.Fatal("Contains should find substring")
+	}
+	if !strings.HasPrefix("mini-go", "mini") {
+		t.Fatal("HasPrefix should match prefix")
+	}
+	if strings.Index("mini-go", "go") != 5 {
+		t.Fatalf("Index returned wrong offset")
+	}
+	parts := strings.Split("a,b,c", ",")
+	if len(parts) != 3 || parts[0] != "a" || parts[2] != "c" {
+		t.Fatalf("Split returned wrong parts")
+	}
+	if strings.TrimSpace(" \tmini-go\n") != "mini-go" {
+		t.Fatalf("TrimSpace returned wrong value")
+	}
+	if strings.TrimSpace("mini-go") != "mini-go" {
+		t.Fatalf("TrimSpace changed an already trimmed value")
+	}
+	if strings.TrimSpace("\u3000mini-go\u3000") != "mini-go" {
+		t.Fatalf("TrimSpace returned wrong Unicode value")
+	}
+}

@@ -1,0 +1,2 @@
+package main
+func Main() int { a := []int{1, 2, 3, 4}; copy(a[1:], a[:3]); return a[0]*1000 + a[1]*100 + a[2]*10 + a[3] }

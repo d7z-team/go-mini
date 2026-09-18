@@ -1,0 +1,34 @@
+package netip
+
+import "testing"
+
+func TestAddrParseFormatAndProperties(t *testing.T) {
+	for _, text := range []string{"192.168.1.2", "2001:db8::1", "fe80::1%eth0", "::ffff:192.0.2.1"} {
+		address, err := ParseAddr(text)
+		if err != nil || address.String() != text {
+			t.Fatalf("ParseAddr(%q) = %q, %v", text, address.String(), err)
+		}
+		binary, err := address.MarshalBinary()
+		var decoded Addr
+		if err != nil || decoded.UnmarshalBinary(binary) != nil || decoded != address {
+			t.Fatalf("binary round trip failed for %q", text)
+		}
+	}
+	if !MustParseAddr("127.0.0.1").IsLoopback() || !MustParseAddr("10.1.2.3").IsPrivate() || !MustParseAddr("ff02::1").IsMulticast() {
+		t.Fatal("address classification failed")
+	}
+}
+
+func TestAddrPortAndPrefix(t *testing.T) {
+	endpoint := MustParseAddrPort("[2001:db8::1]:443")
+	if endpoint.Port() != 443 || endpoint.String() != "[2001:db8::1]:443" {
+		t.Fatalf("AddrPort = %v", endpoint)
+	}
+	prefix := MustParsePrefix("192.168.1.99/24")
+	if prefix.Masked().String() != "192.168.1.0/24" || !prefix.Contains(MustParseAddr("192.168.1.42")) || prefix.Contains(MustParseAddr("192.168.2.1")) {
+		t.Fatalf("Prefix = %v", prefix)
+	}
+	if !prefix.Overlaps(MustParsePrefix("192.168.1.128/25")) {
+		t.Fatal("overlap was not detected")
+	}
+}

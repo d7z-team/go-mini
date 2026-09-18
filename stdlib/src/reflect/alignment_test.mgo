@@ -1,0 +1,280 @@
+package reflect_test
+
+import (
+	"reflect"
+	"testing"
+)
+
+type reflectPrivateFields struct {
+	small int8
+	word int64
+}
+
+type reflectLeft struct {
+	Match int
+}
+
+type reflectRight struct {
+	Match int
+}
+
+type reflectDiamond struct {
+	reflectLeft
+	reflectRight
+}
+
+type reflectVisibleLeaf struct {
+	Leaf int
+	Hidden int
+}
+
+type reflectVisibleRoot struct {
+	reflectVisibleLeaf
+	Hidden string
+}
+
+type ReflectEmbedded struct {
+	Value int
+}
+
+type reflectComparableBox struct {
+	Value any
+}
+
+type reflectSmallInt int8
+
+type reflectLabel string
+
+type reflectMethodInterface interface {
+	Add(int) int
+}
+
+func TestReflectFieldMetadataAndAccess(t *testing.T) {
+	typ := reflect.TypeOf(reflectPrivateFields{})
+	first := typ.Field(0)
+	second := typ.Field(1)
+	if first.PkgPath == "" || second.PkgPath == "" || first.Offset != 0 || second.Offset != 8 {
+		t.Fatalf("field package path or VM offset is incorrect")
+	}
+	value := reflect.ValueOf(&reflectPrivateFields{}).Elem().Field(0)
+	if !value.CanAddr() || value.CanSet() || value.CanInterface() {
+		t.Fatalf("unexported field access flags are incorrect")
+	}
+	expectPanic(t, func() {
+		_ = value.Interface()
+	})
+	privatePointer := value.Addr()
+	if privatePointer.CanInterface() || privatePointer.Elem().CanInterface() {
+		t.Fatalf("unexported field access should propagate through Addr and Elem")
+	}
+	if _, ok := reflect.TypeOf(reflectDiamond{}).FieldByName("Match"); ok {
+		t.Fatalf("same-depth promoted fields should be ambiguous")
+	}
+	visible := reflect.VisibleFields(reflect.TypeOf(reflectVisibleRoot{}))
+	if len(visible) != 3 || visible[0].Name != "reflectVisibleLeaf" || visible[1].Name != "Leaf" || visible[2].Name != "Hidden" || len(visible[1].Index) != 2 {
+		t.Fatalf("VisibleFields should preserve preorder and shadowing")
+	}
+
+	tagType := reflect.TypeOf(struct {
+		Value string `note:"line\nquote\"" empty:""`
+	}{})
+	note, noteOK := tagType.Field(0).Tag.Lookup("note")
+	empty, emptyOK := tagType.Field(0).Tag.Lookup("empty")
+	if !noteOK || note != "line\nquote\"" || !emptyOK || empty != "" {
+		t.Fatalf("StructTag.Lookup did not decode Go escapes")
+	}
+}
+
+func TestReflectMethodMetadataAndFunction(t *testing.T) {
+	typ := reflect.TypeOf(methodCounter{})
+	method, ok := typ.MethodByName("Add")
+	if !ok || method.Type.NumIn() != 2 || method.Type.In(0) != typ || !method.Func.IsValid() {
+		t.Fatalf("concrete method metadata should include receiver and Func")
+	}
+	results := method.Func.Call([]reflect.Value{reflect.ValueOf(methodCounter{Base: 40}), reflect.ValueOf(2)})
+	if len(results) != 1 || results[0].Int() != 42 {
+		t.Fatalf("Method.Func returned the wrong result")
+	}
+	methodValues := 0
+	for method, value := range reflect.ValueOf(methodCounter{}).Methods() {
+		if method.Name == "" || method.Index != methodValues || !value.IsValid() {
+			t.Fatalf("Value.Methods returned invalid metadata")
+		}
+		methodValues++
+	}
+	if methodValues != reflect.ValueOf(methodCounter{}).NumMethod() {
+		t.Fatalf("Value.Methods returned the wrong method count")
+	}
+	interfaceType := reflect.TypeOf((*reflectMethodInterface)(nil)).Elem()
+	interfaceMethod, ok := interfaceType.MethodByName("Add")
+	if !ok || interfaceMethod.Type.NumIn() != 1 || interfaceMethod.Func.IsValid() {
+		t.Fatalf("interface method metadata should omit a receiver and concrete Func")
+	}
+}
+
+func TestReflectSafeConstructorsAndOperations(t *testing.T) {
+	intType := reflect.TypeOf(0)
+	if typ := reflect.ArrayOf(3, intType); typ.Kind() != reflect.Array || typ.Len() != 3 || typ.Elem() != intType {
+		t.Fatalf("ArrayOf returned the wrong type")
+	}
+	functionType := reflect.FuncOf([]reflect.Type{intType}, []reflect.Type{intType}, false)
+	if functionType.Kind() != reflect.Func || functionType.NumIn() != 1 || functionType.NumOut() != 1 {
+		t.Fatalf("FuncOf returned the wrong type")
+	}
+	structType := reflect.StructOf([]reflect.StructField{{Name: "Value", Type: intType, Tag: `json:"value"`}})
+	if structType.Kind() != reflect.Struct || structType.NumField() != 1 || structType.Field(0).Tag.Get("json") != "value" {
+		t.Fatalf("StructOf returned incomplete metadata")
+	}
+	if reflect.New(structType).Elem().Type() != structType {
+		t.Fatalf("values constructed from StructOf should retain type identity")
+	}
+	if structType != reflect.StructOf([]reflect.StructField{{Name: "Value", Type: intType, Tag: `json:"value"`}}) ||
+	structType == reflect.StructOf([]reflect.StructField{{Name: "Value", Type: reflect.TypeOf("")}}) {
+		t.Fatalf("StructOf identity should include the complete field shape")
+	}
+	embeddedType := reflect.StructOf([]reflect.StructField{{Name: "ReflectEmbedded", Type: reflect.TypeOf(ReflectEmbedded{}), Anonymous: true}})
+	if !embeddedType.Field(0).Anonymous || reflect.New(embeddedType).Elem().Type() != embeddedType {
+		t.Fatalf("StructOf should preserve embedded field identity")
+	}
+	expectPanic(t, func() {
+		_ = reflect.StructOf([]reflect.StructField{{Name: "hidden", PkgPath: "reflect_test", Type: intType}})
+	})
+	if !reflect.DeepEqual([]int{1, 2}, []int{1, 2}) || reflect.DeepEqual([]int{1}, []int{2}) {
+		t.Fatalf("DeepEqual returned the wrong slice result")
+	}
+	zero := 0.0
+	nan := zero / zero
+	sharedMap := map[string]float64{"value": nan}
+	if !reflect.DeepEqual(sharedMap, sharedMap) || reflect.DeepEqual(sharedMap, map[string]float64{"value": nan}) {
+		t.Fatalf("DeepEqual should preserve map identity and NaN semantics")
+	}
+
+	values := []int{1, 2}
+	reflect.ValueOf(values).Clear()
+	if values[0] != 0 || values[1] != 0 {
+		t.Fatalf("Value.Clear did not zero a slice")
+	}
+	mapping := map[string]int{"a": 1, "b": 2}
+	reflect.ValueOf(mapping).Clear()
+	if len(mapping) != 0 {
+		t.Fatalf("Value.Clear did not clear a map")
+	}
+	grow := []int{1}
+	growValue := reflect.ValueOf(&grow).Elem()
+	growValue.Grow(8)
+	if growValue.Cap() - growValue.Len() < 8 {
+		t.Fatalf("Value.Grow did not reserve requested capacity")
+	}
+	bytes := []byte("go")
+	byteValue := reflect.ValueOf(bytes)
+	byteValue.Bytes()[0] = 'n'
+	if string(bytes) != "no" {
+		t.Fatalf("Value.Bytes should share slice storage")
+	}
+	if converted, ok := reflect.TypeAssert[int](reflect.ValueOf(42)); !ok || converted != 42 {
+		t.Fatalf("TypeAssert returned the wrong value")
+	}
+	invalidValue := reflect.Value{}
+	if invalidValue.String() != "<invalid Value>" || reflect.ValueOf(42).String() != "<int Value>" {
+		t.Fatalf("Value.String should describe invalid and non-string values")
+	}
+	pointerValue := 1
+	if !reflect.ValueOf(&pointerValue).Equal(reflect.ValueOf(&pointerValue)) ||
+	reflect.ValueOf(reflectComparableBox{Value: []int{1}}).Comparable() {
+		t.Fatalf("Value equality or dynamic comparability is incorrect")
+	}
+	expectPanic(t, func() {
+		_ = reflect.ValueOf([]int{1}).Equal(reflect.ValueOf([]int{1}))
+	})
+	var left any = 42
+	var right any = 42
+	if !reflect.ValueOf(&left).Elem().Equal(reflect.ValueOf(&right).Elem()) {
+		t.Fatalf("Value.Equal should compare the dynamic values of interfaces")
+	}
+}
+
+func TestReflectKindSettersConvertToDestinationType(t *testing.T) {
+	small := reflectSmallInt(0)
+	reflect.ValueOf(&small).Elem().SetInt(130)
+	if small != reflectSmallInt(-126) {
+		t.Fatalf("SetInt should convert and truncate to the destination type")
+	}
+	label := reflectLabel("")
+	reflect.ValueOf(&label).Elem().SetString("mini")
+	if label != reflectLabel("mini") {
+		t.Fatalf("SetString should preserve a named destination type")
+	}
+	expectPanic(t, func() {
+		reflect.ValueOf(&small).Elem().SetUint(1)
+	})
+}
+
+func TestReflectDynamicChannelsAndSelect(t *testing.T) {
+	channelType := reflect.TypeOf((chan int)(nil))
+	if reflect.ChanOf(reflect.BothDir, reflect.TypeOf(0)) != channelType {
+		t.Fatalf("ChanOf should preserve channel identity")
+	}
+	channel := reflect.MakeChan(channelType, 1)
+	if !channel.TrySend(reflect.ValueOf(42)) {
+		t.Fatalf("TrySend should select a buffered channel")
+	}
+	value, ok := channel.TryRecv()
+	if !ok || value.Int() != 42 {
+		t.Fatalf("TryRecv returned the wrong value")
+	}
+	chosen, value, ok := reflect.Select([]reflect.SelectCase{
+		{Dir: reflect.SelectRecv, Chan: channel},
+		{Dir: reflect.SelectDefault},
+	})
+	if chosen != 1 || value.IsValid() || ok {
+		t.Fatalf("Select should choose default when the channel is not ready")
+	}
+	channel.Send(reflect.ValueOf(7))
+	chosen, value, ok = reflect.Select([]reflect.SelectCase{{Dir: reflect.SelectRecv, Chan: channel}})
+	if chosen != 0 || !ok || value.Int() != 7 {
+		t.Fatalf("Select receive returned the wrong result")
+	}
+	blocking := reflect.MakeChan(channelType, 0)
+	go func() {
+		blocking.Send(reflect.ValueOf(8))
+	}()
+	chosen, value, ok = reflect.Select([]reflect.SelectCase{{Dir: reflect.SelectRecv, Chan: blocking}})
+	if chosen != 0 || !ok || value.Int() != 8 {
+		t.Fatalf("blocking Select receive returned the wrong result")
+	}
+	sending := reflect.MakeChan(channelType, 0)
+	received := make(chan int, 1)
+	go func() {
+		item, receivedOK := sending.Recv()
+		if receivedOK {
+			received <- int(item.Int())
+		}
+	}()
+	chosen, _, ok = reflect.Select([]reflect.SelectCase{{Dir: reflect.SelectSend, Chan: sending, Send: reflect.ValueOf(9)}})
+	if chosen != 0 || ok || <-received != 9 {
+		t.Fatalf("blocking Select send returned the wrong result")
+	}
+	channel.Close()
+	value, ok = channel.TryRecv()
+	if ok || !value.IsValid() || value.Int() != 0 {
+		t.Fatalf("TryRecv on a closed channel should return a typed zero value")
+	}
+	expectPanic(t, func() {
+		channel.Send(reflect.ValueOf(1))
+	})
+	var nilChannel chan int
+	chosen, value, ok = reflect.Select([]reflect.SelectCase{
+		{Dir: reflect.SelectRecv, Chan: reflect.ValueOf(nilChannel)},
+		{Dir: reflect.SelectDefault},
+	})
+	if chosen != 1 || value.IsValid() || ok {
+		t.Fatalf("Select should disable a nil channel case")
+	}
+	expectPanic(t, func() {
+		reflect.Select([]reflect.SelectCase{{Dir: reflect.SelectDefault}, {Dir: reflect.SelectDefault}})
+	})
+	var receiveOnly <-chan int
+	expectPanic(t, func() {
+		_ = reflect.MakeChan(reflect.TypeOf(receiveOnly), 0)
+	})
+}

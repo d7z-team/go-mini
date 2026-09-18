@@ -1,0 +1,2 @@
+package main
+func Main() (n int) { defer func() { n = n * 2 }(); defer func() { n += 1 }(); return 20 }

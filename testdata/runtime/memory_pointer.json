@@ -1,0 +1,26 @@
+{
+  "module":{"path":"test","package":"main"},
+  "type_table":{"nodes":[
+    {"id":"array","kind":6,"length":2,"elem":{"kind":3,"primitive":3}},
+    {"id":"pointer","kind":8,"elem":{"kind":3,"primitive":3}},
+    {"id":"bytes","kind":5,"elem":{"kind":3,"primitive":9}}
+  ]},
+  "constants":[{"id":"length","type":{"kind":3,"primitive":3},"value":8}],
+  "functions":[{"id":"fn.Main","signature":{"results":[{"kind":3,"primitive":3}]},"locals":[
+    {"id":"array","type":{"kind":6,"node":"array"}},
+    {"id":"index","type":{"kind":3,"primitive":3}},
+    {"id":"pointer","type":{"kind":8,"node":"pointer"}}
+  ],"instructions":[
+    {"op":"address_of","payload":{"kind":"local","local":"array","path":[{"kind":"index","local":"index"}]}},
+    {"op":"store_local","payload":{"local":"pointer"}},
+    {"op":"const","payload":{"constant":"length"}},
+    {"op":"make_slice","payload":{"type":{"kind":5,"node":"bytes"}}},
+    {"op":"pop"},
+    {"op":"const","payload":{"constant":"length"}},
+    {"op":"make_slice","payload":{"type":{"kind":5,"node":"bytes"}}},
+    {"op":"pop"},
+    {"op":"load_local","payload":{"local":"pointer"}},
+    {"op":"load_indirect"},
+    {"op":"return","payload":{"result_count":1}}
+  ]}]
+}

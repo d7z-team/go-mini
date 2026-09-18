@@ -1,0 +1,6 @@
+package main
+import "reflect"
+type Counter struct { N int }
+func (c Counter) Add(n int) int { return c.N+n }
+func (c *Counter) Set(n int) { c.N=n }
+func Main() int { c := Counter{N: 20}; v := reflect.ValueOf(c); if v.NumMethod() != 2 || reflect.TypeOf(&c).NumMethod() != 2 { return -1 }; method, ok := v.Type().MethodByName("Add"); if !ok || method.Type.NumIn() != 2 { return -2 }; out := method.Func.Call([]reflect.Value{v, reflect.ValueOf(22)}); if out[0].Int() != 42 { return -3 }; bound := v.MethodByName("Add").Call([]reflect.Value{reflect.ValueOf(22)}); if bound[0].Int() != 42 { return -4 }; reflect.ValueOf(&c).MethodByName("Set").Call([]reflect.Value{reflect.ValueOf(42)}); return c.N }

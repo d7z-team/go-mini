@@ -1,0 +1,2 @@
+package main
+func Main() int { var a any = 20; a = "ok"; text, ok := a.(string); if !ok || text != "ok" { return -1 }; a = 42; return a.(int) }

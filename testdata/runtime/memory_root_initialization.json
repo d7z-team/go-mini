@@ -1,0 +1,15 @@
+{
+  "module":{"path":"test","package":"main"},
+  "globals":[{"id":"value","type":{"kind":3,"primitive":3}}],
+  "functions":[
+    {"id":"fn.init","instructions":[
+      {"op":"zero","payload":{"type":{"kind":3,"primitive":3}}},
+      {"op":"store_global","payload":{"global":"value"}},
+      {"op":"return","payload":{}}
+    ]},
+    {"id":"fn.Main","signature":{"results":[{"kind":3,"primitive":3}]},"instructions":[
+      {"op":"load_global","payload":{"global":"value"}},
+      {"op":"return","payload":{"result_count":1}}
+    ]}
+  ]
+}

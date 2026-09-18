@@ -1,0 +1,480 @@
+// Package filepath implements portable slash-separated path operations and filesystem helpers backed by the injected os filesystem.
+package filepath
+
+import (
+	"errors"
+	"io/fs"
+	"os"
+	"path"
+	"strings"
+)
+
+// Separator is the path element separator used by this portable filepath implementation.
+const Separator = '/'
+
+// ListSeparator is the character that separates entries in a path list.
+const ListSeparator = ':'
+
+// ErrBadPattern indicates a pattern was malformed.
+var ErrBadPattern = errors.New("syntax error in pattern")
+
+// SkipDir is used as a return value from [WalkFunc] to indicate that
+// the directory named in the call is to be skipped. It is not returned
+// as an error by any function.
+var SkipDir = fs.SkipDir
+
+// SkipAll is used as a return value from [WalkFunc] to indicate that
+// all remaining files and directories are to be skipped. It is not returned
+// as an error by any function.
+var SkipAll = fs.SkipAll
+
+// WalkFunc is the type of the function called by [Walk] to visit each
+// file or directory.
+//
+// The path argument contains the argument to Walk as a prefix.
+// That is, if Walk is called with root argument "dir" and finds a file
+// named "a" in that directory, the walk function will be called with
+// argument "dir/a".
+//
+// The directory and file are joined with Join, which may clean the
+// directory name: if Walk is called with the root argument "x/../dir"
+// and finds a file named "a" in that directory, the walk function will
+// be called with argument "dir/a", not "x/../dir/a".
+//
+// The info argument is the fs.FileInfo for the named path.
+//
+// The error result returned by the function controls how Walk continues.
+// If the function returns the special value [SkipDir], Walk skips the
+// current directory (path if info.IsDir() is true, otherwise path's
+// parent directory). If the function returns the special value [SkipAll],
+// Walk skips all remaining files and directories. Otherwise, if the function
+// returns a non-nil error, Walk stops entirely and returns that error.
+//
+// The err argument reports an error related to path, signaling that Walk
+// will not walk into that directory. The function can decide how to
+// handle that error; as described earlier, returning the error will
+// cause Walk to stop walking the entire tree.
+//
+// Walk calls the function with a non-nil err argument in two cases.
+//
+// First, if an [os.Lstat] on the root directory or any directory or file
+// in the tree fails, Walk calls the function with path set to that
+// directory or file's path, info set to nil, and err set to the error
+// from os.Lstat.
+//
+// Second, if a directory's Readdirnames method fails, Walk calls the
+// function with path set to the directory's path, info, set to an
+// [fs.FileInfo] describing the directory, and err set to the error from
+// Readdirnames.
+type WalkFunc func(path string, info fs.FileInfo, err error) error
+
+// Clean returns the shortest slash-separated path name equivalent to value by
+// removing repeated separators and resolving . and inner .. elements.
+// It returns "." for an empty result.
+func Clean(value string) string {
+	return path.Clean(value)
+}
+
+// IsLocal reports whether path, using lexical analysis only, has all of these properties:
+//
+//   - is within the subtree rooted at the directory in which path is evaluated
+//   - is not an absolute path
+//   - is not empty
+// If IsLocal(path) returns true, then
+// Join(base, path) will always produce a path contained within base and
+// Clean(path) will always produce an unrooted path with no ".." path elements.
+//
+// IsLocal is a purely lexical operation.
+// In particular, it does not account for the effect of any symbolic links
+// that may exist in the filesystem.
+func IsLocal(value string) bool {
+	if value == "" || IsAbs(value) {
+		return false
+	}
+	cleaned := Clean(value)
+	return cleaned != ".." && !strings.HasPrefix(cleaned, "../")
+}
+
+// Localize validates a slash-separated path for use by the portable filesystem.
+// The input path must be a valid path as reported by [io/fs.ValidPath].
+// The path returned by Localize will always be local, as reported by IsLocal.
+func Localize(value string) (string, error) {
+	if value == "." || IsLocal(value) {
+		return value, nil
+	}
+	return "", errors.New("invalid path")
+}
+
+// ToSlash returns the result of replacing each separator character
+// in path with a slash ('/') character. Multiple separators are
+// replaced by multiple slashes.
+func ToSlash(value string) string {
+	return strings.ReplaceAll(value, "\\", "/")
+}
+
+// FromSlash returns value unchanged because the portable separator is '/'.
+func FromSlash(value string) string {
+	return value
+}
+
+// SplitList splits a list of paths joined by [ListSeparator].
+// Unlike strings.Split, SplitList returns an empty slice when passed an empty
+// string.
+func SplitList(value string) []string {
+	if value == "" {
+		return []string{}
+	}
+	return strings.Split(value, string(ListSeparator))
+}
+
+// Split splits path immediately following the final [Separator],
+// separating it into a directory and file name component.
+// If there is no Separator in path, Split returns an empty dir
+// and file set to path.
+// The returned values have the property that path = dir+file.
+func Split(value string) (string, string) {
+	return path.Split(value)
+}
+
+// Join joins any number of path elements into a single path,
+// separating them with [Separator]. Empty elements
+// are ignored. The result is Cleaned. However, if the argument
+// list is empty or all its elements are empty, Join returns
+// an empty string.
+func Join(elem ...string) string {
+	return path.Join(elem...)
+}
+
+// Ext returns the file name extension used by path.
+// The extension is the suffix beginning at the final dot
+// in the final element of path; it is empty if there is
+// no dot.
+func Ext(value string) string {
+	return path.Ext(value)
+}
+
+// EvalSymlinks returns the path name after the evaluation of any symbolic
+// links.
+// If path is relative the result will be relative to the current directory,
+// unless one of the components is an absolute symbolic link.
+// EvalSymlinks calls [Clean] on the result.
+func EvalSymlinks(value string) (string, error) {
+	value = Clean(value)
+	parts := parts(value)
+	resolved := ""
+	for index := 0; index < len(parts); index++ {
+		resolved = Join(resolved, parts[index])
+		info, err := os.Lstat(resolved)
+		if err != nil {
+			return "", err
+		}
+		if info.Mode() & fs.ModeSymlink == 0 {
+			continue
+		}
+		target, err := os.Readlink(resolved)
+		if err != nil {
+			return "", err
+		}
+		if IsAbs(target) {
+			resolved = target
+		} else {
+			resolved = Join(Dir(resolved), target)
+		}
+	}
+	if IsAbs(value) {
+		return "/" + strings.TrimPrefix(Clean(resolved), "/"), nil
+	}
+	return Clean(resolved), nil
+}
+
+// Abs returns an absolute representation of path.
+// If the path is not absolute it will be joined with the current
+// working directory to turn it into an absolute path. The absolute
+// path name for a given file is not guaranteed to be unique.
+// Abs calls [Clean] on the result.
+func Abs(value string) (string, error) {
+	if IsAbs(value) {
+		return Clean(value), nil
+	}
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	return Clean(Join(workingDirectory, value)), nil
+}
+
+// Rel returns a relative path that is lexically equivalent to targPath when
+// joined to basePath with an intervening separator. That is,
+// [Join](basePath, Rel(basePath, targPath)) is equivalent to targPath itself.
+//
+// The returned path will always be relative to basePath, even if basePath and
+// targPath share no elements. Rel calls [Clean] on the result.
+//
+// An error is returned if targPath can't be made relative to basePath
+// or if knowing the current working directory would be necessary to compute it.
+func Rel(basepath string, targetpath string) (string, error) {
+	if IsAbs(basepath) != IsAbs(targetpath) {
+		return "", errors.New("Rel: can't make target relative to base")
+	}
+	base := parts(Clean(basepath))
+	target := parts(Clean(targetpath))
+	common := 0
+	for common < len(base) && common < len(target) && base[common] == target[common] {
+		common++
+	}
+	out := []string{}
+	for i := common; i < len(base); i++ {
+		out = append(out, "..")
+	}
+	out = append(out, target[common:]...)
+	if len(out) == 0 {
+		return ".", nil
+	}
+	return strings.Join(out, "/"), nil
+}
+
+// Base returns the last element of path.
+// Trailing path separators are removed before extracting the last element.
+// If the path is empty, Base returns ".".
+// If the path consists entirely of separators, Base returns a single separator.
+func Base(value string) string {
+	return path.Base(value)
+}
+
+// Dir returns all but the last element of path, typically the path's directory.
+// After dropping the final element, Dir calls [Clean] on the path and trailing
+// slashes are removed.
+// If the path is empty, Dir returns ".".
+// If the path consists entirely of separators, Dir returns a single separator.
+// The returned path does not end in a separator unless it is the root directory.
+func Dir(value string) string {
+	return path.Dir(value)
+}
+
+// VolumeName returns an empty string because portable paths do not have volume names.
+func VolumeName(string) string {
+	return ""
+}
+
+// IsAbs reports whether the path is absolute.
+func IsAbs(value string) bool {
+	return path.IsAbs(value)
+}
+
+// Match reports whether name matches the shell file name pattern.
+// The pattern syntax is:
+//
+// 	pattern:
+// 		{ term }
+// 	term:
+// 		'*'         matches any sequence of non-Separator characters
+// 		'?'         matches any single non-Separator character
+// 		'[' [ '^' ] { character-range } ']'
+// 		            character class (must be non-empty)
+// 		c           matches character c (c != '*', '?', '\\', '[')
+// 		'\\' c      matches character c
+//
+// 	character-range:
+// 		c           matches character c (c != '\\', '-', ']')
+// 		'\\' c      matches character c
+// 		lo '-' hi   matches character c for lo <= c <= hi
+//
+// Path segments in the pattern must be separated by [Separator].
+//
+// Match requires pattern to match all of name, not just a substring.
+// The only possible returned error is [ErrBadPattern], when pattern
+// is malformed.
+func Match(pattern string, name string) (bool, error) {
+	return path.Match(pattern, name)
+}
+
+// HasPrefix exists for historical compatibility and should not be used.
+//
+// Deprecated: HasPrefix does not respect path boundaries and
+// does not ignore case when required.
+func HasPrefix(pathValue string, prefix string) bool {
+	return strings.HasPrefix(pathValue, prefix)
+}
+
+// Glob returns the names of all files matching pattern or nil
+// if there is no matching file. The syntax of patterns is the same
+// as in [Match]. The pattern may describe hierarchical names such as
+// /usr/*/bin/ed (assuming the [Separator] is '/').
+//
+// Glob ignores file system errors such as I/O errors reading directories.
+// The only possible returned error is [ErrBadPattern], when pattern
+// is malformed.
+func Glob(pattern string) ([]string, error) {
+	if _, err := Match(pattern, ""); err != nil {
+		return nil, err
+	}
+	return glob(pattern, 0)
+}
+
+// Walk walks the file tree rooted at root, calling fn for each file or
+// directory in the tree, including root.
+//
+// All errors that arise visiting files and directories are filtered by fn:
+// see the [WalkFunc] documentation for details.
+//
+// The files are walked in lexical order, which makes the output deterministic
+// but requires Walk to read an entire directory into memory before proceeding
+// to walk that directory.
+//
+// Walk does not follow symbolic links.
+//
+// Walk is less efficient than [WalkDir], which avoids calling os.Lstat on
+// every visited file or directory.
+func Walk(root string, walkFn WalkFunc) error {
+	info, err := os.Lstat(root)
+	if err != nil {
+		return walkFn(root, nil, err)
+	}
+	return walk(root, info, walkFn)
+}
+
+// WalkDir walks the file tree rooted at root, calling fn for each file or
+// directory in the tree, including root.
+//
+// All errors that arise visiting files and directories are filtered by fn:
+// see the [fs.WalkDirFunc] documentation for details.
+//
+// The files are walked in lexical order, which makes the output deterministic
+// but requires WalkDir to read an entire directory into memory before proceeding
+// to walk that directory.
+//
+// WalkDir does not follow symbolic links.
+//
+// WalkDir calls fn with slash-separated portable paths.
+func WalkDir(root string, walkFn fs.WalkDirFunc) error {
+	info, err := os.Lstat(root)
+	if err != nil {
+		return walkFn(root, nil, err)
+	}
+	return walkDir(root, fs.FileInfoToDirEntry(info), walkFn)
+}
+
+func glob(pattern string, depth int) ([]string, error) {
+	if depth > 10000 {
+		return nil, ErrBadPattern
+	}
+	if !hasMeta(pattern) {
+		if _, err := os.Lstat(pattern); err != nil {
+			return nil, nil
+		}
+		return []string{pattern}, nil
+	}
+	dir, file := Split(pattern)
+	if dir == "" {
+		dir = "."
+	} else {
+		dir = strings.TrimSuffix(dir, string(Separator))
+	}
+	if !hasMeta(dir) {
+		return globDir(dir, file)
+	}
+	if dir == pattern {
+		return nil, ErrBadPattern
+	}
+	directories, err := glob(dir, depth + 1)
+	if err != nil {
+		return nil, err
+	}
+	matches := []string{}
+	for _, directory := range directories {
+		found, readErr := globDir(directory, file)
+		if readErr != nil {
+			return nil, readErr
+		}
+		matches = append(matches, found...)
+	}
+	return matches, nil
+}
+
+func globDir(dir string, pattern string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return []string{}, nil
+	}
+	matches := []string{}
+	for _, entry := range entries {
+		matched, matchErr := Match(pattern, entry.Name())
+		if matchErr != nil {
+			return nil, matchErr
+		}
+		if matched {
+			matches = append(matches, Join(dir, entry.Name()))
+		}
+	}
+	return matches, nil
+}
+
+func hasMeta(value string) bool {
+	return strings.ContainsAny(value, "*?[\\")
+}
+
+func walk(name string, info fs.FileInfo, callback WalkFunc) error {
+	if err := callback(name, info, nil); err != nil {
+		if info.IsDir() && errors.Is(err, SkipDir) {
+			return nil
+		}
+		return err
+	}
+	if !info.IsDir() {
+		return nil
+	}
+	entries, err := os.ReadDir(name)
+	if err != nil {
+		return callback(name, info, err)
+	}
+	for _, entry := range entries {
+		child := Join(name, entry.Name())
+		childInfo, infoErr := entry.Info()
+		if infoErr != nil {
+			if err := callback(child, nil, infoErr); err != nil && !errors.Is(err, SkipDir) {
+				return err
+			}
+			continue
+		}
+		if err := walk(child, childInfo, callback); err != nil {
+			if errors.Is(err, SkipDir) {
+				break
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func walkDir(name string, entry fs.DirEntry, callback fs.WalkDirFunc) error {
+	if err := callback(name, entry, nil); err != nil {
+		if entry.IsDir() && errors.Is(err, SkipDir) {
+			return nil
+		}
+		return err
+	}
+	if !entry.IsDir() {
+		return nil
+	}
+	entries, err := os.ReadDir(name)
+	if err != nil {
+		return callback(name, entry, err)
+	}
+	for _, child := range entries {
+		if err := walkDir(Join(name, child.Name()), child, callback); err != nil {
+			if errors.Is(err, SkipDir) {
+				break
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func parts(value string) []string {
+	value = strings.Trim(value, "/")
+	if value == "" || value == "." {
+		return []string{}
+	}
+	return strings.Split(value, "/")
+}

@@ -1,0 +1,38 @@
+package binary_test
+
+import (
+	"bytes"
+	"encoding/binary"
+	"testing"
+)
+
+type record struct {
+	A uint16
+	B int32
+	C float64
+}
+
+func TestOrdersVarintsAndStructuredData(t *testing.T) {
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, uint64(0x0102030405060708))
+	if buf[0] != 8 || binary.LittleEndian.Uint64(buf) != uint64(0x0102030405060708) {
+		t.Fatal("LittleEndian did not round trip")
+	}
+	encoded := binary.AppendVarint(nil, -123456)
+	if decoded, count := binary.Varint(encoded); decoded != -123456 || count != len(encoded) {
+		t.Fatal("Varint did not round trip")
+	}
+	input := record{A: 0x1234, B: -7, C: 1.5}
+	data, err := binary.Append(nil, binary.BigEndian, input)
+	var output record
+	if err != nil || binary.Size(input) != 14 {
+		t.Fatal("structured encoding returned wrong size")
+	}
+	if _, err = binary.Decode(data, binary.BigEndian, &output); err != nil || output != input {
+		t.Fatal("structured encoding did not round trip")
+	}
+	stream := bytes.NewBuffer(nil)
+	if err = binary.Write(stream, binary.LittleEndian, input); err != nil || binary.Read(stream, binary.LittleEndian, &output) != nil || output != input {
+		t.Fatal("stream encoding did not round trip")
+	}
+}

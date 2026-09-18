@@ -1,0 +1,248 @@
+// Package embed provides access to files embedded by //go:embed directives.
+package embed
+
+import (
+	"errors"
+	"io"
+	"io/fs"
+	"path"
+	"sort"
+	"time"
+)
+
+// FS is a read-only collection of files initialized by the compiler.
+// Its zero value is an empty file system.
+type FS struct {
+	files map[string][]byte
+}
+
+type fileInfo struct {
+	name string
+	size int64
+	dir bool
+}
+
+func (info fileInfo) Name() string {
+	return info.name
+}
+
+func (info fileInfo) Size() int64 {
+	return info.size
+}
+
+func (info fileInfo) Mode() fs.FileMode {
+	if info.dir {
+		return fs.ModeDir | 0555
+	}
+	return 0444
+}
+
+func (info fileInfo) ModTime() time.Time {
+	return time.Time{}
+}
+
+func (info fileInfo) IsDir() bool {
+	return info.dir
+}
+
+func (info fileInfo) Sys() any {
+	return nil
+}
+
+type dirEntry struct {
+	info fileInfo
+}
+
+func (entry dirEntry) Name() string {
+	return entry.info.Name()
+}
+
+func (entry dirEntry) IsDir() bool {
+	return entry.info.IsDir()
+}
+
+func (entry dirEntry) Type() fs.FileMode {
+	return entry.info.Mode().Type()
+}
+
+func (entry dirEntry) Info() (fs.FileInfo, error) {
+	return entry.info, nil
+}
+
+type openFile struct {
+	info fileInfo
+	path string
+	data []byte
+	offset int64
+}
+
+func (file *openFile) Close() error {
+	return nil
+}
+
+func (file *openFile) Stat() (fs.FileInfo, error) {
+	return file.info, nil
+}
+
+func (file *openFile) Read(buffer []byte) (int, error) {
+	if file.offset >= int64(len(file.data)) {
+		return 0, io.EOF
+	}
+	if file.offset < 0 {
+		return 0, &fs.PathError{Op: "read", Path: file.path, Err: fs.ErrInvalid}
+	}
+	count := copy(buffer, file.data[int(file.offset):])
+	file.offset += int64(count)
+	return count, nil
+}
+
+func (file *openFile) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+		case io.SeekStart:
+		case io.SeekCurrent:
+			offset += file.offset
+		case io.SeekEnd:
+			offset += int64(len(file.data))
+		default:
+			return 0, &fs.PathError{Op: "seek", Path: file.path, Err: fs.ErrInvalid}
+	}
+	if offset < 0 || offset > int64(len(file.data)) {
+		return 0, &fs.PathError{Op: "seek", Path: file.path, Err: fs.ErrInvalid}
+	}
+	file.offset = offset
+	return offset, nil
+}
+
+func (file *openFile) ReadAt(buffer []byte, offset int64) (int, error) {
+	if offset < 0 || offset > int64(len(file.data)) {
+		return 0, &fs.PathError{Op: "read", Path: file.path, Err: fs.ErrInvalid}
+	}
+	count := copy(buffer, file.data[int(offset):])
+	if count < len(buffer) {
+		return count, io.EOF
+	}
+	return count, nil
+}
+
+type openDir struct {
+	info fileInfo
+	path string
+	entries []fs.DirEntry
+	offset int
+}
+
+func (dir *openDir) Close() error {
+	return nil
+}
+
+func (dir *openDir) Stat() (fs.FileInfo, error) {
+	return dir.info, nil
+}
+
+func (dir *openDir) Read([]byte) (int, error) {
+	return 0, &fs.PathError{Op: "read", Path: dir.path, Err: errors.New("is a directory")}
+}
+
+func (dir *openDir) ReadDir(count int) ([]fs.DirEntry, error) {
+	remaining := len(dir.entries) - dir.offset
+	if remaining == 0 {
+		if count <= 0 {
+			return nil, nil
+		}
+		return nil, io.EOF
+	}
+	if count > 0 && remaining > count {
+		remaining = count
+	}
+	entries := append([]fs.DirEntry{}, dir.entries[dir.offset:dir.offset + remaining]...)
+	dir.offset += remaining
+	return entries, nil
+}
+
+func (filesystem FS) lookup(name string) (fileInfo, bool) {
+	if name == "." {
+		return fileInfo{name: ".", dir: true}, true
+	}
+	if data, ok := filesystem.files[name]; ok {
+		return fileInfo{name: path.Base(name), size: int64(len(data))}, true
+	}
+	prefix := name + "/"
+	for candidate := range filesystem.files {
+		if len(candidate) > len(prefix) && candidate[:len(prefix)] == prefix {
+			return fileInfo{name: path.Base(name), dir: true}, true
+		}
+	}
+	return fileInfo{}, false
+}
+
+// Open opens the named file for reading and returns it as an [fs.File].
+//
+// The returned file implements [io.Seeker] and [io.ReaderAt] when the file is not a directory.
+func (filesystem FS) Open(name string) (fs.File, error) {
+	info, ok := filesystem.lookup(name)
+	if !ok {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
+	}
+	if info.dir {
+		entries, err := filesystem.ReadDir(name)
+		if err != nil {
+			return nil, err
+		}
+		return &openDir{info: info, path: name, entries: entries}, nil
+	}
+	return &openFile{info: info, path: name, data: filesystem.files[name]}, nil
+}
+
+// ReadFile reads and returns the content of the named file.
+func (filesystem FS) ReadFile(name string) ([]byte, error) {
+	file, err := filesystem.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	opened, ok := file.(*openFile)
+	if !ok {
+		return nil, &fs.PathError{Op: "read", Path: name, Err: errors.New("is a directory")}
+	}
+	return append([]byte{}, opened.data...), nil
+}
+
+// ReadDir reads and returns the entire named directory.
+func (filesystem FS) ReadDir(name string) ([]fs.DirEntry, error) {
+	info, ok := filesystem.lookup(name)
+	if !ok {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
+	}
+	if !info.dir {
+		return nil, &fs.PathError{Op: "read", Path: name, Err: errors.New("not a directory")}
+	}
+	prefix := ""
+	if name != "." {
+		prefix = name + "/"
+	}
+	seen := map[string]bool{}
+	entries := []fs.DirEntry{}
+	for candidate := range filesystem.files {
+		if len(candidate) <= len(prefix) || candidate[:len(prefix)] != prefix {
+			continue
+		}
+		remainder := candidate[len(prefix):]
+		child := remainder
+		for index := 0; index < len(remainder); index++ {
+			if remainder[index] == byte('/') {
+				child = remainder[:index]
+				break
+			}
+		}
+		if seen[child] {
+			continue
+		}
+		seen[child] = true
+		childPath := prefix + child
+		childInfo, _ := filesystem.lookup(childPath)
+		entries = append(entries, dirEntry{info: childInfo})
+	}
+	sort.Slice(entries, func(i int, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
+	return entries, nil
+}

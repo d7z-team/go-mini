@@ -1,0 +1,193 @@
+package reflect_test
+
+import (
+	"reflect"
+	"testing"
+)
+
+type reflectIntAlias = int
+
+func TestReflectTypeAndValueSnapshot(t *testing.T) {
+	typ := reflect.TypeOf(sample{A: 7, B: "go"})
+	if typ.Kind() != reflect.Struct || typ.NumField() != 2 {
+		t.Fatalf("TypeOf returned wrong struct metadata")
+	}
+	field, ok := typ.FieldByName("B")
+	if !ok || field.Name != "B" || field.Type.Kind() != reflect.String || field.Type.String() != "string" {
+		t.Fatalf("FieldByName returned wrong field metadata")
+	}
+	value := reflect.ValueOf(sample{A: 7, B: "go"})
+	if value.NumField() != 2 || value.FieldByIndex([]int{0}).Int() != 7 {
+		t.Fatalf("ValueOf returned wrong field snapshot")
+	}
+	anonType := reflect.TypeOf(struct {
+		ID int `json:"id,omitempty"`
+		Label string `db:"label" json:"label"`
+	}{ID: 3, Label: "tag"})
+	idTag, idTagOK := anonType.Field(0).Tag.Lookup("json")
+	labelField, labelOK := anonType.FieldByName("Label")
+	if !idTagOK || idTag != "id,omitempty" || !labelOK || labelField.Tag.Get("db") != "label" || labelField.Tag.Get("json") != "label" {
+		t.Fatalf("anonymous struct tags were not preserved in reflect metadata")
+	}
+	partial := reflect.ValueOf(struct {
+		ID int
+		Name string
+		Flag bool
+	}{ID: 9})
+	if partial.NumField() != 3 || partial.Field(0).Int() != 9 || partial.Field(1).String() != "" || partial.FieldByIndex([]int{2}).Bool() {
+		t.Fatalf("ValueOf should expose zero snapshots for omitted struct literal fields")
+	}
+}
+
+func TestReflectTypeFor(t *testing.T) {
+	if reflect.TypeFor[int]() != reflect.TypeOf(0) {
+		t.Fatalf("TypeFor[int] should return the int type")
+	}
+	if reflect.TypeFor[map[string][]int]().String() != reflect.TypeOf(map[string][]int{}).String() {
+		t.Fatalf("TypeFor should preserve composite type arguments")
+	}
+}
+
+func TestReflectTypeComparison(t *testing.T) {
+	if reflect.TypeOf(0) != reflect.TypeOf(1) || reflect.TypeOf(0) == reflect.TypeOf("") {
+		t.Fatalf("Type equality should compare type identity")
+	}
+	var invalid reflect.Type
+	if invalid != invalid || reflect.TypeOf(0) == invalid {
+		t.Fatalf("zero Type comparison should preserve invalid identity")
+	}
+	types := map[reflect.Type]string{reflect.TypeOf(0): "int", reflect.TypeOf(""): "string"}
+	if types[reflect.TypeOf(1)] != "int" || types[reflect.TypeOf("value")] != "string" {
+		t.Fatalf("Type values should be stable map keys")
+	}
+	if reflect.TypeOf(nil) != nil {
+		t.Fatalf("TypeOf(nil) should return nil")
+	}
+	if reflect.TypeFor[reflectIntAlias]() != reflect.TypeOf(0) {
+		t.Fatalf("an alias should resolve to its target type identity")
+	}
+	if reflect.TypeOf(0).Name() != "int" || reflect.TypeOf(0).String() != "int" ||
+	reflect.TypeOf([]int{}).String() != "[]int" || reflect.TypeOf(map[string]int{}).String() != "map[string]int" {
+		t.Fatalf("Type source display should use Go spelling")
+	}
+	testingType := reflect.TypeOf(testing.T{})
+	if testingType.PkgPath() != "testing" || testingType.String() != "testing.T" {
+		t.Fatalf("cross-package type identity was not preserved")
+	}
+}
+
+func TestReflectTypeLayoutAndChannelDirection(t *testing.T) {
+	byteType := reflect.TypeOf(int8(0))
+	wordType := reflect.TypeOf(1)
+	complexType := reflect.TypeOf(complex64(0))
+	arrayType := reflect.TypeOf([3]int16{})
+	structType := reflect.TypeOf(struct {
+		Small int8
+		Word int64
+	}{})
+	sliceType := reflect.TypeOf([]int{})
+	mapType := reflect.TypeOf(map[string]int{})
+	var pointer *int
+	pointerType := reflect.TypeOf(pointer)
+	if byteType.Bits() != 8 || byteType.Size() != 1 || byteType.Align() != 1 || byteType.FieldAlign() != 1 {
+		t.Fatalf("Int8 layout metadata is incorrect")
+	}
+	if wordType.Bits() != 64 || wordType.Size() != 8 || wordType.Align() != 8 {
+		t.Fatalf("Int layout metadata is incorrect")
+	}
+	if complexType.Bits() != 64 || complexType.Size() != 8 || complexType.Align() != 4 {
+		t.Fatalf("Complex64 layout metadata is incorrect")
+	}
+	if arrayType.Size() != 6 || arrayType.Align() != 2 || arrayType.FieldAlign() != 2 {
+		t.Fatalf("array layout metadata is incorrect")
+	}
+	if structType.Size() != 16 || structType.Align() != 8 || structType.FieldAlign() != 8 {
+		t.Fatalf("struct layout metadata is incorrect")
+	}
+	if sliceType.Size() != 24 || sliceType.Align() != 8 || mapType.Size() != 8 || pointerType.Size() != 8 {
+		t.Fatalf("reference layout metadata is incorrect")
+	}
+	var bidirectional chan int
+	var receiving <-chan int
+	var sending chan<- int
+	if reflect.TypeOf(bidirectional).ChanDir() != reflect.BothDir ||
+	reflect.TypeOf(receiving).ChanDir() != reflect.RecvDir ||
+	reflect.TypeOf(sending).ChanDir() != reflect.SendDir {
+		t.Fatalf("channel direction metadata is incorrect")
+	}
+	if reflect.TypeOf(PublicSample{}).PkgPath() == "" || reflect.TypeOf(score(0)).PkgPath() == "" ||
+	reflect.TypeOf(0).PkgPath() != "" || reflect.TypeOf(struct {
+		Value int
+	}{}).PkgPath() != "" {
+		t.Fatalf("PkgPath should identify every package-defined named type only")
+	}
+	expectPanic(t, func() {
+		_ = reflect.TypeOf("text").Bits()
+	})
+	expectPanic(t, func() {
+		_ = reflect.TypeOf(1).ChanDir()
+	})
+}
+
+func TestReflectTypeIteratorsAndFieldMatcher(t *testing.T) {
+	typ := reflect.TypeOf(sample{})
+	names := ""
+	for field := range typ.Fields() {
+		names += field.Name
+	}
+	if names != "AB" {
+		t.Fatalf("Fields returned %q", names)
+	}
+	field, ok := typ.FieldByNameFunc(func(name string) bool {
+		return name == "B"
+	})
+	if !ok || field.Name != "B" || field.Index[0] != 1 {
+		t.Fatalf("FieldByNameFunc returned wrong field")
+	}
+
+	functionType := reflect.TypeOf(func(int, string) (bool, error) {
+		return true, nil
+	})
+	inputs := ""
+	for input := range functionType.Ins() {
+		inputs += input.String() + ";"
+	}
+	outputs := ""
+	for output := range functionType.Outs() {
+		outputs += output.String() + ";"
+	}
+	if inputs != "int;string;" || outputs != "bool;interface { Error() string };" {
+		t.Fatalf("function iterators returned %q and %q", inputs, outputs)
+	}
+
+	methodCount := 0
+	for range reflect.TypeOf(methodCounter{}).Methods() {
+		methodCount++
+	}
+	if methodCount != reflect.TypeOf(methodCounter{}).NumMethod() {
+		t.Fatalf("Methods returned %d methods", methodCount)
+	}
+}
+
+func TestReflectTypeOverflow(t *testing.T) {
+	if !reflect.TypeOf(int8(0)).OverflowInt(128) || reflect.TypeOf(int16(0)).OverflowInt(128) {
+		t.Fatalf("OverflowInt returned wrong result")
+	}
+	if !reflect.TypeOf(uint8(0)).OverflowUint(256) || reflect.TypeOf(uint16(0)).OverflowUint(256) {
+		t.Fatalf("OverflowUint returned wrong result")
+	}
+	if !reflect.TypeOf(float32(0)).OverflowFloat(4e38) || reflect.TypeOf(float64(0)).OverflowFloat(4e38) {
+		t.Fatalf("OverflowFloat returned wrong result")
+	}
+	zero := 0.0
+	positiveInfinity := 1.0 / zero
+	if reflect.TypeOf(float32(0)).OverflowFloat(positiveInfinity) {
+		t.Fatalf("OverflowFloat should accept infinity")
+	}
+	if !reflect.TypeOf(complex64(0)).OverflowComplex(complex(4e38, 0)) || reflect.TypeOf(complex128(0)).OverflowComplex(complex(4e38, 0)) {
+		t.Fatalf("OverflowComplex returned wrong result")
+	}
+	expectPanic(t, func() {
+		_ = reflect.TypeOf("").OverflowInt(1)
+	})
+}

@@ -1,0 +1,15 @@
+syntax = "mrpc/v2";
+namespace std.os.v1;
+option mgo_package = "os";
+service filesystem {
+	Open(name string = 1, flag int64 = 2, perm uint32 = 3) returns(file fileHandle = 1, fault operationFault = 2);
+	Stat(name string = 1, follow bool = 2) returns(info fileMetadata = 1, fault operationFault = 2);
+	ReadDir(name string = 1) returns(entries[] fileMetadata = 1, fault operationFault = 2);
+	Mkdir(name string = 1, perm uint32 = 2) returns(fault operationFault = 1);
+	Remove(name string = 1) returns(fault operationFault = 1);
+	Rename(oldName string = 1, newName string = 2) returns(fault operationFault = 1);
+	Readlink(name string = 1) returns(target string = 1, fault operationFault = 2);
+	Chtimes(name string = 1, atimeSeconds int64 = 2, atimeNanoseconds int64 = 3, mtimeSeconds int64 = 4, mtimeNanoseconds int64 = 5) returns(fault operationFault = 1);
+	Getwd() returns(path string = 1, fault operationFault = 2);
+	UserCacheDir() returns(path string = 1, fault operationFault = 2);
+}

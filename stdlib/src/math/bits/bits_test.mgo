@@ -1,0 +1,27 @@
+package bits_test
+
+import (
+	"math/bits"
+	"testing"
+)
+
+func TestCountsRotatesAndArithmetic(t *testing.T) {
+	if bits.OnesCount64(0xf0f0) != 8 || bits.Len32(0x80000000) != 32 || bits.LeadingZeros8(1) != 7 || bits.TrailingZeros16(0x100) != 8 {
+		t.Fatal("bit counts returned wrong values")
+	}
+	if bits.RotateLeft8(0x81, 1) != 0x03 || bits.Reverse8(0x12) != 0x48 || bits.ReverseBytes32(0x01020304) != 0x04030201 {
+		t.Fatal("bit permutation returned wrong values")
+	}
+	sum, carry := bits.Add64(^uint64(0), 1, 0)
+	if sum != 0 || carry != 1 {
+		t.Fatal("Add64 returned wrong carry")
+	}
+	hi, lo := bits.Mul64(1 << 63, 2)
+	if hi != 1 || lo != 0 {
+		t.Fatal("Mul64 returned wrong product")
+	}
+	quo, rem := bits.Div64(1, 0, 3)
+	if quo != 6148914691236517205 || rem != 1 {
+		t.Fatal("Div64 returned wrong quotient")
+	}
+}

@@ -1,0 +1,5 @@
+package main
+type Counter struct { N int }
+func (c Counter) Read() int { return c.N }
+type Reader interface { Read() int }
+func Main() int { var r Reader = Counter{N: 42}; return r.Read() }

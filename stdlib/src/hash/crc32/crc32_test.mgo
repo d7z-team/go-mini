@@ -1,0 +1,66 @@
+package crc32_test
+
+import (
+	"bytes"
+	"encoding"
+	"hash"
+	"hash/crc32"
+	"testing"
+)
+
+func TestIEEEVectorAndIncrementalHash(t *testing.T) {
+	if crc32.ChecksumIEEE([]byte("123456789")) != 0xcbf43926 {
+		t.Fatal("IEEE checksum returned wrong value")
+	}
+	hash := crc32.NewIEEE()
+	hash.Write([]byte("1234"))
+	hash.Write([]byte("56789"))
+	if hash.Sum32() != 0xcbf43926 || len(hash.Sum(nil)) != 4 {
+		t.Fatal("incremental checksum returned wrong value")
+	}
+}
+
+func TestStateRoundTripAndClone(t *testing.T) {
+	original := crc32.NewIEEE()
+	original.Write([]byte("prefix"))
+	encoded, err := original.(encoding.BinaryMarshaler).MarshalBinary()
+	if err != nil || len(encoded) != 12 || string(encoded[:4]) != "crc\x01" {
+		t.Fatalf("MarshalBinary returned invalid CRC-32 state: %v, %v", encoded, err)
+	}
+	appended, err := original.(encoding.BinaryAppender).AppendBinary([]byte{1, 2})
+	if err != nil || len(appended) != 14 || appended[0] != 1 || appended[1] != 2 {
+		t.Fatalf("AppendBinary did not preserve the prefix: %v, %v", appended, err)
+	}
+
+	restored := crc32.NewIEEE()
+	restoredState := restored.(encoding.BinaryUnmarshaler)
+	before := restored.Sum(nil)
+	if err := restoredState.UnmarshalBinary([]byte("invalid")); err == nil {
+		t.Fatal("UnmarshalBinary accepted malformed state")
+	}
+	if !bytes.Equal(before, restored.Sum(nil)) {
+		t.Fatal("failed UnmarshalBinary changed the receiver")
+	}
+	if err := restoredState.UnmarshalBinary(encoded); err != nil {
+		t.Fatalf("UnmarshalBinary failed: %v", err)
+	}
+	original.Write([]byte("-suffix"))
+	restored.Write([]byte("-suffix"))
+	if !bytes.Equal(original.Sum(nil), restored.Sum(nil)) {
+		t.Fatal("restored state did not continue the original hash")
+	}
+
+	castagnoli := crc32.New(crc32.MakeTable(crc32.Castagnoli)).(encoding.BinaryUnmarshaler)
+	if err := castagnoli.UnmarshalBinary(encoded); err == nil {
+		t.Fatal("UnmarshalBinary accepted state for a different table")
+	}
+	cloned, err := original.(hash.Cloner).Clone()
+	if err != nil {
+		t.Fatalf("Clone failed: %v", err)
+	}
+	cloned.Write([]byte("-clone"))
+	original.Write([]byte("-original"))
+	if bytes.Equal(cloned.Sum(nil), original.Sum(nil)) {
+		t.Fatal("Clone did not produce independent state")
+	}
+}

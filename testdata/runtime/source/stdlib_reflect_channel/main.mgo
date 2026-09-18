@@ -1,0 +1,3 @@
+package main
+import "reflect"
+func Main() int { typ := reflect.ChanOf(reflect.BothDir, reflect.TypeOf(int(0))); c := reflect.MakeChan(typ, 0); go func() { c.Send(reflect.ValueOf(42)); c.Close() }(); value, ok := c.Recv(); if !ok { return -1 }; zero, ok := c.Recv(); if ok || zero.Int() != 0 { return -2 }; buffered := reflect.MakeChan(typ, 1); if !buffered.TrySend(value) || buffered.TrySend(value) { return -3 }; out, ok := buffered.TryRecv(); if !ok { return -4 }; empty, ok := buffered.TryRecv(); if ok || empty.IsValid() { return -5 }; return int(out.Int()) }

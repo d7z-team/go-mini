@@ -1,0 +1,64 @@
+package reflect
+
+// VisibleFields returns all fields visible from typ, following the same field
+// promotion rules as FieldByName. Fields are returned in index preorder, with
+// promoted fields immediately following their anonymous parent field.
+func VisibleFields(typ Type) []StructField {
+	if typ == nil {
+		panic("reflect: VisibleFields(nil)")
+	}
+	if typ.Kind() != Struct {
+		panic("reflect.VisibleFields of non-struct type")
+	}
+	fields := []StructField{}
+	byName := map[string]int{}
+	visiting := map[Type]bool{}
+	index := []int{}
+	var visit func(Type)
+	visit = func(current Type) {
+		if visiting[current] {
+			return
+		}
+		visiting[current] = true
+		for i := 0; i < current.NumField(); i++ {
+			field := current.Field(i)
+			index = append(index, i)
+			add := true
+			oldIndex, exists := byName[field.Name]
+			if exists {
+				old := fields[oldIndex]
+				if len(index) == len(old.Index) {
+					old.Name = ""
+					fields[oldIndex] = old
+					add = false
+				} else if len(index) < len(old.Index) {
+					old.Name = ""
+					fields[oldIndex] = old
+				} else {
+					add = false
+				}
+			}
+			if add {
+				field.Index = copyIndex(index)
+				byName[field.Name] = len(fields)
+				fields = append(fields, field)
+			}
+			if field.Anonymous {
+				embedded, ok := embeddedStructFieldType(field)
+				if ok {
+					visit(embedded)
+				}
+			}
+			index = index[:len(index) - 1]
+		}
+		delete(visiting, current)
+	}
+	visit(typ)
+	out := []StructField{}
+	for _, field := range fields {
+		if field.Name != "" {
+			out = append(out, field)
+		}
+	}
+	return out
+}

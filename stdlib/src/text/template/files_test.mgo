@@ -1,0 +1,47 @@
+package template_test
+
+import (
+	"bytes"
+	"os"
+	"testing"
+	"testing/fstest"
+	"text/template"
+)
+
+func TestTemplateParseFS(t *testing.T) {
+	files := fstest.MapFS{
+		"templates/a.tmpl": &fstest.MapFile{Data: []byte(`{{define "a"}}A:{{.}}{{end}}`)},
+		"templates/b.tmpl": &fstest.MapFile{Data: []byte(`{{define "b"}}B:{{.}}{{end}}`)},
+	}
+	tmpl, err := template.ParseFS(files, "templates/*.tmpl")
+	if err != nil {
+		t.Fatalf("ParseFS returned error: %v", err)
+	}
+	for name, want := range map[string]string{"a": "A:x", "b": "B:x"} {
+		var output bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&output, name, "x"); err != nil || output.String() != want {
+			t.Fatalf("ExecuteTemplate(%q) = %q, %v", name, output.String(), err)
+		}
+	}
+}
+
+func TestTemplateParseFilesAndGlob(t *testing.T) {
+	if err := os.MkdirAll("template-test", 0755); err != nil {
+		t.Fatalf("MkdirAll returned error: %v", err)
+	}
+	defer os.RemoveAll("template-test")
+	if err := os.WriteFile("template-test/first.tmpl", []byte(`{{define "first"}}first{{end}}`), 0644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	if err := os.WriteFile("template-test/second.tmpl", []byte(`{{define "second"}}second{{end}}`), 0644); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+	files, err := template.ParseFiles("template-test/first.tmpl", "template-test/second.tmpl")
+	if err != nil || files.Lookup("first") == nil || files.Lookup("second") == nil {
+		t.Fatalf("ParseFiles returned %v", err)
+	}
+	glob, err := template.ParseGlob("template-test/*.tmpl")
+	if err != nil || glob.Lookup("first") == nil || glob.Lookup("second") == nil {
+		t.Fatalf("ParseGlob returned %v", err)
+	}
+}

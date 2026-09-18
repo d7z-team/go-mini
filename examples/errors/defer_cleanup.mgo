@@ -1,0 +1,28 @@
+package main
+
+import "fmt"
+
+func main() {
+	order := ""
+
+	func() {
+		// defer 后进先出执行；这里 recover 会在 cleanup 之后运行。
+		defer func() {
+			order = order + "recover"
+			if r := recover(); r == nil {
+				panic("expected panic")
+			}
+		}()
+		defer func() {
+			order = order + "cleanup-"
+		}()
+
+		panic("boom")
+	}()
+
+	if order != "cleanup-recover" {
+		panic("unexpected defer order: " + order)
+	}
+
+	fmt.Println("defer order:", order)
+}

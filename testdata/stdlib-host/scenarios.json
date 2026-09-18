@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "environment": {
+    "entries": ["A=old", "A=new=tail", "EMPTY=", "ignored"],
+    "lookups": [{"key":"A","value":"new=tail","found":true},{"key":"EMPTY","value":"","found":true},{"key":"missing","value":"","found":false}]
+  },
+  "filesystem": [
+    {"id":"partial-positional-read","operation":"read_at","size":5,"offset":1,"data":"bc","code":"eof"},
+    {"id":"positional-read-keeps-cursor","operation":"seek","offset":0,"whence":1,"position":0,"code":""},
+    {"id":"sequential-read","operation":"read","size":5,"data":"abc","code":""},
+    {"id":"sequential-eof-is-empty","operation":"read","size":1,"data":"","code":""},
+    {"id":"positional-write","operation":"write_at","offset":1,"data":"z","position":1,"code":""},
+    {"id":"position-still-at-end","operation":"seek","offset":0,"whence":1,"position":3,"code":""},
+    {"id":"rewind","operation":"seek","offset":0,"whence":0,"position":0,"code":""},
+    {"id":"changed-content","operation":"read","size":3,"data":"azc","code":""},
+    {"id":"negative-offset","operation":"read_at","size":1,"offset":-1,"nil":true,"code":"invalid"}
+  ],
+  "vm": {"environment":["ANSWER=42"],"result":42,"stdout":"answer=42"}
+}

@@ -1,0 +1,18 @@
+[
+  {"name":"empty-values","hex":"00","values":[]},
+  {"name":"true","hex":"0104626f6f6c0101","values":[{"type":"bool","kind":"bool","value":"true"}]},
+  {"name":"signed-negative","hex":"0105696e7436340201","values":[{"type":"int64","kind":"int","value":"-1"}]},
+  {"name":"unsigned-max","hex":"010675696e74363403ffffffffffffffffff01","values":[{"type":"uint64","kind":"uint","value":"18446744073709551615"}]},
+  {"name":"nil-bytes","hex":"01075b5d75696e743800","values":[{"type":"[]uint8","kind":"nil"}]},
+  {"name":"empty-bytes","hex":"01075b5d75696e74380700","values":[{"type":"[]uint8","kind":"bytes","value":""}]},
+  {"name":"binary-bytes","hex":"01075b5d75696e7438070200ff","values":[{"type":"[]uint8","kind":"bytes","value":"00ff"}]},
+  {"name":"negative-zero","hex":"0107666c6f61743634040000000000000080","values":[{"type":"float64","kind":"float-bits","value":"8000000000000000"}]},
+  {"name":"nan-payload","hex":"0107666c6f6174363404420000000000f87f","values":[{"type":"float64","kind":"float-bits","value":"7ff8000000000042"}]},
+  {"name":"utf8","hex":"0106737472696e670603e4b8ad","values":[{"type":"string","kind":"string","value":"中"}]},
+  {"name":"truncated","hex":"0104626f6f6c01","invalid":true},
+  {"name":"noncanonical-count","hex":"8000","invalid":true},
+  {"name":"invalid-bool","hex":"0104626f6f6c0102","invalid":true},
+  {"name":"trailing-bytes","hex":"0000","invalid":true},
+  {"name":"invalid-utf8","hex":"0106737472696e670601ff","invalid":true},
+  {"name":"huge-count","hex":"ffffffffffffffffff01","invalid":true}
+]

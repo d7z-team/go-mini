@@ -1,0 +1,530 @@
+// Package base64 implements base64 encoding as specified by RFC 4648.
+package base64
+
+import (
+	"io"
+	"strconv"
+)
+
+// StdPadding is the standard base64 padding character.
+const StdPadding rune = '='
+
+// NoPadding disables padding in an Encoding.
+const NoPadding rune = -1
+
+// CorruptInputError reports the byte offset of invalid base64 input.
+type CorruptInputError int
+
+// Error returns a description of the corrupt base64 input.
+func (e CorruptInputError) Error() string {
+	return "illegal base64 data at input byte " + strconv.Itoa(int(e))
+}
+
+// An Encoding is a radix 64 encoding/decoding scheme, defined by a
+// 64-character alphabet. The most common encoding is the "base64"
+// encoding defined in RFC 4648 and used in MIME (RFC 2045) and PEM
+// (RFC 1421).  RFC 4648 also defines an alternate encoding, which is
+// the standard encoding with - and _ substituted for + and /.
+type Encoding struct {
+	encode string
+	decodeMap [256]int
+	padding rune
+	strict bool
+}
+
+// StdEncoding is the standard base64 encoding, as defined in RFC 4648.
+var StdEncoding *Encoding = newEncoding("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", StdPadding)
+
+// URLEncoding is the alternate base64 encoding defined in RFC 4648.
+// It is typically used in URLs and file names.
+var URLEncoding *Encoding = newEncoding("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_", StdPadding)
+
+// RawStdEncoding is the standard raw, unpadded base64 encoding,
+// as defined in RFC 4648 section 3.2.
+// This is the same as [StdEncoding] but omits padding characters.
+var RawStdEncoding *Encoding = newEncoding("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", NoPadding)
+
+// RawURLEncoding is the unpadded alternate base64 encoding defined in RFC 4648.
+// It is typically used in URLs and file names.
+// This is the same as [URLEncoding] but omits padding characters.
+var RawURLEncoding *Encoding = newEncoding("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_", NoPadding)
+
+// NewEncoding returns a new padded Encoding defined by the given alphabet,
+// which must be a 64-byte string that contains unique byte values and
+// does not contain the padding character or CR / LF ('\r', '\n').
+// The alphabet is treated as a sequence of byte values
+// without any special treatment for multi-byte UTF-8.
+// The resulting Encoding uses the default padding character ('='),
+// which may be changed or disabled via [Encoding.WithPadding].
+func NewEncoding(encoder string) *Encoding {
+	if len(encoder) != 64 {
+		panic("encoding alphabet is not 64 bytes long")
+	}
+	for i := 0; i < len(encoder); i++ {
+		if encoder[i] == '\r' || encoder[i] == '\n' || encoder[i] == '=' {
+			panic("encoding alphabet contains an invalid character")
+		}
+		for j := 0; j < i; j++ {
+			if encoder[i] == encoder[j] {
+				panic("encoding alphabet has duplicate characters")
+			}
+		}
+	}
+	return newEncoding(encoder, StdPadding)
+}
+
+func newEncoding(encoder string, padding rune) *Encoding {
+	value := new(Encoding)
+	value.encode = encoder
+	for i := range value.decodeMap {
+		value.decodeMap[i] = -1
+	}
+	for i := 0; i < len(encoder); i++ {
+		value.decodeMap[encoder[i]] = i
+	}
+	value.padding = padding
+	return value
+}
+
+// WithPadding creates a new encoding identical to enc except
+// with a specified padding character, or [NoPadding] to disable padding.
+// The padding character must not be '\r' or '\n',
+// must not be contained in the encoding's alphabet,
+// must not be negative, and must be a rune equal or below '\xff'.
+// Padding characters above '\x7f' are encoded as their exact byte value
+// rather than using the UTF-8 representation of the codepoint.
+func (e *Encoding) WithPadding(padding rune) *Encoding {
+	if e == nil {
+		return nil
+	}
+	if padding != NoPadding {
+		if padding < 0 || padding > 255 || padding == '\r' || padding == '\n' || e.decodeMap[byte(padding)] >= 0 {
+			panic("invalid padding")
+		}
+	}
+	return newEncoding(e.encode, padding)
+}
+
+// Strict creates a new encoding identical to enc except with
+// strict decoding enabled. In this mode, the decoder requires that
+// trailing padding bits are zero, as described in RFC 4648 section 3.5.
+//
+// Note that the input is still malleable, as new line characters
+// (CR and LF) are still ignored.
+func (e *Encoding) Strict() *Encoding {
+	if e == nil {
+		return nil
+	}
+	value := newEncoding(e.encode, e.padding)
+	value.strict = true
+	return value
+}
+
+// EncodedLen returns the length in bytes of the base64 encoding
+// of an input buffer of length n.
+func (e *Encoding) EncodedLen(n int) int {
+	if e == nil || n <= 0 {
+		return 0
+	}
+	if e.padding == NoPadding {
+		return (n * 8 + 5) / 6
+	}
+	return (n + 2) / 3 * 4
+}
+
+// DecodedLen returns the maximum length in bytes of the decoded data
+// corresponding to n bytes of base64-encoded data.
+func (e *Encoding) DecodedLen(n int) int {
+	if e == nil || n <= 0 {
+		return 0
+	}
+	if e.padding == NoPadding {
+		return n * 6 / 8
+	}
+	return n / 4 * 3
+}
+
+// EncodeToString returns the base64 encoding of src.
+func (e *Encoding) EncodeToString(src []byte) string {
+	if e == nil {
+		return ""
+	}
+	dst := make([]byte, e.EncodedLen(len(src)))
+	e.Encode(dst, src)
+	return string(dst)
+}
+
+// DecodeString returns the bytes represented by the base64 string s.
+// If the input is malformed, it returns the partially decoded data and
+// [CorruptInputError]. New line characters (\r and \n) are ignored.
+func (e *Encoding) DecodeString(text string) ([]byte, error) {
+	if e == nil {
+		return nil, nil
+	}
+	src := []byte(text)
+	dst := make([]byte, e.DecodedLen(len(src)))
+	n, err := e.Decode(dst, src)
+	return dst[:n], err
+}
+
+// AppendEncode appends the base64 encoded src to dst
+// and returns the extended buffer.
+func (e *Encoding) AppendEncode(dst, src []byte) []byte {
+	if e == nil {
+		return dst
+	}
+	start := len(dst)
+	dst = append(dst, make([]byte, e.EncodedLen(len(src)))...)
+	e.Encode(dst[start:], src)
+	return dst
+}
+
+// AppendDecode appends the base64 decoded src to dst
+// and returns the extended buffer.
+// If the input is malformed, it returns the partially decoded src and an error.
+// New line characters (\r and \n) are ignored.
+func (e *Encoding) AppendDecode(dst, src []byte) ([]byte, error) {
+	if e == nil {
+		return dst, nil
+	}
+	tmp := make([]byte, e.DecodedLen(len(src)))
+	n, err := e.Decode(tmp, src)
+	dst = append(dst, tmp[:n]...)
+	return dst, err
+}
+
+type encoder struct {
+	enc *Encoding
+	w io.Writer
+	pending [3]byte
+	pendingCount int
+	err error
+	closed bool
+}
+
+// NewEncoder returns a new base64 stream encoder. Data written to the
+// returned writer is encoded using enc and written to w. The caller must
+// close the encoder to flush a final partial block.
+func NewEncoder(enc *Encoding, w io.Writer) io.WriteCloser {
+	return &encoder{enc: enc, w: w}
+}
+
+func (e *encoder) Write(data []byte) (int, error) {
+	if e.closed {
+		return 0, io.ErrClosedPipe
+	}
+	if e.err != nil {
+		return 0, e.err
+	}
+	written := 0
+	if e.pendingCount != 0 {
+		for len(data) != 0 && e.pendingCount < 3 {
+			e.pending[e.pendingCount] = data[0]
+			e.pendingCount++
+			data = data[1:]
+			written++
+		}
+		if e.pendingCount < 3 {
+			return written, nil
+		}
+		encoded := make([]byte, 4)
+		e.enc.Encode(encoded, e.pending[:])
+		if _, e.err = e.w.Write(encoded); e.err != nil {
+			return written, e.err
+		}
+		e.pendingCount = 0
+	}
+	complete := len(data) / 3 * 3
+	if complete != 0 {
+		encoded := make([]byte, e.enc.EncodedLen(complete))
+		e.enc.Encode(encoded, data[:complete])
+		if _, e.err = e.w.Write(encoded); e.err != nil {
+			return written, e.err
+		}
+		written += complete
+		data = data[complete:]
+	}
+	for i := 0; i < len(data); i++ {
+		e.pending[i] = data[i]
+	}
+	e.pendingCount = len(data)
+	written += len(data)
+	return written, nil
+}
+
+func (e *encoder) Close() error {
+	if e.closed {
+		return e.err
+	}
+	e.closed = true
+	if e.err == nil && e.pendingCount != 0 {
+		encoded := make([]byte, e.enc.EncodedLen(e.pendingCount))
+		e.enc.Encode(encoded, e.pending[:e.pendingCount])
+		_, e.err = e.w.Write(encoded)
+		e.pendingCount = 0
+	}
+	return e.err
+}
+
+type decoder struct {
+	enc *Encoding
+	r io.Reader
+	encoded []byte
+	decoded []byte
+	readErr error
+	decodeErr error
+}
+
+// NewDecoder returns a new base64 stream decoder that reads from r.
+func NewDecoder(enc *Encoding, r io.Reader) io.Reader {
+	return &decoder{enc: enc, r: r}
+}
+
+func (d *decoder) Read(dst []byte) (int, error) {
+	for len(d.decoded) == 0 && d.decodeErr == nil {
+		if d.readErr == nil {
+			buffer := make([]byte, 1024)
+			count, err := d.r.Read(buffer)
+			for i := 0; i < count; i++ {
+				if buffer[i] != '\r' && buffer[i] != '\n' {
+					d.encoded = append(d.encoded, buffer[i])
+				}
+			}
+			d.readErr = err
+			if count == 0 && err == nil {
+				return 0, nil
+			}
+		}
+		complete := len(d.encoded) / 4 * 4
+		if d.readErr != nil {
+			complete = len(d.encoded)
+		}
+		if complete != 0 {
+			decoded := make([]byte, d.enc.DecodedLen(complete))
+			count, err := d.enc.Decode(decoded, d.encoded[:complete])
+			d.decoded = decoded[:count]
+			d.encoded = d.encoded[complete:]
+			d.decodeErr = err
+		}
+		if d.readErr != nil && len(d.decoded) == 0 && d.decodeErr == nil {
+			if len(d.encoded) != 0 {
+				d.decodeErr = io.ErrUnexpectedEOF
+			} else {
+				d.decodeErr = d.readErr
+			}
+		}
+	}
+	if len(d.decoded) != 0 {
+		count := copy(dst, d.decoded)
+		d.decoded = d.decoded[count:]
+		return count, nil
+	}
+	err := d.decodeErr
+	d.decodeErr = nil
+	return 0, err
+}
+
+// Encode encodes src using the encoding enc,
+// writing [Encoding.EncodedLen](len(src)) bytes to dst.
+//
+// The encoding pads the output to a multiple of 4 bytes,
+// so Encode is not appropriate for use on individual blocks
+// of a large data stream. Use [NewEncoder] instead.
+func (e *Encoding) Encode(dst, src []byte) {
+	if e == nil {
+		return
+	}
+	need := e.EncodedLen(len(src))
+	if len(dst) < need {
+		panic("encoding/base64: output slice too small")
+	}
+	out := 0
+	for len(src) >= 3 {
+		first := uint(src[0])
+		second := uint(src[1])
+		third := uint(src[2])
+		dst[out] = e.encode[(first >> 2) & 63]
+		dst[out + 1] = e.encode[((first & 3) << 4) | (second >> 4)]
+		dst[out + 2] = e.encode[((second & 15) << 2) | (third >> 6)]
+		dst[out + 3] = e.encode[third & 63]
+		src = src[3:]
+		out += 4
+	}
+	if len(src) == 1 {
+		first := uint(src[0])
+		dst[out] = e.encode[(first >> 2) & 63]
+		dst[out + 1] = e.encode[(first & 3) << 4]
+		if e.padding != NoPadding {
+			dst[out + 2] = byte(e.padding)
+			dst[out + 3] = byte(e.padding)
+		}
+	} else if len(src) == 2 {
+		first := uint(src[0])
+		second := uint(src[1])
+		dst[out] = e.encode[(first >> 2) & 63]
+		dst[out + 1] = e.encode[((first & 3) << 4) | (second >> 4)]
+		dst[out + 2] = e.encode[(second & 15) << 2]
+		if e.padding != NoPadding {
+			dst[out + 3] = byte(e.padding)
+		}
+	}
+}
+
+// Decode decodes src using the encoding enc. It writes at most
+// [Encoding.DecodedLen](len(src)) bytes to dst and returns the number of bytes
+// written. The caller must ensure that dst is large enough to hold all
+// the decoded data. If src contains invalid base64 data, it will return the
+// number of bytes successfully written and [CorruptInputError].
+// New line characters (\r and \n) are ignored.
+func (e *Encoding) Decode(dst, src []byte) (int, error) {
+	if e == nil {
+		return 0, nil
+	}
+	clean := make([]byte, 0, len(src))
+	for i := 0; i < len(src); i++ {
+		if src[i] != '\r' && src[i] != '\n' {
+			clean = append(clean, src[i])
+		}
+	}
+	if e.padding != NoPadding {
+		return e.decodePadded(dst, clean)
+	}
+	return e.decodeRaw(dst, clean)
+}
+
+func (e *Encoding) decodePadded(dst, src []byte) (int, error) {
+	if len(src) % 4 != 0 {
+		return 0, CorruptInputError(len(src))
+	}
+	need := e.DecodedLen(len(src))
+	if len(dst) < need {
+		panic("encoding/base64: output slice too small")
+	}
+	out := 0
+	for pos := 0; pos < len(src); pos += 4 {
+		first, ok := e.decodeByte(src[pos])
+		if !ok {
+			return out, CorruptInputError(pos)
+		}
+		second, ok := e.decodeByte(src[pos + 1])
+		if !ok {
+			return out, CorruptInputError(pos + 1)
+		}
+		third := 0
+		fourth := 0
+		thirdPadding := src[pos + 2] == byte(e.padding)
+		fourthPadding := src[pos + 3] == byte(e.padding)
+		if thirdPadding && !fourthPadding {
+			return out, CorruptInputError(pos + 2)
+		}
+		if !thirdPadding {
+			third, ok = e.decodeByte(src[pos + 2])
+			if !ok {
+				return out, CorruptInputError(pos + 2)
+			}
+		}
+		if !fourthPadding {
+			fourth, ok = e.decodeByte(src[pos + 3])
+			if !ok {
+				return out, CorruptInputError(pos + 3)
+			}
+		}
+		if e.strict && ((thirdPadding && (second & 15) != 0) || (fourthPadding && !thirdPadding && (third & 3) != 0)) {
+			return out, CorruptInputError(pos + 2)
+		}
+		dst[out] = byte((first << 2) | (second >> 4))
+		out++
+		if thirdPadding {
+			if pos + 4 != len(src) {
+				return out, CorruptInputError(pos + 2)
+			}
+			continue
+		}
+		dst[out] = byte((second << 4) | (third >> 2))
+		out++
+		if fourthPadding {
+			if pos + 4 != len(src) {
+				return out, CorruptInputError(pos + 3)
+			}
+			continue
+		}
+		dst[out] = byte((third << 6) | fourth)
+		out++
+	}
+	return out, nil
+}
+
+func (e *Encoding) decodeRaw(dst, src []byte) (int, error) {
+	if len(src) % 4 == 1 {
+		return 0, CorruptInputError(len(src) - 1)
+	}
+	need := e.DecodedLen(len(src))
+	if len(dst) < need {
+		panic("encoding/base64: output slice too small")
+	}
+	out := 0
+	full := len(src) / 4 * 4
+	for pos := 0; pos < full; pos += 4 {
+		first, ok := e.decodeByte(src[pos])
+		if !ok {
+			return out, CorruptInputError(pos)
+		}
+		second, ok := e.decodeByte(src[pos + 1])
+		if !ok {
+			return out, CorruptInputError(pos + 1)
+		}
+		third, ok := e.decodeByte(src[pos + 2])
+		if !ok {
+			return out, CorruptInputError(pos + 2)
+		}
+		fourth, ok := e.decodeByte(src[pos + 3])
+		if !ok {
+			return out, CorruptInputError(pos + 3)
+		}
+		dst[out] = byte((first << 2) | (second >> 4))
+		dst[out + 1] = byte((second << 4) | (third >> 2))
+		dst[out + 2] = byte((third << 6) | fourth)
+		out += 3
+	}
+	remaining := len(src) - full
+	if remaining == 2 {
+		first, ok := e.decodeByte(src[full])
+		if !ok {
+			return out, CorruptInputError(full)
+		}
+		second, ok := e.decodeByte(src[full + 1])
+		if !ok {
+			return out, CorruptInputError(full + 1)
+		}
+		if e.strict && second & 15 != 0 {
+			return out, CorruptInputError(full + 1)
+		}
+		dst[out] = byte((first << 2) | (second >> 4))
+		out++
+	} else if remaining == 3 {
+		first, ok := e.decodeByte(src[full])
+		if !ok {
+			return out, CorruptInputError(full)
+		}
+		second, ok := e.decodeByte(src[full + 1])
+		if !ok {
+			return out, CorruptInputError(full + 1)
+		}
+		third, ok := e.decodeByte(src[full + 2])
+		if !ok {
+			return out, CorruptInputError(full + 2)
+		}
+		if e.strict && third & 3 != 0 {
+			return out, CorruptInputError(full + 2)
+		}
+		dst[out] = byte((first << 2) | (second >> 4))
+		dst[out + 1] = byte((second << 4) | (third >> 2))
+		out += 2
+	}
+	return out, nil
+}
+
+func (e *Encoding) decodeByte(value byte) (int, bool) {
+	index := e.decodeMap[value]
+	return index, index >= 0
+}

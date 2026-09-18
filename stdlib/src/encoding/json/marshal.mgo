@@ -1,0 +1,768 @@
+// Package json implements JSON encoding, decoding, and incremental streaming.
+package json
+
+import "encoding/base64"
+import "bytes"
+import "math"
+import "sort"
+import "encoding"
+import "reflect"
+import "strconv"
+import "strings"
+import "unicode/utf8"
+import "unicode"
+
+type encodeState struct {
+	escapeHTML bool
+	path []reflect.Value
+	depth int
+	fields map[reflect.Type][]encodeField
+}
+
+type encodeField struct {
+	field jsonStructField
+	name string
+}
+
+type marshalError struct {
+	text string
+}
+
+// Marshaler is the interface implemented by types that
+// can marshal themselves into valid JSON.
+type Marshaler interface {
+	// MarshalJSON returns the JSON encoding of the receiver.
+	MarshalJSON() ([]byte, error)
+}
+
+// Unmarshaler is implemented by types that can unmarshal a JSON description of themselves.
+type Unmarshaler interface {
+	// UnmarshalJSON decodes one complete JSON value into the receiver.
+	UnmarshalJSON([]byte) error
+}
+
+// RawMessage is a raw encoded JSON value.
+// It implements [Marshaler] and [Unmarshaler] and can
+// be used to delay JSON decoding or precompute a JSON encoding.
+type RawMessage []byte
+
+// A Token holds a value of one of these types:
+//
+//   - [Delim], for the four JSON delimiters [ ] { }
+//   - bool, for JSON booleans
+//   - float64, for JSON numbers
+//   - [Number], for JSON numbers
+//   - string, for JSON string literals
+//   - nil, for JSON null
+type Token any
+
+// A Delim is a JSON array or object delimiter, one of [ ] { or }.
+type Delim rune
+
+type jsonStructField struct {
+	Field reflect.StructField
+	Name string
+	OmitEmpty bool
+	OmitZero bool
+	Quoted bool
+	Tagged bool
+}
+
+func (e *marshalError) Error() string {
+	return e.text
+}
+
+// MarshalJSON returns m as the JSON encoding of m.
+func (m RawMessage) MarshalJSON() ([]byte, error) {
+	if len(m) == 0 {
+		return []byte("null"), nil
+	}
+	return []byte(m), nil
+}
+
+// UnmarshalJSON sets *m to a copy of data.
+func (m *RawMessage) UnmarshalJSON(data []byte) error {
+	if m == nil {
+		return newMarshalError("json.RawMessage: UnmarshalJSON on nil pointer")
+	}
+	*m = append((*m)[:0], data...)
+	return nil
+}
+
+// String returns the delimiter as a one-character string.
+func (d Delim) String() string {
+	return string(rune(d))
+}
+
+// Marshal returns the JSON encoding of v.
+//
+// Marshal traverses the value v recursively.
+// If an encountered value implements [Marshaler]
+// and is not a nil pointer, Marshal calls [Marshaler.MarshalJSON]
+// to produce JSON. If no [Marshaler.MarshalJSON] method is present but the
+// value implements [encoding.TextMarshaler] instead, Marshal calls
+// [encoding.TextMarshaler.MarshalText] and encodes the result as a JSON string.
+// The nil pointer exception is not strictly necessary
+// but mimics a similar, necessary exception in the behavior of
+// [Unmarshaler.UnmarshalJSON].
+//
+// Otherwise, Marshal uses the following type-dependent default encodings:
+//
+// Boolean values encode as JSON booleans.
+//
+// Floating point, integer, and [Number] values encode as JSON numbers.
+// NaN and +/-Inf values will return an [UnsupportedValueError].
+//
+// String values encode as JSON strings coerced to valid UTF-8,
+// replacing invalid bytes with the Unicode replacement rune.
+// So that the JSON will be safe to embed inside HTML <script> tags,
+// the string is encoded using [HTMLEscape],
+// which replaces "<", ">", "&", U+2028, and U+2029 are escaped
+// to "\u003c","\u003e", "\u0026", "\u2028", and "\u2029".
+// This replacement can be disabled when using an [Encoder],
+// by calling [Encoder.SetEscapeHTML](false).
+//
+// Array and slice values encode as JSON arrays, except that
+// []byte encodes as a base64-encoded string, and a nil slice
+// encodes as the null JSON value.
+//
+// Struct values encode as JSON objects.
+// Each exported struct field becomes a member of the object, using the
+// field name as the object key, unless the field is omitted for one of the
+// reasons given below.
+//
+// The encoding of each struct field can be customized by the format string
+// stored under the "json" key in the struct field's tag.
+// The format string gives the name of the field, possibly followed by a
+// comma-separated list of options. The name may be empty in order to
+// specify options without overriding the default field name.
+//
+// The "omitempty" option specifies that the field should be omitted
+// from the encoding if the field has an empty value, defined as
+// false, 0, a nil pointer, a nil interface value, and any array,
+// slice, map, or string of length zero.
+//
+// As a special case, if the field tag is "-", the field is always omitted.
+// Note that a field with name "-" can still be generated using the tag "-,".
+//
+// Examples of struct field tags and their meanings:
+//
+// 	// Field appears in JSON as key "myName".
+// 	Field int `json:"myName"`
+//
+// 	// Field appears in JSON as key "myName" and
+// 	// the field is omitted from the object if its value is empty,
+// 	// as defined above.
+// 	Field int `json:"myName,omitempty"`
+//
+// 	// Field appears in JSON as key "Field" (the default), but
+// 	// the field is skipped if empty.
+// 	// Note the leading comma.
+// 	Field int `json:",omitempty"`
+//
+// 	// Field is ignored by this package.
+// 	Field int `json:"-"`
+//
+// 	// Field appears in JSON as key "-".
+// 	Field int `json:"-,"`
+//
+// The "omitzero" option specifies that the field should be omitted
+// from the encoding if the field has a zero value, according to rules:
+//
+// 1) If the field type has an "IsZero() bool" method, that will be used to
+// determine whether the value is zero.
+//
+// 2) Otherwise, the value is zero if it is the zero value for its type.
+//
+// If both "omitempty" and "omitzero" are specified, the field will be omitted
+// if the value is either empty or zero (or both).
+//
+// The "string" option signals that a field is stored as JSON inside a
+// JSON-encoded string. It applies only to fields of string, floating point,
+// integer, or boolean types. This extra level of encoding is sometimes used
+// when communicating with JavaScript programs:
+//
+// 	Int64String int64 `json:",string"`
+//
+// The key name will be used if it's a non-empty string consisting of
+// only Unicode letters, digits, and ASCII punctuation except quotation
+// marks, backslash, and comma.
+//
+// Embedded struct fields are usually marshaled as if their inner exported fields
+// were fields in the outer struct, subject to the usual Go visibility rules amended
+// as described in the next paragraph.
+// An anonymous struct field with a name given in its JSON tag is treated as
+// having that name, rather than being anonymous.
+// An anonymous struct field of interface type is treated the same as having
+// that type as its name, rather than being anonymous.
+//
+// The Go visibility rules for struct fields are amended for JSON when
+// deciding which field to marshal or unmarshal. If there are
+// multiple fields at the same level, and that level is the least
+// nested (and would therefore be the nesting level selected by the
+// usual Go rules), the following extra rules apply:
+//
+// 1) Of those fields, if any are JSON-tagged, only tagged fields are considered,
+// even if there are multiple untagged fields that would otherwise conflict.
+//
+// 2) If there is exactly one field (tagged or not according to the first rule), that is selected.
+//
+// 3) Otherwise there are multiple fields, and all are ignored; no error occurs.
+//
+// To ignore an anonymous struct field, give the field a JSON tag of "-".
+//
+// Map values encode as JSON objects. The map's key type must either be a
+// string, an integer type, or implement [encoding.TextMarshaler]. The map keys
+// are sorted and used as JSON object keys by applying the following rules,
+// subject to the UTF-8 coercion described for string values above:
+//   - keys of any string type are used directly
+//   - keys that implement [encoding.TextMarshaler] are marshaled
+//   - integer keys are converted to strings
+//
+// Pointer values encode as the value pointed to.
+// A nil pointer encodes as the null JSON value.
+//
+// Interface values encode as the value contained in the interface.
+// A nil interface value encodes as the null JSON value.
+//
+// Channel, complex, and function values cannot be encoded in JSON.
+// Attempting to encode such a value causes Marshal to return
+// an [UnsupportedTypeError].
+//
+// JSON cannot represent cyclic data structures and Marshal does not
+// handle them. Passing cyclic structures to Marshal will result in
+// an error.
+func Marshal(value any) ([]byte, error) {
+	return marshalWithOptions(value, true)
+}
+
+func marshalWithOptions(value any, escapeHTML bool) ([]byte, error) {
+	s := &encodeState{escapeHTML: escapeHTML, fields: map[reflect.Type][]encodeField{}}
+	var out strings.Builder
+	if err := s.marshalValue(&out, reflect.ValueOf(value)); err != nil {
+		return []byte{}, err
+	}
+	return []byte(out.String()), nil
+}
+
+// MarshalIndent is like [Marshal] but applies [Indent] to format the output.
+// Each JSON element in the output will begin on a new line beginning with prefix
+// followed by one or more copies of indent according to the indentation nesting.
+func MarshalIndent(value any, prefix string, indent string) ([]byte, error) {
+	data, err := Marshal(value)
+	if err != nil {
+		return []byte{}, err
+	}
+	return []byte(indentJSON(string(data), prefix, indent)), nil
+}
+
+func (s *encodeState) marshalValue(out *strings.Builder, value reflect.Value) error {
+	if !value.IsValid() {
+		out.WriteString("null")
+		return nil
+	}
+	if (value.Kind() == reflect.Pointer || value.Kind() == reflect.Map || value.Kind() == reflect.Slice || value.Kind() == reflect.Interface) && value.IsNil() {
+		out.WriteString("null")
+		return nil
+	}
+	s.depth++
+	defer func() {
+		s.depth--
+	}()
+	if s.depth > 10000 {
+		return &UnsupportedValueError{Value: value, Str: "maximum nesting depth exceeded"}
+	}
+	if value.Kind() == reflect.Pointer || value.Kind() == reflect.Map || value.Kind() == reflect.Slice {
+		for _, previous := range s.path {
+			if reflect.SameReference(previous, value) {
+				return &UnsupportedValueError{Value: value, Str: "encountered a cycle"}
+			}
+		}
+		s.path = append(s.path, value)
+		defer func() {
+			s.path = s.path[:len(s.path) - 1]
+		}()
+	}
+	candidates := []reflect.Value{value}
+	if value.CanAddr() {
+		candidates = append([]reflect.Value{value.Addr()}, candidates...)
+	}
+	for _, candidate := range candidates {
+		if !candidate.CanInterface() {
+			continue
+		}
+		if marshaler, ok := candidate.Interface().(Marshaler); ok {
+			data, err := marshaler.MarshalJSON()
+			if err != nil {
+				return &MarshalerError{Type: value.Type(), Err: err, sourceFunc: "MarshalJSON"}
+			}
+			var compact bytes.Buffer
+			if err := Compact(&compact, data); err != nil {
+				return &MarshalerError{Type: value.Type(), Err: err, sourceFunc: "MarshalJSON"}
+			}
+			if s.escapeHTML {
+				var escaped bytes.Buffer
+				HTMLEscape(&escaped, compact.Bytes())
+				out.Write(escaped.Bytes())
+			} else {
+				out.Write(compact.Bytes())
+			}
+			return nil
+		}
+		if marshaler, ok := candidate.Interface().(encoding.TextMarshaler); ok {
+			data, err := marshaler.MarshalText()
+			if err != nil {
+				return &MarshalerError{Type: value.Type(), Err: err, sourceFunc: "MarshalText"}
+			}
+			out.WriteString(s.quoteString(string(data)))
+			return nil
+		}
+	}
+	switch value.Kind() {
+		case reflect.Bool, reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+			text, err := s.marshalPrimitive(value)
+			if err != nil {
+				return err
+			}
+			out.WriteString(text)
+			return nil
+		case reflect.Slice:
+			if value.IsNil() {
+				out.WriteString("null")
+				return nil
+			}
+			if value.Type().Elem().Kind() == reflect.Uint8 {
+				data := make([]byte, value.Len())
+				for i := 0; i < value.Len(); i++ {
+					data[i] = byte(value.Index(i).Uint())
+				}
+				out.WriteString(s.quoteString(base64.StdEncoding.EncodeToString(data)))
+				return nil
+			}
+			return s.marshalArray(out, value)
+		case reflect.Array:
+			return s.marshalArray(out, value)
+		case reflect.Map:
+			return s.marshalMap(out, value)
+		case reflect.Struct:
+			return s.marshalStruct(out, value)
+		case reflect.Interface:
+			return s.marshalValue(out, value.Elem())
+		case reflect.Pointer:
+			if value.IsNil() {
+				out.WriteString("null")
+				return nil
+			}
+			return s.marshalValue(out, value.Elem())
+		default:
+			return &UnsupportedTypeError{Type: value.Type()}
+	}
+}
+
+func (s *encodeState) marshalPrimitive(value reflect.Value) (string, error) {
+	typ := jsonReflectTypeText(value.Type())
+	switch {
+		case typ == "String":
+			if isJSONNumberType(value.Type()) {
+				text := value.String()
+				if text == "" {
+					text = "0"
+				}
+				end, ok := scanJSONNumber(text, 0)
+				if !ok || end != len(text) {
+					return "", &UnsupportedValueError{Value: value, Str: "invalid number literal " + text}
+				}
+				return text, nil
+			}
+			return s.quoteString(value.String()), nil
+		case typ == "Bool":
+			return strconv.FormatBool(value.Bool()), nil
+		case isJSONSignedType(typ):
+			return strconv.FormatInt(value.Int(), 10), nil
+		case isJSONUnsignedType(typ):
+			return strconv.FormatUint(value.Uint(), 10), nil
+		case isJSONFloatType(typ):
+			f := value.Float()
+			if math.IsNaN(f) || math.IsInf(f, 0) {
+				return "", &UnsupportedValueError{Value: value, Str: strconv.FormatFloat(f, 'g', -1, 64)}
+			}
+			bits := 64
+			if value.Kind() == reflect.Float32 {
+				bits = 32
+			}
+			format := byte('f')
+			if f != 0 && (math.Abs(f) < 1e-6 || math.Abs(f) >= 1e21) {
+				format = 'e'
+			}
+			text := strconv.FormatFloat(f, format, -1, bits)
+			if index := strings.Index(text, "e-0"); index >= 0 {
+				text = text[:index + 2] + text[index + 3:]
+			}
+			return text, nil
+		case typ == "Complex64":
+			return "", &UnsupportedTypeError{Type: value.Type()}
+		case typ == "Complex128":
+			return "", &UnsupportedTypeError{Type: value.Type()}
+		default:
+			return "", newMarshalError("json: unsupported primitive type " + typ)
+	}
+}
+
+func (s *encodeState) marshalArray(out *strings.Builder, value reflect.Value) error {
+	out.WriteString("[")
+	for i := 0; i < value.Len(); i++ {
+		if i > 0 {
+			out.WriteString(",")
+		}
+		if err := s.marshalValue(out, value.Index(i)); err != nil {
+			return err
+		}
+	}
+	out.WriteString("]")
+	return nil
+}
+
+func (s *encodeState) marshalMap(out *strings.Builder, value reflect.Value) error {
+	out.WriteString("{")
+	iter := value.MapRange()
+	var keys []string
+	entries := map[string][]reflect.Value{}
+	for iter.Next() {
+		keyText, keyErr := jsonMapKeyString(iter.Key())
+		if keyErr != nil {
+			return keyErr
+		}
+		keys = append(keys, keyText)
+		entries[keyText] = append(entries[keyText], iter.Value())
+	}
+	sort.Strings(keys)
+	for written, keyText := range keys {
+		if written > 0 {
+			out.WriteString(",")
+		}
+		out.WriteString(s.quoteString(keyText))
+		out.WriteString(":")
+		entry := entries[keyText][0]
+		entries[keyText] = entries[keyText][1:]
+		if err := s.marshalValue(out, entry); err != nil {
+			return err
+		}
+	}
+	out.WriteString("}")
+	return nil
+}
+
+func jsonMapKeyString(key reflect.Value) (string, error) {
+	if key.Kind() == reflect.String {
+		return key.String(), nil
+	}
+	if key.CanInterface() {
+		if marshaler, ok := key.Interface().(encoding.TextMarshaler); ok {
+			if key.Kind() == reflect.Pointer && key.IsNil() {
+				return "", nil
+			}
+			data, err := marshaler.MarshalText()
+			return string(data), err
+		}
+	}
+	switch key.Kind() {
+		case reflect.String:
+			return key.String(), nil
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			return strconv.FormatInt(key.Int(), 10), nil
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+			return strconv.FormatUint(key.Uint(), 10), nil
+		default:
+			return "", &UnsupportedTypeError{Type: key.Type()}
+	}
+}
+
+func (s *encodeState) marshalStruct(out *strings.Builder, value reflect.Value) error {
+	out.WriteString("{")
+	typ := value.Type()
+	fields, cached := s.fields[typ]
+	if !cached {
+		for _, field := range jsonVisibleFields(typ) {
+			fields = append(fields, encodeField{field: field, name: s.quoteString(field.Name)})
+		}
+		// Descriptors belong to this encoding only. Bound retention when the
+		// input contains many distinct dynamically constructed struct types.
+		if len(s.fields) < 256 {
+			s.fields[typ] = fields
+		}
+	}
+	written := 0
+	for i := 0; i < len(fields); i++ {
+		field := fields[i].field
+		fieldValue := jsonFieldValue(value, field.Field.Index, false)
+		if !fieldValue.IsValid() {
+			continue
+		}
+		if field.OmitEmpty && jsonIsEmptyValue(fieldValue) {
+			continue
+		}
+		if field.OmitZero {
+			zero := fieldValue.IsZero()
+			if fieldValue.CanInterface() && !(fieldValue.Kind() == reflect.Pointer && fieldValue.IsNil()) {
+				if tester, ok := fieldValue.Interface().(interface {
+					IsZero() bool
+				}); ok {
+					zero = tester.IsZero()
+				} else {
+					addressable := fieldValue
+					if !addressable.CanAddr() {
+						addressable = reflect.New(fieldValue.Type()).Elem()
+						addressable.Set(fieldValue)
+					}
+					if tester, ok := addressable.Addr().Interface().(interface {
+						IsZero() bool
+					}); ok {
+						zero = tester.IsZero()
+					}
+				}
+			}
+			if zero {
+				continue
+			}
+		}
+		if written > 0 {
+			out.WriteString(",")
+		}
+		out.WriteString(fields[i].name)
+		out.WriteString(":")
+		if field.Quoted && jsonQuotedKind(fieldValue.Kind()) {
+			var inner strings.Builder
+			if err := s.marshalValue(&inner, fieldValue); err != nil {
+				return err
+			}
+			out.WriteString(s.quoteString(inner.String()))
+		} else {
+			if err := s.marshalValue(out, fieldValue); err != nil {
+				return err
+			}
+		}
+		written++
+	}
+	out.WriteString("}")
+	return nil
+}
+
+func jsonIsEmptyValue(value reflect.Value) bool {
+	if !value.IsValid() {
+		return true
+	}
+	switch value.Kind() {
+		case reflect.Array:
+			return value.Len() == 0
+		case reflect.Map, reflect.Slice:
+			return value.Len() == 0
+		case reflect.Interface, reflect.Pointer:
+			return value.IsNil()
+		case reflect.Bool, reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+			typ := jsonReflectTypeText(value.Type())
+			switch {
+				case typ == "Bool":
+					return !value.Bool()
+				case typ == "String":
+					return value.String() == ""
+				case isJSONSignedType(typ):
+					return value.Int() == 0
+				case isJSONUnsignedType(typ):
+					return value.Uint() == 0
+				case isJSONFloatType(typ):
+					return value.Float() == 0
+				case typ == "Complex64", typ == "Complex128":
+					return value.Complex() == complex(0, 0)
+			}
+	}
+	return false
+}
+
+func tagName(tag string) string {
+	for i := 0; i < len(tag); i++ {
+		if tag[i:i + 1] == "," {
+			return tag[0:i]
+		}
+	}
+	return tag
+}
+
+func tagHasOption(tag string, option string) bool {
+	start := 0
+	part := 0
+	for start <= len(tag) {
+		end := start
+		for end < len(tag) && tag[end:end + 1] != "," {
+			end++
+		}
+		if part > 0 && tag[start:end] == option {
+			return true
+		}
+		if end >= len(tag) {
+			break
+		}
+		start = end + 1
+		part++
+	}
+	return false
+}
+
+func indentJSON(text string, prefix string, indent string) string {
+	var out strings.Builder
+	out.Grow(len(text))
+	depth := 0
+	inString := false
+	escaped := false
+	for i := 0; i < len(text); i++ {
+		ch := text[i:i + 1]
+		if inString {
+			out.WriteString(ch)
+			if escaped {
+				escaped = false
+			} else if ch == "\\" {
+				escaped = true
+			} else if ch == "\"" {
+				inString = false
+			}
+			continue
+		}
+		switch ch {
+			case "\"":
+				inString = true
+				out.WriteString(ch)
+			case "{", "[":
+				out.WriteString(ch)
+				depth++
+				if i + 1 < len(text) && !isClosingFor(text[i + 1:i + 2], ch) {
+					out.WriteString("\n")
+					out.WriteString(indentPrefix(prefix, indent, depth))
+				}
+			case "}", "]":
+				depth--
+				if i > 0 && !isOpeningFor(text[i - 1:i], ch) {
+					out.WriteString("\n")
+					out.WriteString(indentPrefix(prefix, indent, depth))
+				}
+				out.WriteString(ch)
+			case ",":
+				out.WriteString(",\n")
+				out.WriteString(indentPrefix(prefix, indent, depth))
+			case ":":
+				out.WriteString(": ")
+			default:
+				out.WriteString(ch)
+		}
+	}
+	return out.String()
+}
+
+func isClosingFor(ch string, open string) bool {
+	return open == "{" && ch == "}" || open == "[" && ch == "]"
+}
+
+func isOpeningFor(ch string, close string) bool {
+	return close == "}" && ch == "{" || close == "]" && ch == "["
+}
+
+func indentPrefix(prefix string, indent string, depth int) string {
+	var out strings.Builder
+	out.Grow(len(prefix) + len(indent) * depth)
+	out.WriteString(prefix)
+	for i := 0; i < depth; i++ {
+		out.WriteString(indent)
+	}
+	return out.String()
+}
+
+func (s *encodeState) quoteString(value string) string {
+	var out strings.Builder
+	out.Grow(len(value) + 2)
+	out.WriteString("\"")
+	start := 0
+	for offset := 0; offset < len(value); {
+		c := value[offset]
+		if c >= ' ' && c < utf8.RuneSelf && c != '\\' && c != '"' && (!s.escapeHTML || c != '&' && c != '<' && c != '>') {
+			offset++
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(value[offset:])
+		if r >= utf8.RuneSelf && !(r == utf8.RuneError && size == 1) && r != rune(8232) && r != rune(8233) {
+			offset += size
+			continue
+		}
+		out.WriteString(value[start:offset])
+		offset += size
+		start = offset
+		if r == utf8.RuneError && size == 1 {
+			out.WriteString("\\ufffd")
+			continue
+		}
+		switch r {
+			case '&':
+				if s.escapeHTML {
+					out.WriteString("\\u0026")
+				} else {
+					out.WriteRune(r)
+				}
+			case '<':
+				if s.escapeHTML {
+					out.WriteString("\\u003c")
+				} else {
+					out.WriteRune(r)
+				}
+			case '>':
+				if s.escapeHTML {
+					out.WriteString("\\u003e")
+				} else {
+					out.WriteRune(r)
+				}
+			case '\\':
+				out.WriteString("\\\\")
+			case '"':
+				out.WriteString("\\\"")
+			case '\b':
+				out.WriteString("\\b")
+			case '\f':
+				out.WriteString("\\f")
+			case '\n':
+				out.WriteString("\\n")
+			case '\r':
+				out.WriteString("\\r")
+			case '\t':
+				out.WriteString("\\t")
+			case rune(8232), rune(8233):
+				out.WriteString("\\u")
+				out.WriteString(hex4(int(r)))
+			default:
+				if int(r) < 32 {
+					out.WriteString("\\u")
+					out.WriteString(hex4(int(r)))
+				} else {
+					out.WriteRune(r)
+				}
+		}
+	}
+	out.WriteString(value[start:])
+	out.WriteString("\"")
+	return out.String()
+}
+
+func hex4(value int) string {
+	digits := "0123456789abcdef"
+	return digits[(value / 4096) % 16:(value / 4096) % 16 + 1] +
+	digits[(value / 256) % 16:(value / 256) % 16 + 1] +
+	digits[(value / 16) % 16:(value / 16) % 16 + 1] +
+	digits[value % 16:value % 16 + 1]
+}
+
+func isExportedName(name string) bool {
+	if name == "" {
+		return false
+	}
+	first, _ := utf8.DecodeRuneInString(name)
+	return unicode.IsUpper(first)
+}
+
+func newMarshalError(message string) error {
+	return &SyntaxError{msg: message}
+}

@@ -1,0 +1,168 @@
+package reflect_test
+
+import (
+	"reflect"
+	"testing"
+)
+
+func reflectedSequence(yield func(int) bool) {
+	for _, value := range []int{4, 2, 1} {
+		if !yield(value) {
+			return
+		}
+	}
+}
+
+func reflectedPairs(yield func(string, int) bool) {
+	for _, pair := range []struct {
+		key string
+		value int
+	}{{key: "a", value: 4}, {key: "b", value: 2}} {
+		if !yield(pair.key, pair.value) {
+			return
+		}
+	}
+}
+
+func TestReflectSeq(t *testing.T) {
+	values := []int{}
+	for value := range reflect.ValueOf(5).Seq() {
+		values = append(values, int(value.Int()))
+		if len(values) == 3 {
+			break
+		}
+	}
+	if len(values) != 3 || values[0] != 0 || values[1] != 1 || values[2] != 2 {
+		t.Fatalf("integer Seq should preserve values and early termination")
+	}
+
+	indexes := []int{}
+	for value := range reflect.ValueOf([]string{"a", "b"}).Seq() {
+		indexes = append(indexes, int(value.Int()))
+	}
+	if len(indexes) != 2 || indexes[0] != 0 || indexes[1] != 1 {
+		t.Fatalf("slice Seq should yield indexes")
+	}
+
+	indexes = []int{}
+	for value := range reflect.ValueOf("éx").Seq() {
+		indexes = append(indexes, int(value.Int()))
+	}
+	if len(indexes) != 2 || indexes[0] != 0 || indexes[1] != 2 {
+		t.Fatalf("string Seq should yield UTF-8 byte indexes")
+	}
+
+	array := [2]int{4, 2}
+	indexes = []int{}
+	for value := range reflect.ValueOf(&array).Seq() {
+		indexes = append(indexes, int(value.Int()))
+	}
+	if len(indexes) != 2 || indexes[0] != 0 || indexes[1] != 1 {
+		t.Fatalf("pointer-to-array Seq should yield indexes")
+	}
+
+	keys := map[string]int{"a": 1, "b": 2}
+	seen := map[string]bool{}
+	for value := range reflect.ValueOf(keys).Seq() {
+		seen[value.String()] = true
+	}
+	if !seen["a"] || !seen["b"] {
+		t.Fatalf("map Seq should yield every key")
+	}
+
+	channel := make(chan int, 2)
+	channel <- 4
+	channel <- 2
+	close(channel)
+	values = []int{}
+	for value := range reflect.ValueOf(channel).Seq() {
+		values = append(values, int(value.Int()))
+	}
+	if len(values) != 2 || values[0] != 4 || values[1] != 2 {
+		t.Fatalf("channel Seq should receive until close")
+	}
+
+	values = []int{}
+	for value := range reflect.ValueOf(reflectedSequence).Seq() {
+		values = append(values, int(value.Int()))
+		if len(values) == 2 {
+			break
+		}
+	}
+	if len(values) != 2 || values[0] != 4 || values[1] != 2 {
+		t.Fatalf("function Seq should stream values and stop early")
+	}
+}
+
+func TestReflectSeqFixesEachExecutionBoundary(t *testing.T) {
+	limit := 2
+	sequence := reflect.ValueOf(&limit).Elem().Seq()
+	limit = 3
+	values := []int{}
+	for value := range sequence {
+		values = append(values, int(value.Int()))
+		limit = 5
+	}
+	if len(values) != 3 {
+		t.Fatalf("integer Seq should fix its bound when iteration starts")
+	}
+	values = values[:0]
+	for value := range sequence {
+		values = append(values, int(value.Int()))
+		if len(values) == 4 {
+			break
+		}
+	}
+	if len(values) != 4 {
+		t.Fatalf("a later integer Seq execution should observe the current bound")
+	}
+
+	items := make([]int, 2, 4)
+	items[0] = 4
+	items[1] = 2
+	sliceValue := reflect.ValueOf(&items).Elem()
+	sliceSequence := sliceValue.Seq2()
+	seen := 0
+	for _, value := range sliceSequence {
+		seen++
+		if seen == 1 {
+			sliceValue.SetLen(4)
+		}
+		_ = value
+	}
+	if seen != 2 {
+		t.Fatalf("slice Seq2 should fix its length when iteration starts")
+	}
+}
+
+func TestReflectSeq2(t *testing.T) {
+	keys := []int{}
+	values := []string{}
+	for key, value := range reflect.ValueOf([]string{"go", "mini"}).Seq2() {
+		keys = append(keys, int(key.Int()))
+		values = append(values, value.String())
+	}
+	if len(keys) != 2 || keys[0] != 0 || keys[1] != 1 || values[0] != "go" || values[1] != "mini" {
+		t.Fatalf("slice Seq2 should yield indexes and values")
+	}
+
+	keys = []int{}
+	runes := []rune{}
+	for key, value := range reflect.ValueOf("éx").Seq2() {
+		keys = append(keys, int(key.Int()))
+		runes = append(runes, rune(value.Int()))
+	}
+	if len(keys) != 2 || keys[0] != 0 || keys[1] != 2 || runes[0] != 'é' || runes[1] != 'x' {
+		t.Fatalf("string Seq2 should yield byte indexes and runes")
+	}
+
+	pairKeys := []string{}
+	pairValues := []int{}
+	for key, value := range reflect.ValueOf(reflectedPairs).Seq2() {
+		pairKeys = append(pairKeys, key.String())
+		pairValues = append(pairValues, int(value.Int()))
+	}
+	if len(pairKeys) != 2 || pairKeys[0] != "a" || pairKeys[1] != "b" || pairValues[0] != 4 || pairValues[1] != 2 {
+		t.Fatalf("function Seq2 should preserve keys and values")
+	}
+}

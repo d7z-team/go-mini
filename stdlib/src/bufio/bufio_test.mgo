@@ -1,0 +1,108 @@
+package bufio
+
+import (
+	"bytes"
+	"io"
+	"strings"
+	"testing"
+)
+
+type intermittentReader struct {
+	empty int
+	text string
+	offset int
+}
+
+func (reader *intermittentReader) Read(target []byte) (int, error) {
+	if reader.empty > 0 {
+		reader.empty--
+		return 0, nil
+	}
+	if reader.offset == len(reader.text) {
+		return 0, io.EOF
+	}
+	count := copy(target, []byte(reader.text[reader.offset:]))
+	reader.offset += count
+	return count, nil
+}
+
+func TestReaderAndWriter(t *testing.T) {
+	reader := NewReaderSize(strings.NewReader("first\nsecond-long\n"), 8)
+	line, err := reader.ReadString('\n')
+	if line != "first\n" || err != nil {
+		t.Fatalf("ReadString = %q, %v", line, err)
+	}
+	value, _, err := reader.ReadRune()
+	if value != 's' || err != nil || reader.UnreadRune() != nil {
+		t.Fatalf("ReadRune/UnreadRune = %q, %v", value, err)
+	}
+	peek, err := reader.Peek(3)
+	if string(peek) != "sec" || err != nil {
+		t.Fatalf("Peek = %q, %v", peek, err)
+	}
+	output := bytes.NewBuffer(nil)
+	writer := NewWriterSize(output, 4)
+	if _, err := writer.WriteString("mini"); err != nil || writer.Buffered() != 0 {
+		t.Fatalf("buffered write = %d, %v", writer.Buffered(), err)
+	}
+	writer.WriteRune('中')
+	if err := writer.Flush(); err != nil || output.String() != "mini中" {
+		t.Fatalf("Flush = %q, %v", output.String(), err)
+	}
+}
+
+func TestScannerSplitsAndValidates(t *testing.T) {
+	scanner := NewScanner(strings.NewReader("one two\nthree"))
+	scanner.Split(ScanWords)
+	words := []string{}
+	for scanner.Scan() {
+		words = append(words, scanner.Text())
+	}
+	if scanner.Err() != nil || len(words) != 3 || words[2] != "three" {
+		t.Fatalf("ScanWords = %#v, %v", words, scanner.Err())
+	}
+	bad := NewScanner(strings.NewReader("x"))
+	bad.Split(func(data []byte, atEOF bool) (int, []byte, error) {
+		return len(data) + 1, data, nil
+	})
+	if bad.Scan() || bad.Err() != ErrAdvanceTooFar {
+		t.Fatalf("invalid split = %v", bad.Err())
+	}
+	limited := NewScanner(io.LimitReader(strings.NewReader("12345"), 5))
+	limited.Buffer(make([]byte, 0, 2), 4)
+	if limited.Scan() || limited.Err() != ErrTooLong {
+		t.Fatalf("token limit = %v", limited.Err())
+	}
+}
+
+func TestReaderAndScannerHandleStreamingInput(t *testing.T) {
+	reader := NewReaderSize(&intermittentReader{empty: 2, text: "ready"}, 16)
+	data := make([]byte, 5)
+	if count, err := reader.Read(data); count != 5 || err != nil || string(data) != "ready" {
+		t.Fatalf("Read after empty reads = %d, %q, %v", count, string(data), err)
+	}
+
+	scanner := NewScanner(strings.NewReader(strings.Repeat("a ", 100)))
+	scanner.Buffer(make([]byte, 0, 4), 8)
+	scanner.Split(ScanWords)
+	count := 0
+	for scanner.Scan() {
+		if scanner.Text() != "a" {
+			t.Fatalf("stream token = %q", scanner.Text())
+		}
+		count++
+	}
+	if scanner.Err() != nil || count != 100 {
+		t.Fatalf("stream scan = %d, %v", count, scanner.Err())
+	}
+
+	scanner = NewScanner(strings.NewReader("left\u2003right"))
+	scanner.Split(ScanWords)
+	words := []string{}
+	for scanner.Scan() {
+		words = append(words, scanner.Text())
+	}
+	if scanner.Err() != nil || len(words) != 2 || words[0] != "left" || words[1] != "right" {
+		t.Fatalf("unicode words = %#v, %v", words, scanner.Err())
+	}
+}

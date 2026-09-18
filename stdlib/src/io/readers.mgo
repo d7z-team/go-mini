@@ -1,0 +1,184 @@
+package io
+
+// A LimitedReader reads from R but limits the amount of
+// data returned to just N bytes. Each call to Read
+// updates N to reflect the new amount remaining.
+// Read returns EOF when N <= 0 or when the underlying R returns EOF.
+type LimitedReader struct {
+	// underlying reader
+	R Reader
+	// max bytes remaining
+	N int64
+}
+
+// LimitReader returns a Reader that reads from r
+// but stops with EOF after n bytes.
+// The underlying implementation is a *LimitedReader.
+func LimitReader(r Reader, n int64) Reader {
+	limited := new(LimitedReader)
+	limited.R = r
+	limited.N = n
+	return limited
+}
+
+// Read reads from the underlying reader while limiting the total bytes returned to N.
+func (r *LimitedReader) Read(p []byte) (n int, err error) {
+	if r.N <= 0 {
+		return 0, EOF
+	}
+	if int64(len(p)) > r.N {
+		p = p[:int(r.N)]
+	}
+	n, err = r.R.Read(p)
+	r.N -= int64(n)
+	return n, err
+}
+
+// SectionReader implements Read, Seek, and ReadAt on a section
+// of an underlying [ReaderAt].
+type SectionReader struct {
+	r ReaderAt
+	base int64
+	off int64
+	limit int64
+}
+
+// NewSectionReader returns a [SectionReader] that reads from r
+// starting at offset off and stops with EOF after n bytes.
+func NewSectionReader(r ReaderAt, off int64, n int64) *SectionReader {
+	return &SectionReader{r: r, base: off, limit: n}
+}
+
+// Read reads from the current position within the section.
+func (r *SectionReader) Read(p []byte) (n int, err error) {
+	if r.off >= r.limit {
+		return 0, EOF
+	}
+	if int64(len(p)) > r.limit - r.off {
+		p = p[:int(r.limit - r.off)]
+	}
+	n, err = r.r.ReadAt(p, r.base + r.off)
+	r.off += int64(n)
+	return n, err
+}
+
+// ReadAt reads from an offset relative to the start of the section.
+func (r *SectionReader) ReadAt(p []byte, off int64) (n int, err error) {
+	if off < 0 {
+		return 0, errorString{text: "negative offset"}
+	}
+	if off >= r.limit {
+		return 0, EOF
+	}
+	if int64(len(p)) > r.limit - off {
+		p = p[:int(r.limit - off)]
+	}
+	n, err = r.r.ReadAt(p, r.base + off)
+	if n < len(p) && err == nil {
+		err = EOF
+	}
+	return n, err
+}
+
+// Seek sets the offset for the next read within the section.
+func (r *SectionReader) Seek(offset int64, whence int) (int64, error) {
+	newOffset := r.off
+	switch whence {
+		case SeekStart:
+			newOffset = offset
+		case SeekCurrent:
+			newOffset += offset
+		case SeekEnd:
+			newOffset = r.limit + offset
+		default:
+			return 0, errorString{text: "invalid whence"}
+	}
+	if newOffset < 0 {
+		return 0, errorString{text: "negative position"}
+	}
+	r.off = newOffset
+	return newOffset, nil
+}
+
+// Size returns the size of the section in bytes.
+func (r *SectionReader) Size() int64 {
+	return r.limit
+}
+
+// Outer returns the underlying [ReaderAt] and offsets for the section.
+//
+// The returned values are the same that were passed to [NewSectionReader]
+// when the [SectionReader] was created.
+func (r *SectionReader) Outer() (ReaderAt, int64, int64) {
+	return r.r, r.base, r.limit
+}
+
+type multiReader struct {
+	Readers []Reader
+	Index int
+}
+
+// MultiReader returns a Reader that's the logical concatenation of
+// the provided input readers. They're read sequentially. Once all
+// inputs have returned EOF, Read will return EOF.  If any of the readers
+// return a non-nil, non-EOF error, Read will return that error.
+func MultiReader(readers ...Reader) Reader {
+	return &multiReader{Readers: readers}
+}
+
+func (r *multiReader) Read(p []byte) (n int, err error) {
+	for r.Index < len(r.Readers) {
+		n, err = r.Readers[r.Index].Read(p)
+		if err == EOF {
+			r.Index++
+			if n > 0 {
+				return n, nil
+			}
+			continue
+		}
+		return n, err
+	}
+	return 0, EOF
+}
+
+type teeReader struct {
+	R Reader
+	W Writer
+}
+
+// TeeReader returns a [Reader] that writes to w what it reads from r.
+// All reads from r performed through it are matched with
+// corresponding writes to w. There is no internal buffering -
+// the write must complete before the read completes.
+// Any error encountered while writing is reported as a read error.
+func TeeReader(r Reader, w Writer) Reader {
+	return &teeReader{R: r, W: w}
+}
+
+func (r *teeReader) Read(p []byte) (n int, err error) {
+	n, err = r.R.Read(p)
+	if n > 0 {
+		return r.W.Write(p[:n])
+	}
+	return n, err
+}
+
+type nopCloser struct {
+	R Reader
+}
+
+// NopCloser returns a [ReadCloser] with a no-op Close method wrapping
+// the provided [Reader] r.
+// If r implements [WriterTo], the returned [ReadCloser] will implement [WriterTo]
+// by forwarding calls to r.
+func NopCloser(r Reader) ReadCloser {
+	return &nopCloser{R: r}
+}
+
+func (r *nopCloser) Read(p []byte) (n int, err error) {
+	return r.R.Read(p)
+}
+
+func (r *nopCloser) Close() error {
+	return nil
+}

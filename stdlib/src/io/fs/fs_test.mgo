@@ -1,0 +1,16 @@
+package fs_test
+
+import (
+	"io/fs"
+	"testing"
+)
+
+func TestPathAndMode(t *testing.T) {
+	if !fs.ValidPath("a/b") || !fs.ValidPath(".") || fs.ValidPath("/a") || fs.ValidPath("a/../b") {
+		t.Fatalf("ValidPath returned wrong result")
+	}
+	mode := fs.ModeDir | 0755
+	if !mode.IsDir() || mode.IsRegular() || mode.Perm() != 0755 || mode.String() != "drwxr-xr-x" {
+		t.Fatalf("FileMode returned wrong result: %s", mode.String())
+	}
+}

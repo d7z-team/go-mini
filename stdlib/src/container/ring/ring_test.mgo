@@ -1,0 +1,52 @@
+package ring_test
+
+import (
+	"container/ring"
+	"testing"
+)
+
+func TestRingNavigationAndDo(t *testing.T) {
+	values := ring.New(4)
+	values.Value = 1
+	values.Next().Value = 2
+	values.Next().Next().Value = 3
+	values.Next().Next().Next().Value = 4
+	if values.Len() != 4 || values.Prev().Value.(int) != 4 {
+		t.Fatal("ring navigation is incorrect")
+	}
+	if values.Move(2).Value.(int) != 3 || values.Move(-1).Value.(int) != 4 {
+		t.Fatal("ring movement is incorrect")
+	}
+	total := 0
+	values.Do(func(value any) {
+		total += value.(int)
+	})
+	if total != 10 {
+		t.Fatalf("Do returned total %d, want 10", total)
+	}
+	var zero ring.Ring
+	if zero.Len() != 1 || zero.Next() != &zero || zero.Prev() != &zero {
+		t.Fatal("zero ring is not a one-element ring")
+	}
+}
+
+func TestRingLinkAndUnlink(t *testing.T) {
+	left := ring.New(2)
+	right := ring.New(3)
+	left.Value = "left-1"
+	left.Next().Value = "left-2"
+	right.Value = "right-1"
+	right.Next().Value = "right-2"
+	right.Next().Next().Value = "right-3"
+	left.Link(right)
+	if left.Len() != 5 {
+		t.Fatalf("linked ring length %d, want 5", left.Len())
+	}
+	removed := left.Unlink(2)
+	if left.Len() != 3 || removed == nil || removed.Len() != 2 {
+		t.Fatal("ring unlink returned the wrong rings")
+	}
+	if removed.Value.(string) != "right-1" || removed.Next().Value.(string) != "right-2" {
+		t.Fatal("ring unlink returned the wrong subring")
+	}
+}

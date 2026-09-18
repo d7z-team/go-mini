@@ -1,0 +1,232 @@
+// Copyright 2023 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package rand
+
+import "errors"
+
+const (
+	chachaCounterIncrement = 4
+	chachaCounterLimit = 16
+	chachaChunkWords = 32
+	chachaReseedWords = 4
+)
+
+type chachaState struct {
+	buffer [chachaChunkWords]uint64
+	seed [4]uint64
+	index uint32
+	count uint32
+	counter uint32
+}
+
+// A ChaCha8 is a ChaCha8-based cryptographically strong random number
+// generator.
+type ChaCha8 struct {
+	state chachaState
+	readBuffer [8]byte
+	readLength int
+}
+
+// NewChaCha8 returns a new ChaCha8 seeded with the given seed.
+func NewChaCha8(seed [32]byte) *ChaCha8 {
+	generator := new(ChaCha8)
+	generator.Seed(seed)
+	return generator
+}
+
+// Seed resets the ChaCha8 to behave the same way as NewChaCha8(seed).
+func (c *ChaCha8) Seed(seed [32]byte) {
+	for index := 0; index < len(c.state.seed); index++ {
+		start := index * 8
+		c.state.seed[index] = littleEndianUint64(seed[start:start + 8])
+	}
+	c.state.counter = 0
+	c.state.index = 0
+	c.state.count = chachaChunkWords
+	chachaBlock(&c.state.seed, &c.state.buffer, 0)
+	c.readLength = 0
+	c.readBuffer = [8]byte{}
+}
+
+// Uint64 returns a uniformly distributed random uint64 value.
+func (c *ChaCha8) Uint64() uint64 {
+	if c.state.index >= c.state.count {
+		c.refill()
+	}
+	value := c.state.buffer[c.state.index & 31]
+	c.state.index++
+	return value
+}
+
+func (c *ChaCha8) refill() {
+	c.state.counter += chachaCounterIncrement
+	if c.state.counter == chachaCounterLimit {
+		for index := 0; index < chachaReseedWords; index++ {
+			c.state.seed[index] = c.state.buffer[chachaChunkWords - chachaReseedWords + index]
+		}
+		c.state.counter = 0
+	}
+	chachaBlock(&c.state.seed, &c.state.buffer, c.state.counter)
+	c.state.index = 0
+	c.state.count = chachaChunkWords
+	if c.state.counter == chachaCounterLimit - chachaCounterIncrement {
+		c.state.count -= chachaReseedWords
+	}
+}
+
+// Read reads exactly len(data) bytes into data. It always returns len(data)
+// and a nil error.
+func (c *ChaCha8) Read(data []byte) (count int, err error) {
+	if c.readLength > 0 {
+		copied := copy(data, c.readBuffer[len(c.readBuffer) - c.readLength:])
+		c.readLength -= copied
+		count += copied
+		data = data[copied:]
+	}
+	for len(data) >= 8 {
+		putLittleEndianUint64(data, c.Uint64())
+		data = data[8:]
+		count += 8
+	}
+	if len(data) != 0 {
+		putLittleEndianUint64(c.readBuffer[:], c.Uint64())
+		count += copy(data, c.readBuffer[:])
+		c.readLength = 8 - len(data)
+	}
+	return count, nil
+}
+
+// AppendBinary appends the encoded state and implements encoding.BinaryAppender.
+func (c *ChaCha8) AppendBinary(data []byte) ([]byte, error) {
+	if c.readLength > 0 {
+		data = append(data, "readbuf:"...)
+		data = append(data, byte(c.readLength))
+		data = append(data, c.readBuffer[len(c.readBuffer) - c.readLength:]...)
+	}
+	data = append(data, "chacha8:"...)
+	used := uint64(c.state.counter / chachaCounterIncrement) * chachaChunkWords + uint64(c.state.index)
+	data = appendBigEndianUint64(data, used)
+	for _, value := range c.state.seed {
+		data = appendLittleEndianUint64(data, value)
+	}
+	return data, nil
+}
+
+// MarshalBinary implements encoding.BinaryMarshaler.
+func (c *ChaCha8) MarshalBinary() ([]byte, error) {
+	return c.AppendBinary(make([]byte, 0, 64))
+}
+
+// UnmarshalBinary implements encoding.BinaryUnmarshaler.
+func (c *ChaCha8) UnmarshalBinary(data []byte) error {
+	c.readLength = 0
+	c.readBuffer = [8]byte{}
+	if len(data) >= 8 && string(data[:8]) == "readbuf:" {
+		if len(data) < 9 || int(data[8]) > 8 || len(data) < 9 + int(data[8]) {
+			return errors.New("invalid ChaCha8 Read buffer encoding")
+		}
+		length := int(data[8])
+		c.readLength = copy(c.readBuffer[8 - length:], data[9:9 + length])
+		data = data[9 + length:]
+	}
+	if len(data) != 48 || string(data[:8]) != "chacha8:" {
+		return errors.New("invalid ChaCha8 encoding")
+	}
+	used := bigEndianUint64(data[8:16])
+	if used > (chachaCounterLimit / chachaCounterIncrement) * chachaChunkWords - chachaReseedWords {
+		return errors.New("invalid ChaCha8 encoding")
+	}
+	for index := range c.state.seed {
+		start := 16 + index * 8
+		c.state.seed[index] = littleEndianUint64(data[start:start + 8])
+	}
+	c.state.counter = chachaCounterIncrement * (uint32(used) / chachaChunkWords)
+	chachaBlock(&c.state.seed, &c.state.buffer, c.state.counter)
+	c.state.index = uint32(used) % chachaChunkWords
+	c.state.count = chachaChunkWords
+	if c.state.counter == chachaCounterLimit - chachaCounterIncrement {
+		c.state.count -= chachaReseedWords
+	}
+	return nil
+}
+
+func chachaBlock(seed *[4]uint64, output *[chachaChunkWords]uint64, counter uint32) {
+	var words [16][4]uint32
+	for lane := 0; lane < 4; lane++ {
+		state := [16]uint32{
+			0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
+			uint32(seed[0]), uint32(seed[0] >> 32), uint32(seed[1]), uint32(seed[1] >> 32),
+			uint32(seed[2]), uint32(seed[2] >> 32), uint32(seed[3]), uint32(seed[3] >> 32),
+			counter + uint32(lane), 0, 0, 0,
+		}
+		initial := state
+		for round := 0; round < 4; round++ {
+			state[0], state[4], state[8], state[12] = chachaQuarterRound(state[0], state[4], state[8], state[12])
+			state[1], state[5], state[9], state[13] = chachaQuarterRound(state[1], state[5], state[9], state[13])
+			state[2], state[6], state[10], state[14] = chachaQuarterRound(state[2], state[6], state[10], state[14])
+			state[3], state[7], state[11], state[15] = chachaQuarterRound(state[3], state[7], state[11], state[15])
+			state[0], state[5], state[10], state[15] = chachaQuarterRound(state[0], state[5], state[10], state[15])
+			state[1], state[6], state[11], state[12] = chachaQuarterRound(state[1], state[6], state[11], state[12])
+			state[2], state[7], state[8], state[13] = chachaQuarterRound(state[2], state[7], state[8], state[13])
+			state[3], state[4], state[9], state[14] = chachaQuarterRound(state[3], state[4], state[9], state[14])
+		}
+		for index := 4; index <= 11; index++ {
+			state[index] += initial[index]
+		}
+		for index := range state {
+			words[index][lane] = state[index]
+		}
+	}
+	for row := 0; row < len(words); row++ {
+		output[row * 2] = uint64(words[row][0]) | uint64(words[row][1]) << 32
+		output[row * 2 + 1] = uint64(words[row][2]) | uint64(words[row][3]) << 32
+	}
+}
+
+func chachaQuarterRound(a, b, c, d uint32) (uint32, uint32, uint32, uint32) {
+	a += b
+	d ^= a
+	d = d << 16 | d >> 16
+	c += d
+	b ^= c
+	b = b << 12 | b >> 20
+	a += b
+	d ^= a
+	d = d << 8 | d >> 24
+	c += d
+	b ^= c
+	b = b << 7 | b >> 25
+	return a, b, c, d
+}
+
+func littleEndianUint64(data []byte) uint64 {
+	return uint64(data[0]) | uint64(data[1]) << 8 | uint64(data[2]) << 16 | uint64(data[3]) << 24 |
+	uint64(data[4]) << 32 | uint64(data[5]) << 40 | uint64(data[6]) << 48 | uint64(data[7]) << 56
+}
+
+func bigEndianUint64(data []byte) uint64 {
+	return uint64(data[0]) << 56 | uint64(data[1]) << 48 | uint64(data[2]) << 40 | uint64(data[3]) << 32 |
+	uint64(data[4]) << 24 | uint64(data[5]) << 16 | uint64(data[6]) << 8 | uint64(data[7])
+}
+
+func putLittleEndianUint64(data []byte, value uint64) {
+	for index := 0; index < 8; index++ {
+		data[index] = byte(value >> uint(index * 8))
+	}
+}
+
+func appendLittleEndianUint64(data []byte, value uint64) []byte {
+	for index := 0; index < 8; index++ {
+		data = append(data, byte(value >> uint(index * 8)))
+	}
+	return data
+}
+
+func appendBigEndianUint64(data []byte, value uint64) []byte {
+	for index := 7; index >= 0; index-- {
+		data = append(data, byte(value >> uint(index * 8)))
+	}
+	return data
+}

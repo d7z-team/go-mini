@@ -1,0 +1,3 @@
+package main
+import "crypto/sha256"
+func Main() int { value := sha256.Sum256([]byte("abc")); return int(value[0]) + int(value[31]) }

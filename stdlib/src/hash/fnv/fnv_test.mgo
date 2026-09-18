@@ -1,0 +1,69 @@
+package fnv_test
+
+import (
+	"bytes"
+	"encoding"
+	"hash"
+	"hash/fnv"
+	"testing"
+)
+
+func TestKnownVectors(t *testing.T) {
+	value := fnv.New32a()
+	value.Write([]byte("hello"))
+	if value.Sum32() != 0x4f9f2cab {
+		t.Fatalf("FNV-1a 32 returned %x", value.Sum32())
+	}
+	wide := fnv.New64a()
+	wide.Write([]byte("hello"))
+	if wide.Sum64() != uint64(0xa430d84680aabd0b) {
+		t.Fatal("FNV-1a 64 returned wrong value")
+	}
+	if len(fnv.New128().Sum(nil)) != 16 {
+		t.Fatal("FNV-128 returned wrong digest size")
+	}
+}
+
+func TestStateRoundTripAndClone(t *testing.T) {
+	original := fnv.New64a()
+	original.Write([]byte("prefix"))
+	encoded, err := original.(encoding.BinaryMarshaler).MarshalBinary()
+	if err != nil || len(encoded) != 12 || string(encoded[:4]) != "fnv\x04" {
+		t.Fatalf("MarshalBinary returned invalid FNV-1a 64 state: %v, %v", encoded, err)
+	}
+	appended, err := original.(encoding.BinaryAppender).AppendBinary([]byte{1, 2})
+	if err != nil || len(appended) != 14 || appended[0] != 1 || appended[1] != 2 {
+		t.Fatalf("AppendBinary did not preserve the prefix: %v, %v", appended, err)
+	}
+
+	restored := fnv.New64a()
+	restoredState := restored.(encoding.BinaryUnmarshaler)
+	before := restored.Sum(nil)
+	if err := restoredState.UnmarshalBinary([]byte("invalid")); err == nil {
+		t.Fatal("UnmarshalBinary accepted malformed state")
+	}
+	if !bytes.Equal(before, restored.Sum(nil)) {
+		t.Fatal("failed UnmarshalBinary changed the receiver")
+	}
+	if err := restoredState.UnmarshalBinary(encoded); err != nil {
+		t.Fatalf("UnmarshalBinary failed: %v", err)
+	}
+	original.Write([]byte("-suffix"))
+	restored.Write([]byte("-suffix"))
+	if !bytes.Equal(original.Sum(nil), restored.Sum(nil)) {
+		t.Fatal("restored state did not continue the original hash")
+	}
+
+	if err := fnv.New64().(encoding.BinaryUnmarshaler).UnmarshalBinary(encoded); err == nil {
+		t.Fatal("FNV-1 accepted FNV-1a state")
+	}
+	cloned, err := original.(hash.Cloner).Clone()
+	if err != nil {
+		t.Fatalf("Clone failed: %v", err)
+	}
+	cloned.Write([]byte("-clone"))
+	original.Write([]byte("-original"))
+	if bytes.Equal(cloned.Sum(nil), original.Sum(nil)) {
+		t.Fatal("Clone did not produce independent state")
+	}
+}

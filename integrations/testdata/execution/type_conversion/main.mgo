@@ -1,0 +1,146 @@
+package main
+
+import "example/dep"
+
+type A struct {
+	X int `json:"a"`
+}
+
+type B struct {
+	X int `json:"b"`
+}
+
+type Alias = B
+
+type Summation interface {
+	Sum( ...int) int
+}
+
+type Adder interface {
+	Add(int)
+}
+
+var receiverCalls int
+
+func receiver() *dep.T {
+	receiverCalls++
+	return &dep.T{N: 30}
+}
+
+type NestedA struct {
+	X struct {
+		Y int `json:"a"`
+	}
+}
+
+type NestedB struct {
+	X struct {
+		Y int `json:"b"`
+	}
+}
+
+func ReadNested(x struct {
+	Y int `json:"b"`
+}) int {
+	return x.Y
+}
+
+func Result() int {
+	t := dep.T{N: 7}
+	f := (*dep.T).Value
+	if f(&t) != 8 || t.N != 7 {
+		panic("value receiver copy")
+	}
+	box := dep.Box{T: t}
+	if dep.Box.Value(box) != 8 || (*dep.Box).Value(&box) != 8 {
+		panic("promoted value receiver")
+	}
+	add := (*dep.Box).Add
+	add(&box, 2)
+	if box.N != 9 {
+		panic("promoted pointer receiver")
+	}
+	ptr := dep.PtrBox{T: &t}
+	dep.PtrBox.Add(ptr, 3)
+	if t.N != 10 || dep.PtrBox.Value(ptr) != 11 {
+		panic("embedded pointer receiver")
+	}
+	sum := (*dep.T).Sum
+	if sum(&t, 1, 2) != 13 {
+		panic("variadic expression")
+	}
+	valueSum := t.Sum
+	pair := t.Pair
+	var summation Summation = t
+	interfaceSum := summation.Sum
+	summation = dep.T{N: 100}
+	t.N = 20
+	if valueSum(1, 2) != 13 || interfaceSum(1, 2) != 13 {
+		panic("value capture")
+	}
+	number, valid := pair()
+	if number != 10 || !valid {
+		panic("multiple method results")
+	}
+	directAdd := t.Add
+	var adder Adder = &t
+	interfaceAdd := adder.Add
+	directAdd(1)
+	interfaceAdd(2)
+	if t.N != 23 {
+		panic("pointer capture")
+	}
+	once := receiver().Sum
+	if once(1) != 31 || once(2) != 32 || receiverCalls != 1 {
+		panic("receiver evaluation")
+	}
+	a := A{X: 1}
+	b := B(a)
+	b.X = 2
+	if a.X != 1 {
+		panic("struct copy")
+	}
+	p := (*Alias)(&a)
+	p.X = 3
+	if a.X != 3 || (*A)(p) != &a {
+		panic("pointer storage")
+	}
+	na := NestedA{}
+	na.X.Y = 7
+	nb := NestedB(na)
+	if ReadNested(nb.X) != 7 {
+		panic("nested value conversion")
+	}
+	np := (*NestedB)(&na)
+	np.X.Y = 8
+	if ReadNested(np.X) != 8 || na.X.Y != 8 {
+		panic("nested pointer conversion")
+	}
+	var anonymous struct {
+		X struct {
+			Y int `json:"a"`
+		}
+	}
+	anonymous.X.Y = 9
+	converted := (*struct {
+		X struct {
+			Y int `json:"b"`
+		}
+	})(&anonymous)
+	if ReadNested(converted.X) != 9 {
+		panic("anonymous nested conversion")
+	}
+	s := []int{1, 2, 3}
+	v := s[:]
+	if (*[2]int)(s) != (*[2]int)(v) {
+		panic("slice identity")
+	}
+	if (*[2]int)(s) == (*[2]int)(s[1:]) {
+		panic("offset identity")
+	}
+	var nilSlice []int
+	if (*[0]int)(nilSlice) != nil {
+		panic("nil array pointer")
+	}
+	return 42
+}

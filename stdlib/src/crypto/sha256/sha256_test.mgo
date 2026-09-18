@@ -1,0 +1,93 @@
+package sha256_test
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding"
+	"hash"
+	"testing"
+)
+
+func TestSHA256Sum256(t *testing.T) {
+	sum := sha256.Sum256([]byte("abc"))
+	if sum[0] != 186 || sum[1] != 120 || sum[2] != 22 || sum[3] != 191 || sum[31] != 173 {
+		t.Fatalf("Sum256 digest boundary = %d %d %d %d ... %d", sum[0], sum[1], sum[2], sum[3], sum[31])
+	}
+	digest := sha256.New()
+	if digest.Size() != 32 || digest.BlockSize() != 64 {
+		t.Fatal("digest reported the wrong size")
+	}
+	digest.Write([]byte("a"))
+	digest.Write([]byte("bc"))
+	streamed := digest.Sum(nil)
+	if len(streamed) != 32 || streamed[0] != sum[0] || streamed[31] != sum[31] {
+		t.Fatal("streaming digest differs from Sum256")
+	}
+	digest.Reset()
+	digest.Write([]byte("abc"))
+	if digest.Sum([]byte{1})[1] != sum[0] {
+		t.Fatal("Reset or Sum prefix handling failed")
+	}
+}
+
+func TestSHA224AndState(t *testing.T) {
+	sum := sha256.Sum224([]byte("abc"))
+	if len(sum) != sha256.Size224 || sum[0] != 35 || sum[1] != 9 || sum[26] != 157 || sum[27] != 167 {
+		t.Fatal("Sum224 returned the wrong digest")
+	}
+	digest := sha256.New224()
+	if digest.Size() != sha256.Size224 || digest.BlockSize() != sha256.BlockSize {
+		t.Fatal("SHA-224 digest reported the wrong size")
+	}
+	digest.Write([]byte("abc"))
+	if !bytes.Equal(digest.Sum(nil), sum[:]) {
+		t.Fatal("streaming SHA-224 differs from Sum224")
+	}
+	digest.Reset()
+	digest.Write([]byte("abc"))
+	if !bytes.Equal(digest.Sum(nil), sum[:]) {
+		t.Fatal("Reset changed SHA-224 into SHA-256")
+	}
+
+	original := sha256.New()
+	original.Write([]byte("prefix"))
+	encoded, err := original.(encoding.BinaryMarshaler).MarshalBinary()
+	if err != nil || len(encoded) != 108 || string(encoded[:4]) != "sha\x03" {
+		t.Fatalf("MarshalBinary returned invalid SHA-256 state: %v, %v", encoded, err)
+	}
+	appended, err := original.(encoding.BinaryAppender).AppendBinary([]byte{1, 2})
+	if err != nil || len(appended) != 110 || appended[0] != 1 || appended[1] != 2 {
+		t.Fatalf("AppendBinary did not preserve the prefix: %v, %v", appended, err)
+	}
+
+	restored := sha256.New()
+	restoredState := restored.(encoding.BinaryUnmarshaler)
+	before := restored.Sum(nil)
+	if err := restoredState.UnmarshalBinary([]byte("invalid")); err == nil {
+		t.Fatal("UnmarshalBinary accepted malformed state")
+	}
+	if !bytes.Equal(before, restored.Sum(nil)) {
+		t.Fatal("failed UnmarshalBinary changed the receiver")
+	}
+	if err := restoredState.UnmarshalBinary(encoded); err != nil {
+		t.Fatalf("UnmarshalBinary failed: %v", err)
+	}
+	original.Write([]byte("-suffix"))
+	restored.Write([]byte("-suffix"))
+	if !bytes.Equal(original.Sum(nil), restored.Sum(nil)) {
+		t.Fatal("restored state did not continue the original hash")
+	}
+
+	if err := sha256.New224().(encoding.BinaryUnmarshaler).UnmarshalBinary(encoded); err == nil {
+		t.Fatal("SHA-224 accepted SHA-256 state")
+	}
+	cloned, err := original.(hash.Cloner).Clone()
+	if err != nil {
+		t.Fatalf("Clone failed: %v", err)
+	}
+	cloned.Write([]byte("-clone"))
+	original.Write([]byte("-original"))
+	if bytes.Equal(cloned.Sum(nil), original.Sum(nil)) {
+		t.Fatal("Clone did not produce independent state")
+	}
+}

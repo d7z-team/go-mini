@@ -1,0 +1,47 @@
+// Copyright 2025 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package strconv
+
+import "math"
+
+// Go 1.26.6 internal/strconv uses unsafe for these bit operations. Mini-Go's
+// mathematical bit conversions preserve the same IEEE values without pointers.
+func float64frombits(b uint64) float64 {
+	return math.Float64frombits(b)
+}
+
+func float32frombits(b uint32) float32 {
+	return math.Float32frombits(b)
+}
+
+func float64bits(f float64) uint64 {
+	return math.Float64bits(f)
+}
+
+func float32bits(f float32) uint32 {
+	return math.Float32bits(f)
+}
+
+func inf(sign int) float64 {
+	return math.Inf(sign)
+}
+
+func isNaN(f float64) bool {
+	return math.IsNaN(f)
+}
+
+func nan() float64 {
+	return math.NaN()
+}
+
+// ParseComplex converts a real or imaginary floating-point representation to
+// complex64 or complex128 precision. Errors retain their input and category.
+func ParseComplex(s string, bitSize int) (complex128, error) {
+	value, err := parseComplex(s, bitSize)
+	if err != nil {
+		return value, parseError("ParseComplex", s, err)
+	}
+	return value, nil
+}

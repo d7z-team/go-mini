@@ -1,0 +1,3 @@
+package main
+import "runtime/oracle/model"
+func Main() int { value := model.New(); return value.Value }

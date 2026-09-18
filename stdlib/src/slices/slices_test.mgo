@@ -1,0 +1,60 @@
+package slices_test
+
+import (
+	"slices"
+	"testing"
+)
+
+type named []int
+
+func TestSliceCoreAndNamedType(t *testing.T) {
+	values := slices.Clone(named{1, 2, 3})
+	values = slices.Insert(values, 1, 7, 8)
+	values = slices.Delete(values, 2, 3)
+	values = slices.Replace(values, 1, 2, 4, 5)
+	if !slices.Equal(values, named{1, 4, 5, 2, 3}) {
+		t.Fatalf("slice edits returned %v", values)
+	}
+	if slices.Index(values, 5) != 2 || !slices.Contains(values, 3) {
+		t.Fatalf("slice search failed")
+	}
+	if slices.Clone[named](nil) != nil {
+		t.Fatalf("Clone must preserve nil")
+	}
+}
+
+func TestSliceSortAndIterators(t *testing.T) {
+	values := []int{4, 1, 3, 2}
+	slices.Sort(values)
+	if !slices.Equal(values, []int{1, 2, 3, 4}) || !slices.IsSorted(values) {
+		t.Fatalf("Sort returned %v", values)
+	}
+	sum := 0
+	for index, value := range slices.All(values) {
+		sum += index + value
+		if index == 1 {
+			break
+		}
+	}
+	if sum != 4 {
+		t.Fatalf("iterator sum = %d", sum)
+	}
+	index, found := slices.BinarySearch(values, 3)
+	if !found || index != 2 {
+		t.Fatalf("BinarySearch = %d, %t", index, found)
+	}
+}
+
+func TestSliceCompactRepeatAndChunk(t *testing.T) {
+	values := slices.Compact([]string{"a", "a", "b", "b"})
+	if !slices.Equal(values, []string{"a", "b"}) {
+		t.Fatalf("Compact returned %v", values)
+	}
+	if !slices.Equal(slices.Repeat(values, 2), []string{"a", "b", "a", "b"}) {
+		t.Fatalf("Repeat returned wrong values")
+	}
+	chunks := slices.Collect(slices.Chunk([]int{1, 2, 3}, 2))
+	if len(chunks) != 2 || !slices.Equal(chunks[0], []int{1, 2}) || !slices.Equal(chunks[1], []int{3}) {
+		t.Fatalf("Chunk returned %v", chunks)
+	}
+}

@@ -1,0 +1,8 @@
+go test fuzz v1
+byte('\b')
+int64(20)
+uint64(79)
+uint64(70)
+uint64(93)
+string("")
+[]byte("")

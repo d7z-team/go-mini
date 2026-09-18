@@ -1,0 +1,15 @@
+package time
+
+// These private declarations use ordinary Go syntax. The compiler recognizes
+// their exact package identities and lowers direct calls to VM intrinsics.
+func runtimeNow() (int64, int64) {
+	panic("time intrinsic")
+}
+
+func runtimeTimerStart(signal chan bool, delay int64, period int64) {
+	panic("time intrinsic")
+}
+
+func runtimeTimerStop(signal chan bool) bool {
+	panic("time intrinsic")
+}

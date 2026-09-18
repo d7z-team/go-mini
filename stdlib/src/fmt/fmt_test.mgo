@@ -1,0 +1,64 @@
+package fmt_test
+
+import (
+	"bytes"
+	"fmt"
+	"testing"
+)
+
+func TestFmtFormattingAndPrint(t *testing.T) {
+	if fmt.Sprint("go", "-", 42) != "go-42" {
+		t.Fatalf("Sprint returned wrong value")
+	}
+	if fmt.Sprintf("%s:%d:%t", "v", 2, true) != "v:2:true" {
+		t.Fatalf("Sprintf returned wrong value")
+	}
+	n, err := fmt.Print("fmt-output")
+	if err != nil {
+		t.Fatalf("Print returned error: %v", err)
+	}
+	if n != 10 {
+		t.Fatalf("Print returned wrong byte count")
+	}
+}
+
+func TestFmtWriterFormatting(t *testing.T) {
+	var buffer bytes.Buffer
+	n, err := fmt.Fprintf(&buffer, "%s:%d", "go", 42)
+	if err != nil {
+		t.Fatalf("Fprintf returned error: %v", err)
+	}
+	if n != 5 || buffer.String() != "go:42" {
+		t.Fatalf("Fprintf wrote wrong value")
+	}
+	n, err = fmt.Fprintln(&buffer, "ok")
+	if err != nil {
+		t.Fatalf("Fprintln returned error: %v", err)
+	}
+	if n != 3 || buffer.String() != "go:42ok\n" {
+		t.Fatalf("Fprintln wrote wrong value")
+	}
+}
+
+func TestFmtScanning(t *testing.T) {
+	var number int
+	var word string
+	var truth bool
+	n, err := fmt.Sscan("42 mini-go true", &number, &word, &truth)
+	if err != nil || n != 3 || number != 42 || word != "mini-go" || !truth {
+		t.Fatalf("Sscan = (%d, %v), values = (%d, %q, %t)", n, err, number, word, truth)
+	}
+
+	var hexadecimal int
+	var quoted string
+	n, err = fmt.Sscanf("2a \"go mini\"", "%x %q", &hexadecimal, &quoted)
+	if err != nil || n != 2 || hexadecimal != 42 || quoted != "go mini" {
+		t.Fatalf("Sscanf = (%d, %v), values = (%d, %q)", n, err, hexadecimal, quoted)
+	}
+
+	reader := bytes.NewBufferString("7 value\n")
+	n, err = fmt.Fscanln(reader, &number, &word)
+	if err != nil || n != 2 || number != 7 || word != "value" {
+		t.Fatalf("Fscanln = (%d, %v), values = (%d, %q)", n, err, number, word)
+	}
+}

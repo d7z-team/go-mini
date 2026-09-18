@@ -1,0 +1,67 @@
+package sha256
+
+import (
+	"encoding/binary"
+	"errors"
+	"hash"
+)
+
+const (
+	stateMagic224 = "sha\x02"
+	stateMagic256 = "sha\x03"
+	stateSize = 4 + 8 * 4 + BlockSize + 8
+)
+
+// AppendBinary appends the encoded hash state to buffer and returns the extended buffer.
+func (d *digest) AppendBinary(buffer []byte) ([]byte, error) {
+	if d.is224 {
+		buffer = append(buffer, []byte(stateMagic224)...)
+	} else {
+		buffer = append(buffer, []byte(stateMagic256)...)
+	}
+	for _, value := range d.h {
+		buffer = binary.BigEndian.AppendUint32(buffer, value)
+	}
+	buffer = append(buffer, d.x[:d.nx]...)
+	for i := d.nx; i < BlockSize; i++ {
+		buffer = append(buffer, byte(0))
+	}
+	return binary.BigEndian.AppendUint64(buffer, d.len), nil
+}
+
+// MarshalBinary returns the encoded hash state.
+func (d *digest) MarshalBinary() ([]byte, error) {
+	return d.AppendBinary([]byte{})
+}
+
+// UnmarshalBinary restores a hash state encoded by the same SHA variant.
+func (d *digest) UnmarshalBinary(data []byte) error {
+	magic := stateMagic256
+	if d.is224 {
+		magic = stateMagic224
+	}
+	if len(data) < len(magic) || string(data[:len(magic)]) != magic {
+		return errors.New("crypto/sha256: invalid hash state identifier")
+	}
+	if len(data) != stateSize {
+		return errors.New("crypto/sha256: invalid hash state size")
+	}
+	offset := len(magic)
+	var state [8]uint32
+	for i := 0; i < len(state); i++ {
+		state[i] = binary.BigEndian.Uint32(data[offset:])
+		offset += 4
+	}
+	var block [BlockSize]byte
+	copy(block[:], data[offset:offset + BlockSize])
+	offset += BlockSize
+	length := binary.BigEndian.Uint64(data[offset:])
+	d.h, d.x, d.nx, d.len = state, block, int(length % BlockSize), length
+	return nil
+}
+
+// Clone returns an independent copy of the hash state.
+func (d *digest) Clone() (hash.Cloner, error) {
+	clone := *d
+	return &clone, nil
+}

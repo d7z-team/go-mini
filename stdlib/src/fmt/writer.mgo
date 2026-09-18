@@ -1,0 +1,68 @@
+package fmt
+
+import (
+	"io"
+	"strconv"
+)
+
+// Append formats using default formats and appends the result to b.
+func Append(b []byte, args ...any) []byte {
+	return append(b, []byte(Sprint(args...))...)
+}
+
+// Appendf formats according to format and appends the result to b.
+func Appendf(b []byte, format string, args ...any) []byte {
+	return append(b, []byte(Sprintf(format, args...))...)
+}
+
+// Appendln formats with spaces, appends a newline, and appends the result to b.
+func Appendln(b []byte, args ...any) []byte {
+	return append(b, []byte(Sprintln(args...))...)
+}
+
+// FormatString reconstructs the formatting directive represented by state and
+// verb.
+func FormatString(state State, verb rune) string {
+	out := "%"
+	for _, flag := range "#+- 0" {
+		if state.Flag(int(flag)) {
+			out += string(flag)
+		}
+	}
+	if width, ok := state.Width(); ok {
+		out += strconv.Itoa(width)
+	}
+	if precision, ok := state.Precision(); ok {
+		out += "." + strconv.Itoa(precision)
+	}
+	return out + string(verb)
+}
+
+// Fprint formats using the default formats for its operands and writes to w.
+// Spaces are added between operands when neither is a string.
+// It returns the number of bytes written and any write error encountered.
+func Fprint(w io.Writer, args ...any) (int, error) {
+	return writeText(w, Sprint(args...))
+}
+
+// Fprintf formats according to a format specifier and writes to w.
+// It returns the number of bytes written and any write error encountered.
+func Fprintf(w io.Writer, format string, args ...any) (int, error) {
+	return writeText(w, Sprintf(format, args...))
+}
+
+// Fprintln formats using the default formats for its operands and writes to w.
+// Spaces are always added between operands and a newline is appended.
+// It returns the number of bytes written and any write error encountered.
+func Fprintln(w io.Writer, args ...any) (int, error) {
+	return writeText(w, Sprintln(args...))
+}
+
+func writeText(w io.Writer, text string) (int, error) {
+	if w == nil {
+		e := new(errorString)
+		e.text = "write to nil writer"
+		return 0, e
+	}
+	return w.Write([]byte(text))
+}

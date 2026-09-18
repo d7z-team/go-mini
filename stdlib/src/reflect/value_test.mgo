@@ -1,0 +1,168 @@
+package reflect_test
+
+import (
+	"reflect"
+	"testing"
+)
+
+func TestReflectAnonymousStructMetadataAndWrite(t *testing.T) {
+	value := reflect.ValueOf(struct {
+		Count int
+		Name string
+	}{Count: 7, Name: "mini"})
+	typ := value.Type()
+	if typ.Kind() != reflect.Struct || typ.NumField() != 2 || value.NumField() != 2 {
+		t.Fatalf("anonymous struct should expose field metadata")
+	}
+	countField := typ.Field(0)
+	nameField, nameOK := typ.FieldByName("Name")
+	if countField.Name != "Count" || countField.Type.String() != "int" || !nameOK || nameField.Type.String() != "string" {
+		t.Fatalf("anonymous struct fields should preserve name and type")
+	}
+	nameValue := value.FieldByName("Name")
+	if !nameValue.IsValid() || nameValue.String() != "mini" || value.FieldByIndex([]int{0}).Int() != 7 {
+		t.Fatalf("anonymous struct value fields should be readable")
+	}
+	writable := struct {
+		Count int
+		Name string
+		Nested struct {
+			Flag bool
+		}
+	}{Count: 9, Name: "set", Nested: struct {
+			Flag bool
+		}{Flag: true}}
+	root := reflect.ValueOf(&writable).Elem()
+	root.FieldByIndex([]int{0}).SetZero()
+	nameWritable := root.FieldByName("Name")
+	if !nameWritable.IsValid() {
+		t.Fatalf("anonymous writable struct should find Name")
+	}
+	nameWritable.SetString("done")
+	root.FieldByIndex([]int{2, 0}).SetBool(false)
+	if writable.Count != 0 || writable.Name != "done" || writable.Nested.Flag {
+		t.Fatalf("anonymous writable struct fields did not write through")
+	}
+}
+
+func TestReflectSwapper(t *testing.T) {
+	items := []int{3, 1, 2}
+	swap := reflect.Swapper(items)
+	swap(0, 1)
+	if items[0] != 1 || items[1] != 3 || items[2] != 2 {
+		t.Fatalf("Swapper did not write through slice backing")
+	}
+	named := scores{4, 2, 3}
+	namedSwap := reflect.Swapper(named)
+	namedSwap(0, 2)
+	if named[0] != 3 || named[2] != 4 {
+		t.Fatalf("Swapper did not preserve named slice backing")
+	}
+}
+
+func TestReflectSwapperRejectsNonSlice(t *testing.T) {
+	didPanic := false
+	func() {
+		defer func() {
+			if recover() != nil {
+				didPanic = true
+			}
+		}()
+		_ = reflect.Swapper(1)
+	}()
+	if !didPanic {
+		t.Fatalf("Swapper should panic for non-slice input")
+	}
+}
+
+type sample struct {
+	A int
+	B string
+}
+
+type PublicSample struct{}
+
+type scoreBox struct {
+	Count score
+}
+
+type embeddedValue struct {
+	Count int
+}
+
+type embeddedHolder struct {
+	*embeddedValue
+}
+
+type methodCounter struct {
+	Base int
+}
+
+func (counter methodCounter) Add(delta int) int {
+	return counter.Base + delta
+}
+
+func (counter *methodCounter) AddPtr(delta int) int {
+	counter.Base += delta
+	return counter.Base
+}
+
+func (counter methodCounter) Sum(values ...int) int {
+	total := counter.Base
+	for _, value := range values {
+		total += value
+	}
+	return total
+}
+
+type scores []int
+
+type score int
+
+func TestReflectFieldByIndexErr(t *testing.T) {
+	holder := embeddedHolder{embeddedValue: &embeddedValue{Count: 42}}
+	value, err := reflect.ValueOf(holder).FieldByIndexErr([]int{0, 0})
+	if err != nil || value.Int() != 42 {
+		t.Fatalf("FieldByIndexErr should traverse a non-nil embedded pointer")
+	}
+	root := reflect.ValueOf(holder)
+	if same := root.FieldByIndex([]int{}); same.Type() != root.Type() {
+		t.Fatalf("FieldByIndex with an empty index should return the original value")
+	}
+	var empty embeddedHolder
+	if _, err := reflect.ValueOf(empty).FieldByIndexErr([]int{0, 0}); err == nil {
+		t.Fatalf("FieldByIndexErr should report a nil embedded pointer")
+	}
+}
+
+func expectPanic(t *testing.T, fn func()) {
+	didPanic := false
+	func() {
+		defer func() {
+			if recover() != nil {
+				didPanic = true
+			}
+		}()
+		fn()
+	}()
+	if !didPanic {
+		t.Fatalf("expected panic")
+	}
+}
+
+func TestReflectValueError(t *testing.T) {
+	var recovered any
+	func() {
+		defer func() {
+			recovered = recover()
+		}()
+		_ = reflect.ValueOf("text").Int()
+	}()
+	err, ok := recovered.(*reflect.ValueError)
+	if !ok {
+		t.Fatalf("Value.Int panic = %T, want *reflect.ValueError", recovered)
+	}
+	if err.Method != "reflect.Value.Int" || err.Kind != reflect.String {
+		t.Fatalf("ValueError = %#v", err)
+	}
+}

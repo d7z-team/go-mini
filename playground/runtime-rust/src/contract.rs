@@ -1,0 +1,391 @@
+//! Canonical serialization for the current Go-produced runtime contract.
+
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
+use std::io::{self, BufWriter, Write};
+use std::ops::{Deref, DerefMut};
+
+pub(crate) trait GoObject {
+    fn merge<'de, A: serde::de::MapAccess<'de>>(&mut self, map: &mut A) -> Result<(), A::Error>;
+}
+
+pub(crate) struct GoObjectSeed<'a, T>(pub &'a mut T);
+
+impl<'de, T: GoObject> serde::de::DeserializeSeed<'de> for GoObjectSeed<'_, T> {
+    type Value = ();
+    fn deserialize<D: serde::Deserializer<'de>>(self, deserializer: D) -> Result<(), D::Error> {
+        deserializer.deserialize_any(self)
+    }
+}
+impl<'de, T: GoObject> serde::de::Visitor<'de> for GoObjectSeed<'_, T> {
+    type Value = ();
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("object or null")
+    }
+    fn visit_unit<E: serde::de::Error>(self) -> Result<(), E> {
+        Ok(())
+    }
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+        self.0.merge(&mut map)
+    }
+}
+
+pub(crate) struct GoPointerSeed<'a, T>(pub &'a mut Option<Box<T>>);
+impl<'de, T: GoObject + Default> serde::de::DeserializeSeed<'de> for GoPointerSeed<'_, T> {
+    type Value = ();
+    fn deserialize<D: serde::Deserializer<'de>>(self, deserializer: D) -> Result<(), D::Error> {
+        deserializer.deserialize_any(self)
+    }
+}
+impl<'de, T: GoObject + Default> serde::de::Visitor<'de> for GoPointerSeed<'_, T> {
+    type Value = ();
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("object or null")
+    }
+    fn visit_unit<E: serde::de::Error>(self) -> Result<(), E> {
+        *self.0 = None;
+        Ok(())
+    }
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+        self.0.get_or_insert_with(Default::default).merge(&mut map)
+    }
+}
+
+pub(crate) struct GoMapSeed<'a, T>(pub &'a mut Option<BTreeMap<String, T>>);
+impl<'de, T: Deserialize<'de>> serde::de::DeserializeSeed<'de> for GoMapSeed<'_, T> {
+    type Value = ();
+    fn deserialize<D: serde::Deserializer<'de>>(self, deserializer: D) -> Result<(), D::Error> {
+        deserializer.deserialize_any(self)
+    }
+}
+impl<'de, T: Deserialize<'de>> serde::de::Visitor<'de> for GoMapSeed<'_, T> {
+    type Value = ();
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("map or null")
+    }
+    fn visit_unit<E: serde::de::Error>(self) -> Result<(), E> {
+        *self.0 = None;
+        Ok(())
+    }
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+        let values = self.0.get_or_insert_with(BTreeMap::new);
+        while let Some((key, value)) = map.next_entry()? {
+            values.insert(key, value);
+        }
+        Ok(())
+    }
+}
+
+macro_rules! go_field {
+    (raw, $field:expr, $map:expr) => {
+        $field = Some($map.next_value()?)
+    };
+    (scalar, $field:expr, $map:expr) => {
+        if let Some(value) = $map.next_value()? {
+            $field = value;
+        }
+    };
+    (object, $field:expr, $map:expr) => {
+        $map.next_value_seed(crate::contract::GoObjectSeed(&mut $field))?
+    };
+    (pointer, $field:expr, $map:expr) => {
+        $map.next_value_seed(crate::contract::GoPointerSeed(&mut $field))?
+    };
+    (map, $field:expr, $map:expr) => {
+        $map.next_value_seed(crate::contract::GoMapSeed(&mut $field))?
+    };
+    (value, $field:expr, $map:expr) => {
+        $field = $map.next_value()?
+    };
+}
+pub(crate) use go_field;
+
+macro_rules! go_object {
+    ($model:ident { $($field:ident: $json:literal => $kind:ident),* $(,)? }) => {
+        impl<'de> serde::Deserialize<'de> for $model {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let mut value = Self::default();
+                serde::de::DeserializeSeed::deserialize(crate::contract::GoObjectSeed(&mut value), deserializer)?;
+                Ok(value)
+            }
+        }
+        impl crate::contract::GoObject for $model {
+            fn merge<'de, A: serde::de::MapAccess<'de>>(&mut self, map: &mut A) -> Result<(), A::Error> {
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        $(key if crate::contract::go_field_matches(key, $json) => { crate::contract::go_field!($kind, self.$field, map); },)*
+                        _ => return Err(serde::de::Error::unknown_field(&key, &[$($json),*])),
+                    }
+                }
+                Ok(())
+            }
+        }
+    };
+}
+pub(crate) use go_object;
+
+pub(crate) fn go_field_matches(key: &str, expected: &str) -> bool {
+    if key.is_ascii() {
+        return key.eq_ignore_ascii_case(expected);
+    }
+    key.chars()
+        .map(|character| match character {
+            'K' => 'k',
+            'ſ' => 's',
+            character => character.to_ascii_lowercase(),
+        })
+        .eq(expected
+            .chars()
+            .map(|character| character.to_ascii_lowercase()))
+}
+
+/// Go's wire contract distinguishes nil slices from allocated empty slices.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct GoSlice<T>(pub Option<Vec<T>>);
+
+impl<T> Default for GoSlice<T> {
+    fn default() -> Self {
+        Self(None)
+    }
+}
+
+impl<T> Deref for GoSlice<T> {
+    type Target = [T];
+    fn deref(&self) -> &[T] {
+        self.0.as_deref().unwrap_or_default()
+    }
+}
+
+impl<T> DerefMut for GoSlice<T> {
+    fn deref_mut(&mut self) -> &mut [T] {
+        self.0.get_or_insert_with(Vec::new).as_mut_slice()
+    }
+}
+
+impl<T> GoSlice<T> {
+    pub fn is_empty(&self) -> bool {
+        self.deref().is_empty()
+    }
+}
+
+/// Applies Go's omitempty rule to a nullable map.
+pub fn map_is_empty<T>(value: &Option<BTreeMap<String, T>>) -> bool {
+    value.as_ref().is_none_or(BTreeMap::is_empty)
+}
+
+pub(crate) fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    value == &T::default()
+}
+
+struct CanonicalFormatter;
+
+impl serde_json::ser::Formatter for CanonicalFormatter {
+    fn write_string_fragment<W: std::io::Write + ?Sized>(
+        &mut self,
+        writer: &mut W,
+        fragment: &str,
+    ) -> std::io::Result<()> {
+        let mut start = 0;
+        for (index, character) in fragment.char_indices() {
+            let escape = match character {
+                '\u{2028}' => b"\\u2028",
+                '\u{2029}' => b"\\u2029",
+                _ => continue,
+            };
+            writer.write_all(&fragment.as_bytes()[start..index])?;
+            writer.write_all(escape)?;
+            start = index + character.len_utf8();
+        }
+        writer.write_all(&fragment.as_bytes()[start..])
+    }
+}
+
+/// Encodes fields in declaration order and maps in lexical key order.
+/// Go 1.26 escapes line separators in strings, while preserving their original
+/// spelling inside RawMessage when EscapeHTML is false.
+pub fn canonical_json(value: &impl Serialize) -> Result<Vec<u8>, serde_json::Error> {
+    let mut output = CanonicalWriter::new(Vec::new());
+    value.serialize(&mut serde_json::Serializer::with_formatter(
+        &mut output,
+        CanonicalFormatter,
+    ))?;
+    Ok(output.sink)
+}
+
+/// Returns SHA-256 over canonical wire bytes, without a framing newline.
+pub fn canonical_hash(value: &impl Serialize) -> Result<String, serde_json::Error> {
+    // Buffer serializer fragments so small fields do not each update SHA-256.
+    let mut output = CanonicalWriter::new(BufWriter::new(DigestWriter(Sha256::new())));
+    value.serialize(&mut serde_json::Serializer::with_formatter(
+        &mut output,
+        CanonicalFormatter,
+    ))?;
+    let digest = output
+        .sink
+        .into_inner()
+        .map_err(|error| serde_json::Error::io(error.into_error()))?;
+    Ok(format!("{:x}", digest.0.finalize()))
+}
+
+// RawValue preserves number spelling and object order. Go compacts whitespace
+// outside strings, including when a quoted fragment spans serializer writes.
+struct CanonicalWriter<W> {
+    sink: W,
+    quoted: bool,
+    escaped: bool,
+}
+
+impl<W> CanonicalWriter<W> {
+    fn new(sink: W) -> Self {
+        Self {
+            sink,
+            quoted: false,
+            escaped: false,
+        }
+    }
+}
+
+impl<W: Write> Write for CanonicalWriter<W> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let mut start = 0;
+        for (index, &byte) in bytes.iter().enumerate() {
+            if self.quoted {
+                if self.escaped {
+                    self.escaped = false;
+                } else if byte == b'\\' {
+                    self.escaped = true;
+                } else if byte == b'"' {
+                    self.quoted = false;
+                }
+            } else if byte == b'"' {
+                self.quoted = true;
+            } else if matches!(byte, b' ' | b'\t' | b'\r' | b'\n') {
+                self.sink.write_all(&bytes[start..index])?;
+                start = index + 1;
+            }
+        }
+        self.sink.write_all(&bytes[start..])?;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.sink.flush()
+    }
+}
+
+struct DigestWriter(Sha256);
+
+impl Write for DigestWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0.update(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canonical_writer_preserves_strings_across_every_split() {
+        let input = r#" { "key" : "a b\\\" c", "number" : -0.12500e+9, "array" : [null, true], "unicode" : "界  " } "#;
+        let expected =
+            r#"{"key":"a b\\\" c","number":-0.12500e+9,"array":[null,true],"unicode":"界  "}"#;
+        let raw: Box<serde_json::value::RawValue> = serde_json::from_str(input).unwrap();
+        assert_eq!(canonical_json(&raw).unwrap(), expected.as_bytes());
+        for split in 0..=input.len() {
+            let mut writer = CanonicalWriter::new(Vec::new());
+            writer.write_all(&input.as_bytes()[..split]).unwrap();
+            writer.write_all(&input.as_bytes()[split..]).unwrap();
+            writer.flush().unwrap();
+            assert_eq!(writer.sink, expected.as_bytes(), "split {split}");
+        }
+        let mut writer = CanonicalWriter::new(Vec::new());
+        for byte in input.as_bytes() {
+            writer.write_all(&[*byte]).unwrap();
+        }
+        assert_eq!(writer.sink, expected.as_bytes());
+    }
+
+    #[test]
+    fn streaming_hash_matches_canonical_bytes_across_buffer_boundaries() {
+        #[derive(Serialize)]
+        struct Envelope {
+            text: String,
+            raw: Box<serde_json::value::RawValue>,
+        }
+        let value = Envelope {
+            text: "quotes\" and slash\\ and \u{2028}\u{2029}".repeat(2048),
+            raw: serde_json::value::RawValue::from_string(format!(
+                " {{ \"raw\" : {}, \"number\" : 1.000e+12 }} ",
+                serde_json::to_string(&" \\".repeat(8192)).unwrap()
+            ))
+            .unwrap(),
+        };
+        let bytes = canonical_json(&value).unwrap();
+        assert_eq!(
+            canonical_hash(&value).unwrap(),
+            format!("{:x}", Sha256::digest(&bytes))
+        );
+        let decoded: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(decoded["text"], value.text);
+        assert!(String::from_utf8(bytes).unwrap().contains("\\u2028\\u2029"));
+    }
+
+    #[test]
+    fn canonical_writer_handles_short_writes_and_propagates_failures() {
+        struct Sink {
+            bytes: Vec<u8>,
+            remaining: usize,
+        }
+        impl Write for Sink {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                if bytes.is_empty() {
+                    return Ok(0);
+                }
+                if self.remaining == 0 {
+                    return Err(io::Error::other("injected write failure"));
+                }
+                let size = bytes.len().min(3).min(self.remaining);
+                self.bytes.extend_from_slice(&bytes[..size]);
+                self.remaining -= size;
+                Ok(size)
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Err(io::Error::other("injected flush failure"))
+            }
+        }
+        let input = r#" { "text" : "keep spaces" } "#;
+        let mut writer = CanonicalWriter::new(Sink {
+            bytes: Vec::new(),
+            remaining: 100,
+        });
+        writer.write_all(input.as_bytes()).unwrap();
+        assert_eq!(writer.sink.bytes, br#"{"text":"keep spaces"}"#);
+        assert!(
+            writer
+                .flush()
+                .unwrap_err()
+                .to_string()
+                .contains("flush failure")
+        );
+        let mut writer = CanonicalWriter::new(Sink {
+            bytes: Vec::new(),
+            remaining: 4,
+        });
+        let error = serde_json::json!({"text":"keep spaces"})
+            .serialize(&mut serde_json::Serializer::with_formatter(
+                &mut writer,
+                CanonicalFormatter,
+            ))
+            .unwrap_err();
+        assert!(error.is_io());
+        assert!(error.to_string().contains("write failure"));
+    }
+}

@@ -1,0 +1,868 @@
+{
+  "$defs": {
+    "github.com_d7z-team_mini-go_compiler.EntryPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "Function": {
+          "type": "string"
+        },
+        "ModulePath": {
+          "type": "string"
+        },
+        "Name": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.File": {
+      "additionalProperties": false,
+      "properties": {
+        "OriginPath": {
+          "type": "string"
+        },
+        "Path": {
+          "type": "string"
+        },
+        "Text": {
+          "type": "string"
+        },
+        "URI": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.Package": {
+      "additionalProperties": false,
+      "properties": {
+        "Editable": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "Files": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.File"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "ModulePath": {
+          "type": "string"
+        },
+        "Namespace": {
+          "type": "string"
+        },
+        "PackagePath": {
+          "type": "string"
+        },
+        "Resources": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.Resource"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "SelectionTarget": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_target.Target"
+        },
+        "SourceCandidates": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_workspace.SourceCandidate"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "TestFiles": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.File"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.Resource": {
+      "additionalProperties": false,
+      "properties": {
+        "Data": {
+          "contentEncoding": "base64",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "Path": {
+          "type": "string"
+        },
+        "SourcePath": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.SourceTree": {
+      "additionalProperties": false,
+      "properties": {
+        "Editable": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "Files": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.TreeFile"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "ModulePath": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.ToolsError": {
+      "additionalProperties": false,
+      "properties": {
+        "Code": {
+          "type": "string"
+        },
+        "Message": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.ToolsRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "Build": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_service.BuildOptions"
+        },
+        "Changes": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.DocumentUpdate"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "Deadline": {
+          "type": "string"
+        },
+        "Epoch": {
+          "type": "string"
+        },
+        "Format": {
+          "type": "string"
+        },
+        "Operation": {
+          "type": "string"
+        },
+        "Packages": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.Package"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "Query": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_service.Query"
+        },
+        "Revision": {
+          "type": "string"
+        },
+        "Root": {
+          "type": "string"
+        },
+        "Session": {
+          "type": "string"
+        },
+        "Tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "Token": {
+          "type": "string"
+        },
+        "Trees": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.SourceTree"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "Version": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.ToolsResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "Analysis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_service.Analysis"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "CompilerID": {
+          "type": "string"
+        },
+        "Diagnostics": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_source.Diagnostic"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "Error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.ToolsError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "Format": {
+          "type": "string"
+        },
+        "ImageJSON": {
+          "type": "string"
+        },
+        "Recovery": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.ToolsRequest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "Revision": {
+          "type": "string"
+        },
+        "Session": {
+          "type": "string"
+        },
+        "Sources": {
+          "additionalProperties": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_service.BuildSource"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "SymbolsJSON": {
+          "type": "string"
+        },
+        "Value": {},
+        "Version": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.TreeFile": {
+      "additionalProperties": false,
+      "properties": {
+        "Data": {
+          "contentEncoding": "base64",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "Path": {
+          "type": "string"
+        },
+        "URI": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.CodeAction": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "type": "string"
+        },
+        "diagnostics": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.Diagnostic"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "edit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.WorkspaceEdit"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.CompletionItem": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "documentation": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.MarkupContent"
+        },
+        "kind": {
+          "type": "integer"
+        },
+        "label": {
+          "type": "string"
+        },
+        "sortText": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.ContentChange": {
+      "additionalProperties": false,
+      "properties": {
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.Range"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.Diagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "range": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.Range"
+        },
+        "relatedInformation": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.DiagnosticRelatedInformation"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "severity": {
+          "type": "integer"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.DiagnosticRelatedInformation": {
+      "additionalProperties": false,
+      "properties": {
+        "location": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.Location"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.DiagnosticReport": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.Diagnostic"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "kind": {
+          "type": "string"
+        },
+        "resultId": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.DocumentIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "ModulePath": {
+          "type": "string"
+        },
+        "Path": {
+          "type": "string"
+        },
+        "URI": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.DocumentUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "Changes": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.ContentChange"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "Identity": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.DocumentIdentity"
+        },
+        "Operation": {
+          "type": "string"
+        },
+        "Text": {
+          "type": "string"
+        },
+        "Version": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.Location": {
+      "additionalProperties": false,
+      "properties": {
+        "range": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.Range"
+        },
+        "uri": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.MarkupContent": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.Position": {
+      "additionalProperties": false,
+      "properties": {
+        "character": {
+          "type": "integer"
+        },
+        "line": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.Range": {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.Position"
+        },
+        "start": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.Position"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.TextDocumentEdit": {
+      "additionalProperties": false,
+      "properties": {
+        "edits": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.TextEdit"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "textDocument": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.VersionedTextDocumentIdentifier"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.TextEdit": {
+      "additionalProperties": false,
+      "properties": {
+        "newText": {
+          "type": "string"
+        },
+        "range": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.Range"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.VersionedTextDocumentIdentifier": {
+      "additionalProperties": false,
+      "properties": {
+        "uri": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_language.WorkspaceEdit": {
+      "additionalProperties": false,
+      "properties": {
+        "documentChanges": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.TextDocumentEdit"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_service.Analysis": {
+      "additionalProperties": false,
+      "properties": {
+        "CheckedPackages": {
+          "type": "integer"
+        },
+        "Diagnostics": {
+          "additionalProperties": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.DiagnosticReport"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "ReusedPackages": {
+          "type": "integer"
+        },
+        "Revision": {
+          "type": "string"
+        },
+        "Snapshot": {
+          "type": "string"
+        },
+        "WorkspaceDiagnostics": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_source.Diagnostic"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_service.BuildOptions": {
+      "additionalProperties": false,
+      "properties": {
+        "EntryPoints": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler.EntryPoint"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "Optimization": {
+          "type": "integer"
+        },
+        "Revision": {
+          "type": "string"
+        },
+        "Symbols": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_service.BuildSource": {
+      "additionalProperties": false,
+      "properties": {
+        "module": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_service.Query": {
+      "additionalProperties": false,
+      "properties": {
+        "Action": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.CodeAction"
+        },
+        "Completion": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.CompletionItem"
+        },
+        "Diagnostics": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.Diagnostic"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "IncludeDeclaration": {
+          "type": "boolean"
+        },
+        "Operation": {
+          "type": "string"
+        },
+        "Position": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.Position"
+        },
+        "Positions": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.Position"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "Range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_language.Range"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "Snapshot": {
+          "type": "string"
+        },
+        "Text": {
+          "type": "string"
+        },
+        "URI": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_source.Diagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "Code": {
+          "type": "string"
+        },
+        "Message": {
+          "type": "string"
+        },
+        "ModulePath": {
+          "type": "string"
+        },
+        "Primary": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_source.Span"
+        },
+        "Related": {
+          "items": {
+            "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_source.RelatedDiagnostic"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "Severity": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_source.Position": {
+      "additionalProperties": false,
+      "properties": {
+        "Column": {
+          "type": "integer"
+        },
+        "File": {
+          "type": "string"
+        },
+        "Line": {
+          "type": "integer"
+        },
+        "Offset": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_source.RelatedDiagnostic": {
+      "additionalProperties": false,
+      "properties": {
+        "Message": {
+          "type": "string"
+        },
+        "Span": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_source.Span"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_source.Span": {
+      "additionalProperties": false,
+      "properties": {
+        "End": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_source.Position"
+        },
+        "Start": {
+          "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_source.Position"
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_target.Target": {
+      "additionalProperties": false,
+      "properties": {
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "github.com_d7z-team_mini-go_compiler_workspace.SourceCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "Hash": {
+          "type": "string"
+        },
+        "Path": {
+          "type": "string"
+        },
+        "Selected": {
+          "type": "boolean"
+        },
+        "Size": {
+          "type": "integer"
+        },
+        "Test": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "format": "mini-go-tools",
+  "request": {
+    "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.ToolsRequest"
+  },
+  "response": {
+    "$ref": "#/$defs/github.com_d7z-team_mini-go_compiler_bootstrap_compilerentry.ToolsResponse"
+  },
+  "title": "Mini-Go compiler tools ABI",
+  "version": 2
+}

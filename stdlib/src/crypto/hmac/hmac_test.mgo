@@ -1,0 +1,31 @@
+package hmac
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"testing"
+)
+
+func TestHMACSHA256(t *testing.T) {
+	h := New(sha256.New, []byte("key"))
+	h.Write([]byte("The quick brown fox jumps over the lazy dog"))
+	got := hex.EncodeToString(h.Sum(nil))
+	want := "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8"
+	if got != want {
+		t.Fatalf("Sum = %q, want %q", got, want)
+	}
+	if !Equal(h.Sum(nil), h.Sum(nil)) || Equal(h.Sum(nil), []byte("different")) {
+		t.Fatal("Equal returned an invalid result")
+	}
+
+	h.Reset()
+	h.Write([]byte("The quick brown fox jumps over the lazy dog"))
+	if hex.EncodeToString(h.Sum(nil)) != want {
+		t.Fatal("Reset did not restore the keyed initial state")
+	}
+	first := h.Sum([]byte{1, 2})
+	second := h.Sum([]byte{1, 2})
+	if !Equal(first, second) {
+		t.Fatal("Sum changed the hash state")
+	}
+}

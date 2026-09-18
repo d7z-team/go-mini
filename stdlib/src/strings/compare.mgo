@@ -1,0 +1,90 @@
+package strings
+
+import (
+	"unicode"
+	"unicode/utf8"
+)
+
+// HasPrefix reports whether the string s begins with prefix.
+func HasPrefix(s string, prefix string) bool {
+	if len(prefix) > len(s) {
+		return false
+	}
+	return s[:len(prefix)] == prefix
+}
+
+// HasSuffix reports whether the string s ends with suffix.
+func HasSuffix(s string, suffix string) bool {
+	if len(suffix) > len(s) {
+		return false
+	}
+	return s[len(s) - len(suffix):] == suffix
+}
+
+// Contains reports whether substr is within s.
+func Contains(s string, substr string) bool {
+	return Index(s, substr) >= 0
+}
+
+// ContainsRune reports whether the Unicode code point r is within s.
+func ContainsRune(s string, r rune) bool {
+	return IndexRune(s, r) >= 0
+}
+
+// ContainsAny reports whether any Unicode code points in chars are within s.
+func ContainsAny(s string, chars string) bool {
+	return IndexAny(s, chars) >= 0
+}
+
+// ContainsFunc reports whether any Unicode code point r within s satisfies f(r).
+func ContainsFunc(s string, f func(rune) bool) bool {
+	return IndexFunc(s, f) >= 0
+}
+
+// Compare returns an integer comparing two strings lexicographically.
+// The result will be 0 if a == b, -1 if a < b, and +1 if a > b.
+//
+// Use Compare when you need to perform a three-way comparison (with
+// [slices.SortFunc], for example). It is usually clearer and always faster
+// to use the built-in string comparison operators ==, <, >, and so on.
+func Compare(a string, b string) int {
+	if a == b {
+		return 0
+	}
+	if a < b {
+		return -1
+	}
+	return 1
+}
+
+// EqualFold reports whether s and t, interpreted as UTF-8 strings,
+// are equal under simple Unicode case-folding, which is a more general
+// form of case-insensitivity.
+func EqualFold(s string, t string) bool {
+	for len(s) != 0 && len(t) != 0 {
+		sr, size := utf8.DecodeRuneInString(s)
+		s = s[size:]
+		tr, size := utf8.DecodeRuneInString(t)
+		t = t[size:]
+		if sr == tr {
+			continue
+		}
+		if tr < sr {
+			sr, tr = tr, sr
+		}
+		if tr < utf8.RuneSelf {
+			if sr >= 'A' && sr <= 'Z' && tr == sr + 'a' - 'A' {
+				continue
+			}
+			return false
+		}
+		folded := unicode.SimpleFold(sr)
+		for folded != sr && folded < tr {
+			folded = unicode.SimpleFold(folded)
+		}
+		if folded != tr {
+			return false
+		}
+	}
+	return s == t
+}

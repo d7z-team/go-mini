@@ -1,0 +1,40 @@
+package path_test
+
+import (
+	"path"
+	"testing"
+)
+
+func TestPathCleanJoinAndAbsolute(t *testing.T) {
+	if path.Clean("//a/./b/../c/") != "/a/c" {
+		t.Fatalf("Clean returned the wrong absolute path")
+	}
+	if path.Clean("a/../../b") != "../b" {
+		t.Fatalf("Clean returned the wrong relative path")
+	}
+	if path.Clean("") != "." || path.Clean("/") != "/" {
+		t.Fatalf("Clean returned the wrong empty/root path")
+	}
+	if path.Join("a", "b", "..", "c") != "a/c" || path.Join("", "") != "" {
+		t.Fatalf("Join returned the wrong path")
+	}
+	if !path.IsAbs("/tmp/file") || path.IsAbs("tmp/file") {
+		t.Fatalf("IsAbs returned the wrong result")
+	}
+}
+
+func TestPathSplitBaseDirAndExt(t *testing.T) {
+	dir, file := path.Split("/tmp/archive.tar.gz")
+	if dir != "/tmp/" || file != "archive.tar.gz" {
+		t.Fatalf("Split returned the wrong parts: %q, %q", dir, file)
+	}
+	if path.Dir("/tmp/archive.tar.gz") != "/tmp" || path.Base("/tmp/archive.tar.gz") != "archive.tar.gz" {
+		t.Fatalf("Dir or Base returned the wrong result")
+	}
+	if path.Base("/") != "/" || path.Base("") != "." {
+		t.Fatalf("Base returned the wrong root/empty result")
+	}
+	if path.Ext("/tmp/archive.tar.gz") != ".gz" || path.Ext(".profile") != ".profile" || path.Ext("README") != "" {
+		t.Fatalf("Ext returned the wrong result")
+	}
+}

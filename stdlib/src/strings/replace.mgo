@@ -1,0 +1,104 @@
+package strings
+
+import "unicode/utf8"
+
+func replaceEmpty(s string, new string, n int) string {
+	out := ""
+	inserted := 0
+	for {
+		if n < 0 || inserted < n {
+			out += new
+			inserted++
+		}
+		if len(s) == 0 {
+			return out
+		}
+		_, size := utf8.DecodeRuneInString(s)
+		out += s[:size]
+		s = s[size:]
+	}
+}
+
+// Clone returns a fresh copy of s.
+func Clone(s string) string {
+	return string([]byte(s))
+}
+
+// ToValidUTF8 returns a copy of s with each run of invalid UTF-8 byte
+// sequences replaced by replacement, which may be empty.
+func ToValidUTF8(s string, replacement string) string {
+	out := ""
+	for len(s) != 0 {
+		r, size := utf8.DecodeRuneInString(s)
+		if r != utf8.RuneError || size != 1 {
+			out += s[:size]
+			s = s[size:]
+			continue
+		}
+		out += replacement
+		s = s[1:]
+		for len(s) != 0 {
+			r, size = utf8.DecodeRuneInString(s)
+			if r != utf8.RuneError || size != 1 {
+				break
+			}
+			s = s[1:]
+		}
+	}
+	return out
+}
+
+// Repeat returns a new string consisting of count copies of the string s.
+//
+// It panics if count is negative or if the result of (len(s) * count)
+// overflows.
+func Repeat(s string, count int) string {
+	if count < 0 {
+		panic("negative Repeat count")
+	}
+	out := ""
+	for i := 0; i < count; i++ {
+		out += s
+	}
+	return out
+}
+
+// Replace returns a copy of the string s with the first n
+// non-overlapping instances of old replaced by new.
+// If old is empty, it matches at the beginning of the string
+// and after each UTF-8 sequence, yielding up to k+1 replacements
+// for a k-rune string.
+// If n < 0, there is no limit on the number of replacements.
+func Replace(s string, old string, new string, n int) string {
+	if n == 0 {
+		return s
+	}
+	if old == "" {
+		return replaceEmpty(s, new, n)
+	}
+	out := ""
+	start := 0
+	replaced := 0
+	for start <= len(s) {
+		index := Index(s[start:], old)
+		if index < 0 {
+			return out + s[start:]
+		}
+		out += s[start:start + index] + new
+		start = start + index + len(old)
+		replaced++
+		if n > 0 && replaced >= n {
+			return out + s[start:]
+		}
+	}
+	return out
+}
+
+// ReplaceAll returns a copy of the string s with all
+// non-overlapping instances of old replaced by new.
+// If old is empty, it matches at the beginning of the string
+// and after each UTF-8 sequence, yielding up to k+1 replacements
+// for a k-rune string.
+func ReplaceAll(s string, old string, new string) string {
+	return Replace(s, old, new, -1)
+}

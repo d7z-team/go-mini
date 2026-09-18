@@ -1,0 +1,14 @@
+package fmt
+
+// Sprintln formats using the default formats for its operands and returns the resulting string.
+// Spaces are always added between operands and a newline is appended.
+func Sprintln(args ...any) string {
+	out := ""
+	for i := 0; i < len(args); i++ {
+		if i > 0 {
+			out += " "
+		}
+		out += formatValue(args[i])
+	}
+	return out + "\n"
+}

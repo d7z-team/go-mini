@@ -1,0 +1,99 @@
+{
+  "name": "mini-go",
+  "displayName": "Mini-Go Language Support",
+  "description": "Rich language support for the Mini-Go scripting engine.",
+  "version": "0.0.1",
+  "publisher": "go-mini",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./extension.js",
+  "scripts": {
+    "test": "node --test *.test.js",
+    "package": "vsce package --out /tmp/mini-go.vsix"
+  },
+  "activationEvents": [
+    "onLanguage:mini-go"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "mini-go",
+        "aliases": [
+          "Mini-Go",
+          "mini"
+        ],
+        "extensions": [
+          ".mgo"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mini-go",
+        "scopeName": "source.mgo",
+        "path": "./syntaxes/mini-go.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Mini-Go",
+      "properties": {
+        "mini-go.lsp.path": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to mini-go. If empty, runs mini-go from PATH."
+        },
+        "mini-go.module": {
+          "type": "string",
+          "default": "app",
+          "description": "应用源码的逻辑导入前缀。"
+        },
+        "mini-go.sources": {
+          "type": "array",
+          "default": [],
+          "description": "额外本地源码；directory 相对工作区根。",
+          "items": {
+            "type": "object",
+            "required": [
+              "module",
+              "directory"
+            ],
+            "properties": {
+              "module": {
+                "type": "string"
+              },
+              "directory": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "mini-go.restartServer",
+        "title": "Mini-Go: Restart Language Server"
+      }
+    ]
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.0.0",
+    "vscode-oniguruma": "2.0.1",
+    "vscode-textmate": "9.3.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/d7z-team/mini-go"
+  }
+}

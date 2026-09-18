@@ -1,0 +1,90 @@
+package strconv_test
+
+import (
+	"math"
+	"strconv"
+	"testing"
+)
+
+func TestFloatPrecisionAndRounding(t *testing.T) {
+	for _, tc := range []struct {
+		value float64
+		format byte
+		precision int
+		bits int
+		want string
+	}{
+		{1.25, 'f', 0, 64, "1"},
+		{1.25, 'f', 1, 64, "1.2"},
+		{1.75, 'f', 1, 64, "1.8"},
+		{1.25, 'e', 2, 64, "1.25e+00"},
+		{0.0000001, 'g', -1, 64, "1e-07"},
+		{16777217, 'f', 0, 32, "16777216"},
+		{1.5, 'x', -1, 64, "0x1.8p+00"},
+	} {
+		if got := strconv.FormatFloat(tc.value, tc.format, tc.precision, tc.bits); got != tc.want {
+			t.Fatalf("FormatFloat: got %s want %s", got, tc.want)
+		}
+	}
+}
+
+func TestFloatBitRoundTrips(t *testing.T) {
+	seeds := []uint64{0, 1, 0x8000000000000000, 0x000fffffffffffff, 0x0010000000000000, 0x7fefffffffffffff, 0x3ff0000000000000}
+	state := uint64(0x1928374655)
+	for n := 0; n < 128; n++ {
+		state ^= state << 13
+		state ^= state >> 7
+		state ^= state << 17
+		seeds = append(seeds, state)
+	}
+	for _, bits := range seeds {
+		value := math.Float64frombits(bits)
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			continue
+		}
+		for _, format := range []byte{'g', 'e', 'x'} {
+			text := strconv.FormatFloat(value, format, -1, 64)
+			got, err := strconv.ParseFloat(text, 64)
+			if err != nil || math.Float64bits(got) != bits {
+				t.Fatalf("float64 round trip failed: %s", text)
+			}
+		}
+		f32 := math.Float32frombits(uint32(bits))
+		if math.IsNaN(float64(f32)) || math.IsInf(float64(f32), 0) {
+			continue
+		}
+		text := strconv.FormatFloat(float64(f32), 'g', -1, 32)
+		got, err := strconv.ParseFloat(text, 32)
+		if err != nil || math.Float32bits(float32(got)) != uint32(bits) {
+			t.Fatalf("float32 round trip failed: %s", text)
+		}
+	}
+}
+
+func TestFloatSyntaxRangeAndComplex(t *testing.T) {
+	for _, text := range []string{"", "1e", "0x1", "1__2", "1e2x"} {
+		_, err := strconv.ParseFloat(text, 64)
+		if err == nil {
+			t.Fatalf("accepted invalid float %s", text)
+		}
+		num, ok := err.(*strconv.NumError)
+		if !ok || num.Func != "ParseFloat" || num.Num != text || num.Err != strconv.ErrSyntax {
+			t.Fatal("invalid syntax error contract")
+		}
+	}
+	value, err := strconv.ParseFloat("1e999999999999999999999", 64)
+	if !math.IsInf(value, 1) || err == nil {
+		t.Fatal("overflow not reported")
+	}
+	if n, ok := err.(*strconv.NumError); !ok || n.Err != strconv.ErrRange {
+		t.Fatal("invalid range error")
+	}
+	value, err = strconv.ParseFloat("0x1_ffp-4", 64)
+	if err != nil || value != 31.9375 {
+		t.Fatal("hexadecimal parsing failed")
+	}
+	c, err := strconv.ParseComplex("(1.25-2.5i)", 128)
+	if err != nil || real(c) != 1.25 || imag(c) != -2.5 || strconv.FormatComplex(c, 'g', -1, 128) != "(1.25-2.5i)" {
+		t.Fatal("complex parsing or formatting failed")
+	}
+}

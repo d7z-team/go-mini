@@ -1,0 +1,592 @@
+// Package slices defines various functions useful with slices of any type.
+package slices
+
+import (
+	"cmp"
+	"iter"
+)
+
+// Equal reports whether two slices are equal: the same length and all elements
+// equal. A nil slice and a non-nil empty slice are considered equal.
+func Equal[S ~ []E, E comparable](left, right S) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// EqualFunc reports whether two slices are equal using eq to compare elements.
+func EqualFunc[S1 ~ []E1, S2 ~ []E2, E1, E2 any](left S1, right S2, eq func(E1, E2) bool) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if !eq(left[i], right[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// Compare compares the elements of two slices lexicographically.
+func Compare[S ~ []E, E cmp.Ordered](left, right S) int {
+	limit := min(len(left), len(right))
+	for i := 0; i < limit; i++ {
+		if order := cmp.Compare(left[i], right[i]); order != 0 {
+			return order
+		}
+	}
+	return cmp.Compare[int](len(left), len(right))
+}
+
+// CompareFunc compares two slices lexicographically using compare.
+func CompareFunc[S1 ~ []E1, S2 ~ []E2, E1, E2 any](left S1, right S2, compare func(E1, E2) int) int {
+	limit := min(len(left), len(right))
+	for i := 0; i < limit; i++ {
+		if order := compare(left[i], right[i]); order != 0 {
+			return order
+		}
+	}
+	return cmp.Compare[int](len(left), len(right))
+}
+
+// Index returns the index of the first occurrence of value in values, or -1.
+func Index[S ~ []E, E comparable](values S, value E) int {
+	for i := range values {
+		if values[i] == value {
+			return i
+		}
+	}
+	return -1
+}
+
+// IndexFunc returns the first index satisfying predicate, or -1.
+func IndexFunc[S ~ []E, E any](values S, predicate func(E) bool) int {
+	for i := range values {
+		if predicate(values[i]) {
+			return i
+		}
+	}
+	return -1
+}
+
+// Contains reports whether value is present in values.
+func Contains[S ~ []E, E comparable](values S, value E) bool {
+	for i := range values {
+		if values[i] == value {
+			return true
+		}
+	}
+	return false
+}
+
+// ContainsFunc reports whether at least one element satisfies predicate.
+func ContainsFunc[S ~ []E, E any](values S, predicate func(E) bool) bool {
+	for i := range values {
+		if predicate(values[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+// Insert inserts values at index i, returning the updated slice.
+func Insert[S ~ []E, E any](slice S, i int, values ...E) S {
+	if i < 0 || i > len(slice) {
+		panic("runtime error: slice bounds out of range")
+	}
+	if len(values) == 0 {
+		return slice
+	}
+	inserted := append([]E(nil), values...)
+	original := len(slice)
+	if len(inserted) > cap(slice) - original {
+		out := make(S, original + len(inserted))
+		copy(out, slice[:i])
+		copy(out[i:], inserted)
+		copy(out[i + len(inserted):], slice[i:])
+		return out
+	}
+	slice = slice[:original + len(inserted)]
+	copy(slice[i + len(inserted):], slice[i:original])
+	copy(slice[i:], inserted)
+	return slice
+}
+
+// Delete removes the elements slice[i:j] and returns the modified slice.
+func Delete[S ~ []E, E any](slice S, i, j int) S {
+	if i < 0 || j < i || j > len(slice) {
+		panic("runtime error: slice bounds out of range")
+	}
+	original := len(slice)
+	slice = append(slice[:i], slice[j:]...)
+	clear(slice[len(slice):original])
+	return slice
+}
+
+// DeleteFunc removes all elements for which remove returns true.
+func DeleteFunc[S ~ []E, E any](slice S, remove func(E) bool) S {
+	index := -1
+	for i := range slice {
+		if remove(slice[i]) {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return slice
+	}
+	end := index
+	for _, value := range slice[index + 1:] {
+		if !remove(value) {
+			slice[end] = value
+			end++
+		}
+	}
+	clear(slice[end:])
+	return slice[:end]
+}
+
+// Replace replaces slice[i:j] by the supplied values.
+func Replace[S ~ []E, E any](slice S, i, j int, values ...E) S {
+	if i < 0 || j < i || j > len(slice) {
+		panic("runtime error: slice bounds out of range")
+	}
+	replacement := append([]E(nil), values...)
+	removed := j - i
+	delta := len(replacement) - removed
+	original := len(slice)
+	if delta > cap(slice) - original {
+		out := make(S, original + delta)
+		copy(out, slice[:i])
+		copy(out[i:], replacement)
+		copy(out[i + len(replacement):], slice[j:])
+		return out
+	}
+	if delta > 0 {
+		slice = slice[:original + delta]
+		copy(slice[j + delta:], slice[j:original])
+	} else if delta < 0 {
+		copy(slice[i + len(replacement):], slice[j:])
+		clear(slice[original + delta:])
+		slice = slice[:original + delta]
+	}
+	copy(slice[i:], replacement)
+	return slice
+}
+
+// Clone returns a shallow clone of slice, preserving nil.
+func Clone[S ~ []E, E any](slice S) S {
+	return append(slice[:0:0], slice...)
+}
+
+// Compact replaces consecutive runs of equal elements with a single copy.
+func Compact[S ~ []E, E comparable](slice S) S {
+	if len(slice) < 2 {
+		return slice
+	}
+	end := 1
+	for i := 1; i < len(slice); i++ {
+		if slice[i] != slice[end - 1] {
+			slice[end] = slice[i]
+			end++
+		}
+	}
+	clear(slice[end:])
+	return slice[:end]
+}
+
+// CompactFunc is like Compact but uses equal to compare elements.
+func CompactFunc[S ~ []E, E any](slice S, equal func(E, E) bool) S {
+	if len(slice) < 2 {
+		return slice
+	}
+	end := 1
+	for i := 1; i < len(slice); i++ {
+		if !equal(slice[i], slice[end - 1]) {
+			slice[end] = slice[i]
+			end++
+		}
+	}
+	clear(slice[end:])
+	return slice[:end]
+}
+
+// Grow increases the slice capacity, if necessary, to guarantee space for n
+// additional elements.
+func Grow[S ~ []E, E any](slice S, n int) S {
+	if n < 0 {
+		panic("cannot be negative")
+	}
+	if n > cap(slice) - len(slice) {
+		slice = append(slice, make([]E, n)...)
+		slice = slice[:len(slice) - n]
+	}
+	return slice
+}
+
+// Clip removes unused capacity from the slice.
+func Clip[S ~ []E, E any](slice S) S {
+	return slice[:len(slice):len(slice)]
+}
+
+// Concat concatenates the supplied slices.
+func Concat[S ~ []E, E any](values ...S) S {
+	total := 0
+	for _, value := range values {
+		if len(value) > int(^uint(0) >> 1) - total {
+			panic("len out of range")
+		}
+		total += len(value)
+	}
+	if total == 0 {
+		return nil
+	}
+	out := make(S, 0, total)
+	for _, value := range values {
+		out = append(out, value...)
+	}
+	return out
+}
+
+// Repeat returns a new slice consisting of count copies of slice.
+func Repeat[S ~ []E, E any](slice S, count int) S {
+	if count < 0 {
+		panic("cannot be negative")
+	}
+	if len(slice) != 0 && count > int(^uint(0) >> 1) / len(slice) {
+		panic("len out of range")
+	}
+	out := make(S, 0, len(slice) * count)
+	for i := 0; i < count; i++ {
+		out = append(out, slice...)
+	}
+	return out
+}
+
+// Reverse reverses the elements in place.
+func Reverse[S ~ []E, E any](slice S) {
+	for left, right := 0, len(slice) - 1; left < right; left, right = left + 1, right - 1 {
+		slice[left], slice[right] = slice[right], slice[left]
+	}
+}
+
+// Sort sorts a slice of ordered values in ascending order.
+func Sort[S ~ []E, E cmp.Ordered](slice S) {
+	if len(slice) < 2 {
+		return
+	}
+	var quick func(int, int)
+	quick = func(low, high int) {
+		for low < high {
+			left, right := low, high
+			pivot := slice[low + (high - low) / 2]
+			for left <= right {
+				for slice[left] < pivot {
+					left++
+				}
+				for pivot < slice[right] {
+					right--
+				}
+				if left <= right {
+					slice[left], slice[right] = slice[right], slice[left]
+					left++
+					right--
+				}
+			}
+			if right - low < high - left {
+				if low < right {
+					quick(low, right)
+				}
+				low = left
+			} else {
+				if left < high {
+					quick(left, high)
+				}
+				high = right
+			}
+		}
+	}
+	quick(0, len(slice) - 1)
+}
+
+// SortFunc sorts a slice in ascending order as determined by compare.
+func SortFunc[S ~ []E, E any](slice S, compare func(E, E) int) {
+	if len(slice) < 2 {
+		return
+	}
+	var quick func(int, int)
+	quick = func(low, high int) {
+		for low < high {
+			left, right := low, high
+			pivot := slice[low + (high - low) / 2]
+			for left <= right {
+				for compare(slice[left], pivot) < 0 {
+					left++
+				}
+				for compare(slice[right], pivot) > 0 {
+					right--
+				}
+				if left <= right {
+					slice[left], slice[right] = slice[right], slice[left]
+					left++
+					right--
+				}
+			}
+			if right - low < high - left {
+				if low < right {
+					quick(low, right)
+				}
+				low = left
+			} else {
+				if left < high {
+					quick(left, high)
+				}
+				high = right
+			}
+		}
+	}
+	quick(0, len(slice) - 1)
+}
+
+// SortStableFunc sorts a slice while preserving the order of equal elements.
+func SortStableFunc[S ~ []E, E any](slice S, compare func(E, E) int) {
+	for i := 1; i < len(slice); i++ {
+		value := slice[i]
+		j := i
+		for j > 0 && compare(value, slice[j - 1]) < 0 {
+			slice[j] = slice[j - 1]
+			j--
+		}
+		slice[j] = value
+	}
+}
+
+// IsSorted reports whether slice is sorted in ascending order.
+func IsSorted[S ~ []E, E cmp.Ordered](slice S) bool {
+	for i := len(slice) - 1; i > 0; i-- {
+		if cmp.Less[E](slice[i], slice[i - 1]) {
+			return false
+		}
+	}
+	return true
+}
+
+// IsSortedFunc reports whether slice is sorted according to compare.
+func IsSortedFunc[S ~ []E, E any](slice S, compare func(E, E) int) bool {
+	for i := len(slice) - 1; i > 0; i-- {
+		if compare(slice[i], slice[i - 1]) < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// Min returns the minimal value in slice and panics if slice is empty.
+func Min[S ~ []E, E cmp.Ordered](slice S) E {
+	if len(slice) == 0 {
+		panic("slices.Min: empty list")
+	}
+	value := slice[0]
+	for _, candidate := range slice[1:] {
+		if cmp.Less(candidate, value) || candidate != candidate {
+			value = candidate
+		}
+	}
+	return value
+}
+
+// MinFunc returns the minimal value according to compare.
+func MinFunc[S ~ []E, E any](slice S, compare func(E, E) int) E {
+	if len(slice) == 0 {
+		panic("slices.MinFunc: empty list")
+	}
+	value := slice[0]
+	for _, candidate := range slice[1:] {
+		if compare(candidate, value) < 0 {
+			value = candidate
+		}
+	}
+	return value
+}
+
+// Max returns the maximal value in slice and panics if slice is empty.
+func Max[S ~ []E, E cmp.Ordered](slice S) E {
+	if len(slice) == 0 {
+		panic("slices.Max: empty list")
+	}
+	value := slice[0]
+	for _, candidate := range slice[1:] {
+		if cmp.Less(value, candidate) || candidate != candidate {
+			value = candidate
+		}
+	}
+	return value
+}
+
+// MaxFunc returns the maximal value according to compare.
+func MaxFunc[S ~ []E, E any](slice S, compare func(E, E) int) E {
+	if len(slice) == 0 {
+		panic("slices.MaxFunc: empty list")
+	}
+	value := slice[0]
+	for _, candidate := range slice[1:] {
+		if compare(candidate, value) > 0 {
+			value = candidate
+		}
+	}
+	return value
+}
+
+// BinarySearch searches for target in a sorted slice.
+func BinarySearch[S ~ []E, E cmp.Ordered](slice S, target E) (int, bool) {
+	low, high := 0, len(slice)
+	for low < high {
+		middle := int(uint(low + high) >> 1)
+		if cmp.Compare[E](slice[middle], target) < 0 {
+			low = middle + 1
+		} else {
+			high = middle
+		}
+	}
+	return low, low < len(slice) && cmp.Compare[E](slice[low], target) == 0
+}
+
+// BinarySearchFunc searches for target in a sorted slice using compare.
+func BinarySearchFunc[S ~ []E, E, T any](slice S, target T, compare func(E, T) int) (int, bool) {
+	low, high := 0, len(slice)
+	for low < high {
+		middle := int(uint(low + high) >> 1)
+		if compare(slice[middle], target) < 0 {
+			low = middle + 1
+		} else {
+			high = middle
+		}
+	}
+	return low, low < len(slice) && compare(slice[low], target) == 0
+}
+
+// All returns an iterator over index-value pairs in slice.
+func All[Slice ~ []E, E any](slice Slice) iter.Seq2[int, E] {
+	return func(yield func(int, E) bool) {
+		for index, value := range slice {
+			if !yield(index, value) {
+				return
+			}
+		}
+	}
+}
+
+// Values returns an iterator over the elements of slice.
+func Values[Slice ~ []E, E any](slice Slice) iter.Seq[E] {
+	return func(yield func(E) bool) {
+		for _, value := range slice {
+			if !yield(value) {
+				return
+			}
+		}
+	}
+}
+
+// Backward returns an iterator over index-value pairs from the end of slice.
+func Backward[Slice ~ []E, E any](slice Slice) iter.Seq2[int, E] {
+	return func(yield func(int, E) bool) {
+		for index := len(slice) - 1; index >= 0; index-- {
+			if !yield(index, slice[index]) {
+				return
+			}
+		}
+	}
+}
+
+// Collect collects values from seq into a new slice.
+func Collect[E any](seq iter.Seq[E]) []E {
+	var values []E
+	for value := range seq {
+		values = append(values, value)
+	}
+	return values
+}
+
+// AppendSeq appends values from seq to slice.
+func AppendSeq[Slice ~ []E, E any](slice Slice, seq iter.Seq[E]) Slice {
+	for value := range seq {
+		slice = append(slice, value)
+	}
+	return slice
+}
+
+// Chunk returns an iterator over consecutive slices of at most n elements.
+func Chunk[Slice ~ []E, E any](slice Slice, n int) iter.Seq[Slice] {
+	if n < 1 {
+		panic("cannot be less than 1")
+	}
+	return func(yield func(Slice) bool) {
+		for len(slice) > 0 {
+			end := min(n, len(slice))
+			if !yield(slice[:end:end]) {
+				return
+			}
+			slice = slice[end:]
+		}
+	}
+}
+
+// Sorted collects and sorts values from seq.
+func Sorted[E cmp.Ordered](seq iter.Seq[E]) []E {
+	var values []E
+	for value := range seq {
+		values = append(values, value)
+	}
+	for i := 1; i < len(values); i++ {
+		value := values[i]
+		j := i
+		for j > 0 && cmp.Less[E](value, values[j - 1]) {
+			values[j] = values[j - 1]
+			j--
+		}
+		values[j] = value
+	}
+	return values
+}
+
+// SortedFunc collects and sorts values from seq using compare.
+func SortedFunc[E any](seq iter.Seq[E], compare func(E, E) int) []E {
+	var values []E
+	for value := range seq {
+		values = append(values, value)
+	}
+	for i := 1; i < len(values); i++ {
+		value := values[i]
+		j := i
+		for j > 0 && compare(value, values[j - 1]) < 0 {
+			values[j] = values[j - 1]
+			j--
+		}
+		values[j] = value
+	}
+	return values
+}
+
+// SortedStableFunc collects and stably sorts values from seq using compare.
+func SortedStableFunc[E any](seq iter.Seq[E], compare func(E, E) int) []E {
+	var values []E
+	for value := range seq {
+		values = append(values, value)
+	}
+	for i := 1; i < len(values); i++ {
+		value := values[i]
+		j := i
+		for j > 0 && compare(value, values[j - 1]) < 0 {
+			values[j] = values[j - 1]
+			j--
+		}
+		values[j] = value
+	}
+	return values
+}

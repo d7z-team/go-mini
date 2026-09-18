@@ -1,0 +1,159 @@
+package fmt_test
+
+import (
+	"errors"
+	"fmt"
+	"testing"
+	"strings"
+)
+
+type customPrinter int
+
+func (value customPrinter) Format(state fmt.State, verb rune) {
+	width, hasWidth := state.Width()
+	precision, hasPrecision := state.Precision()
+	if verb == 'v' && state.Flag('#') && hasWidth && width == 8 && hasPrecision && precision == 3 {
+		state.Write([]byte("state"))
+		return
+	}
+	state.Write([]byte("custom"))
+}
+
+type panicPrinter int
+
+func (p panicPrinter) Format(state fmt.State, verb rune) {
+	panic("printer failed")
+}
+
+type namedFloat float32
+
+type namedInteger uint8
+
+type namedText string
+
+type namedBytes []byte
+
+type namedByteArray [3]byte
+
+func TestTextAndCharacterFormatting(t *testing.T) {
+	for _, value := range []any{"世界", namedText("世界"), []byte("世界"), namedBytes("世界")} {
+		if got := fmt.Sprintf("%.1s|%.1q|%+.1q|%#q|%.3x|% X", value, value, value, value, value, value); got != "世|\"世\"|\"\\u4e16\"|`世界`|e4b896|E4 B8 96 E7 95 8C" {
+			t.Fatalf("text formatting for %T: %q", value, got)
+		}
+	}
+	array := namedByteArray{'a', 'b', 'c'}
+	if got := fmt.Sprintf("%s|%q|%# x|%T", array, array, array, array); got != "abc|\"abc\"|0x61 0x62 0x63|fmt_test.namedByteArray" {
+		t.Fatalf("byte array formatting: %q", got)
+	}
+	if got := fmt.Sprintf("%q|%+q|%q|%T", '世', '世', namedInteger(65), nil); got != "'世'|'\\u4e16'|'A'|<nil>" {
+		t.Fatalf("character and nil formatting: %q", got)
+	}
+}
+
+type methodNumber float64
+
+func (v methodNumber) String() string {
+	return "string"
+}
+
+func (v methodNumber) Error() string {
+	return "error"
+}
+
+func (v methodNumber) GoString() string {
+	return "source"
+}
+
+type stateProbe int
+
+func (v stateProbe) Format(state fmt.State, verb rune) {
+	width, hasWidth := state.Width()
+	precision, hasPrecision := state.Precision()
+	if v == 0 && !hasWidth && !hasPrecision && width == 0 && precision == 0 && verb == 'v' {
+		state.Write([]byte("absent"))
+		return
+	}
+	if v == 1 && hasWidth && width == 8 && hasPrecision && precision == 0 && state.Flag('#') && state.Flag('+') && state.Flag('-') && state.Flag(' ') && state.Flag('0') && verb == 'x' {
+		state.Write([]byte("flags"))
+		return
+	}
+	state.Write([]byte("incorrect state"))
+}
+
+func TestPrinterMethodPrecedenceAndOptionalState(t *testing.T) {
+	if got := fmt.Sprintf("%v|%#v|%x|%.1f|%.2v", methodNumber(1.25), methodNumber(1.25), methodNumber(1.25), methodNumber(1.25), "世界好"); got != "error|source|6572726f72|1.2|世界" {
+		t.Fatalf("method precedence: %q", got)
+	}
+	if got := fmt.Sprintf("%v|%#+- 08.0x", stateProbe(0), stateProbe(1)); got != "absent|flags" {
+		t.Fatalf("optional state: %q", got)
+	}
+}
+
+func TestIndexedWidthsNumericKindsAndRecovery(t *testing.T) {
+	if got := fmt.Sprintf("%#08x|%08.3d|%#.0x", 31, 2, 0); got != "0x0000001f|     002|" {
+		t.Fatalf("integer padding: %q", got)
+	}
+	if got := fmt.Sprintf("%[3]*.[2]*[1]f", 1.125, 2, 7); got != "   1.12" {
+		t.Fatalf("indexed width: %q", got)
+	}
+	if got := fmt.Sprintf("%[2]d %[1]d %d", 10, 20); got != "20 10 20" {
+		t.Fatalf("indexed operands: %q", got)
+	}
+	if got := fmt.Sprintf("%+08.2f|%#.3g|%x|%q", namedFloat(1.25), 1.2, namedInteger(255), uint16(65)); got != "+0001.25|1.20|ff|'A'" {
+		t.Fatalf("numeric kinds: %q", got)
+	}
+	if got := fmt.Sprintf("%.1f", complex(1.25, -2.25)); got != "(1.2-2.2i)" {
+		t.Fatalf("complex: %q", got)
+	}
+	if got := fmt.Sprintf("%s", 12); !strings.Contains(got, "%!s(") {
+		t.Fatalf("wrong type accepted: %q", got)
+	}
+	if got := fmt.Sprintf("%*s", "bad", "ok"); got != "%!(BADWIDTH)ok" {
+		t.Fatalf("bad width: %q", got)
+	}
+	if got := fmt.Sprintf("%v %v", panicPrinter(1), "after"); got != "%!v(PANIC=Format method: printer failed) after" {
+		t.Fatalf("panic recovery: %q", got)
+	}
+	if got := fmt.Sprint([]customPrinter{1}); got != "[custom]" {
+		t.Fatalf("nested dispatch: %q", got)
+	}
+}
+
+func TestFormatterReceivesPrinterState(t *testing.T) {
+	if got := fmt.Sprintf("%#8.3v", customPrinter(1)); got != "state" {
+		t.Fatalf("state: %s", got)
+	}
+	if got := fmt.Sprint(customPrinter(1)); got != "custom" {
+		t.Fatalf("Sprint: %s", got)
+	}
+	if got := fmt.Sprintf("%5.2s", "界你好"); got != "   界你" {
+		t.Fatalf("rune width: %q", got)
+	}
+	if got := fmt.Sprintf("%*s", -1, "x"); got != "x" {
+		t.Fatalf("negative width: %q", got)
+	}
+	if got := fmt.Sprintf("%.2f|%#x|%s", 1.125, 31, []byte("ok")); got != "1.12|0x1f|ok" {
+		t.Fatalf("verbs: %s", got)
+	}
+}
+
+func TestErrorfUnwrapsArgumentOrderWithoutDuplicateIndex(t *testing.T) {
+	first, second := errors.New("first"), errors.New("second")
+	err := fmt.Errorf("%[2]w / %[1]w / %[2]w", first, second)
+	if !errors.Is(err, first) || !errors.Is(err, second) {
+		t.Fatal("wrapped identity")
+	}
+	multi, ok := err.(interface {
+		Unwrap() []error
+	})
+	if !ok {
+		t.Fatal("missing multi unwrap")
+	}
+	values := multi.Unwrap()
+	if len(values) != 2 || values[0] != first || values[1] != second {
+		t.Fatal("unwrap argument order")
+	}
+	if got := fmt.Sprintf("%w", first); got == "first" {
+		t.Fatal("Sprintf accepted wrapping verb")
+	}
+}

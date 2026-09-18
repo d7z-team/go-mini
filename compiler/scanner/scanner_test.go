@@ -1,0 +1,267 @@
+package scanner
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/d7z-team/mini-go/compiler/source"
+	"github.com/d7z-team/mini-go/compiler/token"
+)
+
+func TestScanPackageFunctionTokens(t *testing.T) {
+	source := "package main\n\nfunc Add(a int, b int) int {\n\treturn a + b\n}\n"
+	result := Scan("main.mgo", source)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %+v", result.Diagnostics)
+	}
+	want := []token.Kind{
+		token.Package, token.Ident, token.Semicolon,
+		token.Func, token.Ident, token.Lparen, token.Ident, token.Ident, token.Comma, token.Ident, token.Ident, token.Rparen, token.Ident, token.Lbrace,
+		token.Return, token.Ident, token.Add, token.Ident, token.Semicolon,
+		token.Rbrace, token.Semicolon, token.EOF,
+	}
+	assertKinds(t, result.Tokens, want)
+	if got := result.Tokens[0].Span.Start; got.Line != 1 || got.Column != 0 {
+		t.Fatalf("first token position = %+v, want line 1 column 0", got)
+	}
+	returnToken := result.Tokens[14]
+	if returnToken.Span.Start.Line != 4 || returnToken.Span.Start.Column != 1 {
+		t.Fatalf("return position = %+v, want line 4 column 1", returnToken.Span.Start)
+	}
+}
+
+func TestScanOperatorsAndDelimiters(t *testing.T) {
+	source := "func f(){ a := <-ch; b++; c--; d <<= 2; e &^= 1; if a == b || c != d && e >= 0 { f(...); _ = ~mask } }"
+	result := Scan("ops.mgo", source)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %+v", result.Diagnostics)
+	}
+	for _, kind := range []token.Kind{
+		token.Define, token.Arrow, token.Inc, token.Dec, token.ShlAssign,
+		token.AndNotAssign, token.Eq, token.Lor, token.Ne, token.Land,
+		token.Ge, token.Ellipsis, token.Tilde,
+	} {
+		if !hasKind(result.Tokens, kind) {
+			t.Fatalf("expected token kind %s in %#v", kind, kinds(result.Tokens))
+		}
+	}
+}
+
+func TestScanLiteralsAndUnicodeIdentifiers(t *testing.T) {
+	source := "package main\nvar 世界 = []string{\"hi\\n\", `raw\ntext`, '界', 0x1.fp2, 123i}\n"
+	result := Scan("literals.mgo", source)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %+v", result.Diagnostics)
+	}
+	if !hasLexeme(result.Tokens, token.Ident, "世界") {
+		t.Fatalf("expected Unicode identifier, got %#v", result.Tokens)
+	}
+	for _, kind := range []token.Kind{token.String, token.Char, token.Float, token.Imag} {
+		if !hasKind(result.Tokens, kind) {
+			t.Fatalf("expected literal kind %s in %#v", kind, kinds(result.Tokens))
+		}
+	}
+}
+
+func TestScanNumericLiteralUnderscores(t *testing.T) {
+	valid := []string{
+		"1_000",
+		"0b_1010",
+		"0o_755",
+		"0x_FF",
+		"0x1e_2",
+		"1_2.3_4e+5_6",
+		"1_2i",
+	}
+	for _, literal := range valid {
+		result := Scan("valid-"+literal+".mgo", literal)
+		if len(result.Diagnostics) != 0 {
+			t.Fatalf("%s: unexpected diagnostics: %+v", literal, result.Diagnostics)
+		}
+	}
+
+	invalid := []string{
+		"1__2",
+		"1_",
+		"1_.2",
+		"1e_2",
+		"0x1p_2",
+	}
+	for _, literal := range invalid {
+		result := Scan("invalid-"+literal+".mgo", literal)
+		if !hasDiagnostic(result.Diagnostics, "scanner.number.underscore") {
+			t.Fatalf("%s: expected scanner.number.underscore, got %+v", literal, result.Diagnostics)
+		}
+	}
+}
+
+func TestScanRejectsHexFloatWithoutExponentAndInvalidOctalDigits(t *testing.T) {
+	for _, test := range []struct {
+		literal string
+		code    string
+	}{
+		{literal: "0x1.f", code: "scanner.number.hex_exponent"},
+		{literal: "08", code: "scanner.number.octal_digit"},
+		{literal: "09i", code: "scanner.number.octal_digit"},
+	} {
+		result := Scan("invalid-number.mgo", test.literal)
+		if !hasDiagnostic(result.Diagnostics, test.code) {
+			t.Fatalf("%s: expected %s, got %+v", test.literal, test.code, result.Diagnostics)
+		}
+	}
+	for _, literal := range []string{"0x1.fp2", "0x.8p0", "0755", "08.0", "08e1", ".5", ".5i"} {
+		result := Scan("valid-number.mgo", literal)
+		if len(result.Diagnostics) != 0 {
+			t.Fatalf("%s: unexpected diagnostics: %+v", literal, result.Diagnostics)
+		}
+	}
+}
+
+func TestScanSourceTextBOMAndNUL(t *testing.T) {
+	result := Scan("bom.mgo", "\uFEFFpackage main\n")
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics for leading BOM: %+v", result.Diagnostics)
+	}
+	if len(result.Tokens) == 0 || result.Tokens[0].Kind != token.Package {
+		t.Fatalf("expected leading BOM to be skipped before package token, got %#v", result.Tokens)
+	}
+
+	for _, tc := range []struct {
+		name string
+		src  string
+		code string
+	}{
+		{name: "middle BOM", src: "package \uFEFFmain", code: "scanner.bom.invalid"},
+		{name: "NUL", src: "package main\nvar x = \x00\n", code: "scanner.nul.invalid"},
+		{name: "NUL in raw string", src: "package main\nvar x = `\x00`\n", code: "scanner.nul.invalid"},
+	} {
+		result := Scan(tc.name+".mgo", tc.src)
+		if !hasDiagnostic(result.Diagnostics, tc.code) {
+			t.Fatalf("%s: expected diagnostic %s, got %+v", tc.name, tc.code, result.Diagnostics)
+		}
+	}
+}
+
+func TestScanCommentsAndSemicolonInsertion(t *testing.T) {
+	source := "package main // package comment\nvar x = 1 /* block\ncomment */\nvar y = 2"
+	result := Scan("comments.mgo", source)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("unexpected diagnostics: %+v", result.Diagnostics)
+	}
+	wantSemicolons := 3
+	gotSemicolons := 0
+	for _, scanned := range result.Tokens {
+		if scanned.Kind == token.Semicolon {
+			gotSemicolons++
+		}
+	}
+	if gotSemicolons != wantSemicolons {
+		t.Fatalf("semicolon count = %d, want %d; kinds=%#v", gotSemicolons, wantSemicolons, kinds(result.Tokens))
+	}
+}
+
+func TestScanPreservesRawSourceElements(t *testing.T) {
+	source := "\ufeffpackage main // package\n\n/* block\ncomment */func main() {}\n"
+	result := Scan("main.mgo", source)
+	var rebuilt strings.Builder
+	kinds := map[ElementKind]bool{}
+	for _, element := range result.Elements {
+		rebuilt.WriteString(element.Lexeme)
+		kinds[element.Kind] = true
+	}
+	if rebuilt.String() != source {
+		t.Fatalf("raw elements changed source:\n got %q\nwant %q", rebuilt.String(), source)
+	}
+	for _, kind := range []ElementKind{ElementBOM, ElementToken, ElementWhitespace, ElementNewline, ElementLineComment, ElementBlockComment} {
+		if !kinds[kind] {
+			t.Fatalf("raw elements are missing %s: %#v", kind, result.Elements)
+		}
+	}
+}
+
+func TestScanEmitsIllegalTokenForInvalidSourceByte(t *testing.T) {
+	result := Scan("main.mgo", "package main\n\x00\xff")
+	if !hasKind(result.Tokens, token.Illegal) || len(result.Diagnostics) < 2 {
+		t.Fatalf("invalid bytes were not preserved as illegal tokens: %#v %#v", result.Tokens, result.Diagnostics)
+	}
+}
+
+func TestScanLimitsTokensAndDiagnostics(t *testing.T) {
+	file := source.NewFile("file.0", "main.mgo", "@ @ @ @ @")
+	result := ScanFileWithLimits(file, Limits{MaxTokens: 2, MaxDiagnostics: 1})
+	if len(result.Tokens) > 3 || !hasDiagnostic(result.Diagnostics, string(source.DiagnosticTruncated)) {
+		t.Fatalf("scanner limits were not enforced: %#v %#v", result.Tokens, result.Diagnostics)
+	}
+}
+
+func TestScanLexicalDiagnostics(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		code string
+	}{
+		{name: "string newline", src: "\"broken\n\"", code: "scanner.string.newline"},
+		{name: "rune count", src: "'ab'", code: "scanner.rune.count"},
+		{name: "escape", src: "\"\\q\"", code: "scanner.escape.invalid"},
+		{name: "short octal escape", src: "\"\\1\"", code: "scanner.escape.octal"},
+		{name: "octal escape range", src: "\"\\400\"", code: "scanner.escape.octal_range"},
+		{name: "unicode escape range", src: "\"\\U00110000\"", code: "scanner.escape.unicode_range"},
+		{name: "unicode surrogate escape", src: "\"\\uD800\"", code: "scanner.escape.unicode_range"},
+		{name: "block comment", src: "/* broken", code: "scanner.comment.unterminated"},
+		{name: "illegal", src: "@", code: "scanner.token.illegal"},
+	}
+	for _, tc := range cases {
+		result := Scan(tc.name+".mgo", tc.src)
+		if !hasDiagnostic(result.Diagnostics, tc.code) {
+			t.Fatalf("%s: expected diagnostic %s, got %+v", tc.name, tc.code, result.Diagnostics)
+		}
+	}
+}
+
+func assertKinds(t *testing.T, tokens []Token, want []token.Kind) {
+	t.Helper()
+	got := kinds(tokens)
+	if len(got) != len(want) {
+		t.Fatalf("token kind count = %d, want %d\ngot:  %#v\nwant: %#v", len(got), len(want), got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("token %d = %s, want %s\ngot:  %#v\nwant: %#v", i, got[i], want[i], got, want)
+		}
+	}
+}
+
+func kinds(tokens []Token) []token.Kind {
+	out := make([]token.Kind, len(tokens))
+	for i, scanned := range tokens {
+		out[i] = scanned.Kind
+	}
+	return out
+}
+
+func hasKind(tokens []Token, kind token.Kind) bool {
+	for _, scanned := range tokens {
+		if scanned.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func hasLexeme(tokens []Token, kind token.Kind, lexeme string) bool {
+	for _, scanned := range tokens {
+		if scanned.Kind == kind && scanned.Lexeme == lexeme {
+			return true
+		}
+	}
+	return false
+}
+
+func hasDiagnostic(diagnostics []source.Diagnostic, code string) bool {
+	for _, diagnostic := range diagnostics {
+		if string(diagnostic.Code) == code {
+			return true
+		}
+	}
+	return false
+}

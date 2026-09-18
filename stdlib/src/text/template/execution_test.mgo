@@ -1,0 +1,221 @@
+package template_test
+
+import (
+	"bytes"
+	"iter"
+	"reflect"
+	"strconv"
+	"testing"
+	"text/template"
+	"text/template/parse"
+)
+
+type templateData struct {
+	Name string
+	Values []int
+}
+
+func (data templateData) Label(prefix string) string {
+	return prefix + data.Name
+}
+
+type templateTestError string
+
+func (err templateTestError) Error() string {
+	return string(err)
+}
+
+type failingTemplateWriter struct{}
+
+func (failingTemplateWriter) Write(data []byte) (int, error) {
+	return 0, templateTestError("write failed")
+}
+
+func numberSequence() iter.Seq[int] {
+	return func(yield func(int) bool) {
+		for value := 0; value < 6; value += 2 {
+			if !yield(value) {
+				return
+			}
+		}
+	}
+}
+
+func pairSequence() iter.Seq2[string, int] {
+	return func(yield func(string, int) bool) {
+		if !yield("a", 1) {
+			return
+		}
+		yield("b", 2)
+	}
+}
+
+func templateSum(prefix string, values ...int) string {
+	total := 0
+	for _, value := range values {
+		total += value
+	}
+	return prefix + strconv.Itoa(total)
+}
+
+func templateValues() []int {
+	return []int{1, 2, 3}
+}
+
+func templateFailure(value string) (string, error) {
+	if value == "bad" {
+		return "", templateTestError("bad value")
+	}
+	return value, nil
+}
+
+func templatePanic() string {
+	panic("template panic")
+}
+
+func executeTemplateText(t *testing.T, tmpl *template.Template, data any) string {
+	var output bytes.Buffer
+	if err := tmpl.Execute(&output, data); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	return output.String()
+}
+
+func TestTemplateControlAndSelectors(t *testing.T) {
+	tmpl := template.Must(template.New("control").Parse(`{{$root := .}}{{if .Name}}{{.Label "hi:"}}{{with .Values}}/{{len .}}{{end}}:{{range $index, $value := .Values}}{{if eq $index 1}}{{continue}}{{end}}{{$value}}{{if eq $index 2}}{{break}}{{end}}{{end}}{{else}}empty{{end}}`))
+	got := executeTemplateText(t, tmpl, templateData{Name: "mini", Values: []int{1, 2, 3, 4}})
+	if got != "hi:mini/4:13" {
+		t.Fatalf("control template output = %q", got)
+	}
+	if got = executeTemplateText(t, tmpl, templateData{}); got != "empty" {
+		t.Fatalf("false branch output = %q", got)
+	}
+}
+
+func TestTemplateRangeSources(t *testing.T) {
+	functions := template.FuncMap{"numbers": numberSequence, "pairs": pairSequence}
+	tmpl := template.Must(template.New("range").Funcs(functions).Parse(`{{range 3}}{{.}}{{end}}|{{range numbers}}{{.}}{{end}}|{{range $key, $value := pairs}}{{$key}}{{$value}}{{end}}`))
+	if got := executeTemplateText(t, tmpl, nil); got != "012|024|a1b2" {
+		t.Fatalf("range output = %q", got)
+	}
+	values := make(chan int, 2)
+	values <- 4
+	values <- 2
+	close(values)
+	tmpl = template.Must(template.New("channel").Parse(`{{range .}}{{.}}{{end}}`))
+	if got := executeTemplateText(t, tmpl, values); got != "42" {
+		t.Fatalf("channel range output = %q", got)
+	}
+	tmpl = template.Must(template.New("collections").Parse(`{{range .Array}}{{.}}{{end}}|{{range $key, $value := .Map}}{{$key}}={{$value}};{{end}}`))
+	data := struct {
+		Array [3]int
+		Map map[string]int
+	}{Array: [3]int{3, 1, 4}, Map: map[string]int{"b": 2, "a": 1}}
+	if got := executeTemplateText(t, tmpl, data); got != "314|a=1;b=2;" {
+		t.Fatalf("collection range output = %q", got)
+	}
+}
+
+func TestTemplateManagement(t *testing.T) {
+	root := template.New("root")
+	if root.Delims("[[", "]]") != root {
+		t.Fatalf("Delims should return its receiver")
+	}
+	root = template.Must(root.Parse(`[[define "part"]]P:[[.]][[end]][[template "part" "x"]]`))
+	if root.Name() != "root" || root.Lookup("part") == nil || root.DefinedTemplates() == "" {
+		t.Fatalf("template association was not created")
+	}
+	if got := executeTemplateText(t, root, nil); got != "P:x" {
+		t.Fatalf("root output = %q", got)
+	}
+	clone, err := root.Clone()
+	if err != nil {
+		t.Fatalf("Clone returned error: %v", err)
+	}
+	clone = template.Must(clone.Parse(`[[define "part"]]C:[[.]][[end]]`))
+	if got := executeTemplateText(t, clone, nil); got != "C:x" {
+		t.Fatalf("clone output = %q", got)
+	}
+	if got := executeTemplateText(t, root, nil); got != "P:x" {
+		t.Fatalf("clone modified the original: %q", got)
+	}
+
+	trees, err := parse.Parse("added", `A:{{.}}`, "", "")
+	if err != nil {
+		t.Fatalf("parse.Parse returned error: %v", err)
+	}
+	added, err := template.New("holder").AddParseTree("added", trees["added"])
+	if err != nil || added.Lookup("added") == nil {
+		t.Fatalf("AddParseTree returned %v", err)
+	}
+	var output bytes.Buffer
+	if err = added.ExecuteTemplate(&output, "added", "ok"); err != nil || output.String() != "A:ok" {
+		t.Fatalf("ExecuteTemplate output = %q, %v", output.String(), err)
+	}
+}
+
+func TestTemplateFunctionsAndErrors(t *testing.T) {
+	functions := template.FuncMap{"sum": templateSum, "values": templateValues, "fail": templateFailure, "boom": templatePanic}
+	tmpl := template.Must(template.New("functions").Funcs(functions).Parse(`{{sum "n=" 1 2 3}}|{{call . 4}}|{{len (slice (values) 1 3)}}`))
+	if got := executeTemplateText(t, tmpl, func(value int) int {
+		return value * 2
+	}); got != "n=6|8|2" {
+		t.Fatalf("function output = %q", got)
+	}
+
+	for _, source := range []string{`{{fail "bad"}}`, `{{boom}}`} {
+		failed := template.Must(template.New("failed").Funcs(functions).Parse(source))
+		var output bytes.Buffer
+		if err := failed.Execute(&output, nil); err == nil {
+			t.Fatalf("Execute should return a function error for %q", source)
+		}
+	}
+
+	missing := template.Must(template.New("missing").Option("missingkey=error").Parse(`{{.missing}}`))
+	var output bytes.Buffer
+	if err := missing.Execute(&output, map[string]int{}); err == nil {
+		t.Fatalf("missingkey=error should reject a missing map key")
+	}
+	if err := template.Must(template.New("writer").Parse("output")).Execute(failingTemplateWriter{}, nil); err == nil {
+		t.Fatalf("Execute should return a writer error")
+	}
+}
+
+func TestTemplateEscapersAndTruth(t *testing.T) {
+	if template.HTMLEscapeString(`<a&"'>`) != "&lt;a&amp;&#34;&#39;&gt;" {
+		t.Fatalf("HTMLEscapeString returned wrong output")
+	}
+	if template.JSEscapeString("</script>") != `\u003C/script\u003E` {
+		t.Fatalf("JSEscapeString returned wrong output")
+	}
+	if template.URLQueryEscaper("a b", 2) != "a+b2" {
+		t.Fatalf("URLQueryEscaper returned wrong output")
+	}
+	truth, ok := template.IsTrue([]int{1})
+	if !ok || !truth {
+		t.Fatalf("IsTrue should accept a non-empty slice")
+	}
+	if truth, ok = template.IsTrue(reflect.Value{}); !ok || !truth {
+		t.Fatalf("IsTrue should treat a reflect.Value struct as true")
+	}
+}
+
+func TestTemplateConcurrentExecute(t *testing.T) {
+	tmpl := template.Must(template.New("concurrent").Parse(`{{.Name}}={{len .Values}}`))
+	results := make(chan string, 2)
+	for _, data := range []templateData{{Name: "a", Values: []int{1}}, {Name: "b", Values: []int{1, 2}}} {
+		value := data
+		go func() {
+			var output bytes.Buffer
+			if err := tmpl.Execute(&output, value); err != nil {
+				results <- "error"
+				return
+			}
+			results <- output.String()
+		}()
+	}
+	first, second := <-results, <-results
+	if first == "error" || second == "error" || first == second || first != "a=1" && first != "b=2" || second != "a=1" && second != "b=2" {
+		t.Fatalf("concurrent outputs = %q, %q", first, second)
+	}
+}

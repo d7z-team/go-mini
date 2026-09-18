@@ -1,0 +1,45 @@
+package reflect_test
+
+import (
+	"reflect"
+	"testing"
+)
+
+func TestSameReferenceUsesStorageAndView(t *testing.T) {
+	values := []int{1, 2, 3}
+	copyValues := []int{1, 2, 3}
+	if !reflect.SameReference(reflect.ValueOf(values), reflect.ValueOf(values[:])) || reflect.SameReference(reflect.ValueOf(values), reflect.ValueOf(copyValues)) {
+		t.Fatal("slice storage")
+	}
+	if reflect.SameReference(reflect.ValueOf(values[:2]), reflect.ValueOf(values[1:])) || reflect.SameReference(reflect.ValueOf(values), reflect.ValueOf(values[:2])) {
+		t.Fatal("slice view")
+	}
+	a := map[string]int{"a": 1}
+	b := map[string]int{"a": 1}
+	if !reflect.SameReference(reflect.ValueOf(a), reflect.ValueOf(a)) || reflect.SameReference(reflect.ValueOf(a), reflect.ValueOf(b)) {
+		t.Fatal("map storage")
+	}
+	if !reflect.SameReference(reflect.ValueOf(&values[1]), reflect.ValueOf(&values[1])) || reflect.SameReference(reflect.ValueOf(&values[0]), reflect.ValueOf(&values[1])) {
+		t.Fatal("pointer path")
+	}
+	var first, second map[string]int
+	if !reflect.SameReference(reflect.ValueOf(first), reflect.ValueOf(second)) || reflect.SameReference(reflect.ValueOf(1), reflect.ValueOf(1)) || reflect.SameReference(reflect.Value{}, reflect.Value{}) {
+		t.Fatal("nil or unsupported kind")
+	}
+}
+
+func TestIsZeroDoesNotTraverseReferenceContents(t *testing.T) {
+	cycle := make([]any, 1)
+	cycle[0] = cycle
+	if reflect.ValueOf(cycle).IsZero() || reflect.ValueOf([]int{}).IsZero() || reflect.ValueOf(map[string]int{}).IsZero() {
+		t.Fatal("non-nil collection is not zero")
+	}
+	var boxed any = 0
+	if reflect.ValueOf(&boxed).Elem().IsZero() {
+		t.Fatal("interface with dynamic value is not zero")
+	}
+	var absent []any
+	if !reflect.ValueOf(absent).IsZero() {
+		t.Fatal("nil slice is zero")
+	}
+}

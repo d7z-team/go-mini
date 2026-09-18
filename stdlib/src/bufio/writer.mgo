@@ -1,0 +1,169 @@
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license.
+// Adapted for the Mini-Go runtime-neutral standard library.
+
+package bufio
+
+import "io"
+
+// Writer implements buffering for an [io.Writer] object.
+// If an error occurs writing to a [Writer], no more data will be
+// accepted and all subsequent writes, and [Writer.Flush], will return the error.
+// After all data has been written, the client should call the
+// [Writer.Flush] method to guarantee all data has been forwarded to
+// the underlying [io.Writer].
+type Writer struct {
+	writer io.Writer
+	buffer []byte
+	size int
+	err error
+}
+
+// NewWriter returns a new [Writer] whose buffer has the default size.
+// If the argument io.Writer is already a [Writer] with large enough buffer size,
+// it returns the underlying [Writer].
+func NewWriter(writer io.Writer) *Writer {
+	return NewWriterSize(writer, defaultBufSize)
+}
+
+// NewWriterSize returns a new [Writer] whose buffer has at least the specified
+// size. If the argument io.Writer is already a [Writer] with large enough
+// size, it returns the underlying [Writer].
+func NewWriterSize(writer io.Writer, size int) *Writer {
+	if existing, ok := writer.(*Writer); ok && existing.Size() >= size {
+		return existing
+	}
+	if size <= 0 {
+		size = defaultBufSize
+	}
+	return &Writer{writer: writer, buffer: make([]byte, 0, size), size: size}
+}
+
+// Size returns the size of the underlying buffer in bytes.
+func (writer *Writer) Size() int {
+	return writer.size
+}
+
+// Buffered returns the number of bytes that have been written into the current buffer.
+func (writer *Writer) Buffered() int {
+	return len(writer.buffer)
+}
+
+// Available returns how many bytes are unused in the buffer.
+func (writer *Writer) Available() int {
+	return writer.size - len(writer.buffer)
+}
+
+// AvailableBuffer returns an empty buffer with b.Available() capacity.
+// This buffer is intended to be appended to and
+// passed to an immediately succeeding [Writer.Write] call.
+// The buffer is only valid until the next write operation on b.
+func (writer *Writer) AvailableBuffer() []byte {
+	return make([]byte, 0, writer.Available())
+}
+
+// Flush writes any buffered data to the underlying [io.Writer].
+func (writer *Writer) Flush() error {
+	if writer.err != nil {
+		return writer.err
+	}
+	if len(writer.buffer) == 0 {
+		return nil
+	}
+	count, err := writer.writer.Write(writer.buffer)
+	if count < len(writer.buffer) && err == nil {
+		err = io.ErrShortWrite
+	}
+	if count > 0 {
+		copy(writer.buffer, writer.buffer[count:])
+		writer.buffer = writer.buffer[:len(writer.buffer) - count]
+	}
+	if err != nil {
+		writer.err = err
+	}
+	return err
+}
+
+// Write writes the contents of p into the buffer.
+// It returns the number of bytes written.
+// If nn < len(p), it also returns an error explaining
+// why the write is short.
+func (writer *Writer) Write(data []byte) (int, error) {
+	written := 0
+	for len(data) > 0 && writer.err == nil {
+		if len(writer.buffer) == 0 && len(data) >= writer.size {
+			count, err := writer.writer.Write(data)
+			written += count
+			data = data[count:]
+			if err != nil {
+				writer.err = err
+			}
+			continue
+		}
+		count := writer.Available()
+		if count > len(data) {
+			count = len(data)
+		}
+		writer.buffer = append(writer.buffer, data[:count]...)
+		written += count
+		data = data[count:]
+		if writer.Available() == 0 {
+			writer.Flush()
+		}
+	}
+	return written, writer.err
+}
+
+// WriteByte writes a single byte.
+func (writer *Writer) WriteByte(value byte) error {
+	_, err := writer.Write([]byte{value})
+	return err
+}
+
+// WriteRune writes a single Unicode code point, returning
+// the number of bytes written and any error.
+func (writer *Writer) WriteRune(value rune) (int, error) {
+	return writer.Write([]byte(string(value)))
+}
+
+// WriteString writes a string.
+// It returns the number of bytes written.
+// If the count is less than len(s), it also returns an error explaining
+// why the write is short.
+func (writer *Writer) WriteString(value string) (int, error) {
+	return writer.Write([]byte(value))
+}
+
+// ReadFrom implements [io.ReaderFrom]. If the underlying writer
+// supports the ReadFrom method, this calls the underlying ReadFrom.
+// If there is buffered data and an underlying ReadFrom, this fills
+// the buffer and writes it before calling ReadFrom.
+func (writer *Writer) ReadFrom(reader io.Reader) (int64, error) {
+	if err := writer.Flush(); err != nil {
+		return 0, err
+	}
+	return io.Copy(writer.writer, reader)
+}
+
+// Reset discards any unflushed buffered data, clears any error, and
+// resets b to write its output to w.
+// Calling Reset on the zero value of [Writer] initializes the internal buffer
+// to the default size.
+// Calling w.Reset(w) (that is, resetting a [Writer] to itself) does nothing.
+func (writer *Writer) Reset(target io.Writer) {
+	writer.writer, writer.buffer, writer.err = target, writer.buffer[:0], nil
+}
+
+// ReadWriter stores pointers to a [Reader] and a [Writer].
+// It implements [io.ReadWriter].
+type ReadWriter struct {
+	// Reader provides the buffered input side of a ReadWriter.
+	*Reader
+	// Writer provides the buffered output side of a ReadWriter.
+	*Writer
+}
+
+// NewReadWriter allocates a new [ReadWriter] that dispatches to r and w.
+func NewReadWriter(reader *Reader, writer *Writer) *ReadWriter {
+	return &ReadWriter{Reader: reader, Writer: writer}
+}

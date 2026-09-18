@@ -1,0 +1,162 @@
+package errors_test
+
+import (
+	"errors"
+	"testing"
+)
+
+func TestErrorsNewIsAsUnwrap(t *testing.T) {
+	base := errors.New("base")
+	wrapped := wrapper{err: base}
+	if errors.Unwrap(wrapped) != base {
+		t.Fatalf("Unwrap returned wrong error")
+	}
+	if !errors.Is(wrapped, base) {
+		t.Fatalf("Is should match wrapped error")
+	}
+	var target error
+	if !errors.As(wrapped, &target) || target == nil {
+		t.Fatalf("As should populate error target")
+	}
+}
+
+func TestErrorsAsConcreteInterfaceAndCustom(t *testing.T) {
+	coded := &codedError{code: 7}
+	wrapped := wrapper{err: coded}
+	var concrete *codedError
+	if !errors.As(wrapped, &concrete) || concrete == nil || concrete.Code() != 7 {
+		t.Fatalf("As should populate concrete pointer target")
+	}
+	var codeReader coder
+	if !errors.As(wrapped, &codeReader) || codeReader.Code() != 7 {
+		t.Fatalf("As should populate interface target")
+	}
+	var missing *missingError
+	if errors.As(wrapped, &missing) || missing != nil {
+		t.Fatalf("As should not populate unrelated concrete target")
+	}
+	custom := customAsError{}
+	var mark marker
+	if !errors.As(custom, &mark) || mark.Value != "custom" {
+		t.Fatalf("As should delegate to custom As implementation")
+	}
+}
+
+func TestErrorsAsRecognizesErrorMethodType(t *testing.T) {
+	var target *codedError
+	if !errors.As(&codedError{code: 9}, &target) || target == nil || target.Code() != 9 {
+		t.Fatalf("As should recognize Error through reflect.Method.Type")
+	}
+}
+
+type wrapper struct {
+	err error
+}
+
+func (w wrapper) Error() string {
+	return "wrapped"
+}
+
+func (w wrapper) Unwrap() error {
+	return w.err
+}
+
+type coder interface {
+	Code() int
+}
+
+type codedError struct {
+	code int
+}
+
+func (e *codedError) Error() string {
+	return "coded"
+}
+
+func (e *codedError) Code() int {
+	return e.code
+}
+
+type missingError struct {}
+
+func (e *missingError) Error() string {
+	return "missing"
+}
+
+type marker struct {
+	Value string
+}
+
+func (m marker) Error() string {
+	return m.Value
+}
+
+type customAsError struct {}
+
+func (e customAsError) Error() string {
+	return "custom"
+}
+
+func (e customAsError) As(target any) bool {
+	out, ok := target.(*marker)
+	if !ok {
+		return false
+	}
+	*out = marker{Value: "custom"}
+	return true
+}
+
+func TestErrorsJoinTraversesMultipleChildren(t *testing.T) {
+	first := errors.New("first")
+	second := errors.New("second")
+	joined := errors.Join(nil, first, nil, second)
+	if joined == nil || joined.Error() != "first\nsecond" {
+		t.Fatalf("Join returned wrong error: %v", joined)
+	}
+	if errors.Unwrap(joined) != nil {
+		t.Fatalf("Unwrap should only expose single-error chains")
+	}
+	if !errors.Is(joined, first) || !errors.Is(joined, second) {
+		t.Fatalf("Is should traverse joined errors")
+	}
+	var target error
+	if !errors.As(joined, &target) || target == nil {
+		t.Fatalf("As should traverse joined errors")
+	}
+	if errors.Join(nil, nil) != nil {
+		t.Fatalf("Join of nil errors should return nil")
+	}
+}
+
+func TestErrorsAsRejectsInvalidTarget(t *testing.T) {
+	base := errors.New("base")
+	if !panics(func() {
+		var target int
+		errors.As(base, &target)
+	}) {
+		t.Fatalf("As should reject non-error target")
+	}
+}
+
+func TestErrorsIsHandlesUncomparableTarget(t *testing.T) {
+	target := sliceError{values: []int{1}}
+	if errors.Is(target, target) {
+		t.Fatalf("Is should not match an uncomparable target")
+	}
+}
+
+type sliceError struct {
+	values []int
+}
+
+func (e sliceError) Error() string {
+	return "slice"
+}
+
+func panics(fn func()) (recovered bool) {
+	defer func() {
+		recovered = recover() != nil
+	}()
+	fn()
+	return false
+}

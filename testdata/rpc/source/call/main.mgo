@@ -1,0 +1,29 @@
+package main
+
+import (
+    "rpc"
+    service "rpcfixture/generated/mgo/service"
+    types "rpcfixture/generated/mgo/types"
+)
+
+func Main() int {
+    client, err := service.BindLaboratoryClient(rpc.ClientOptions{})
+    if err != nil { panic(err) }
+    defer client.Close()
+    for _, data := range [][]uint8{nil, {}, {0, 255}} {
+        packet := service.Packet{Data: data, Optional_data: &data, Details: types.Details{Label: "round trip", Mode: 99}}
+        result, err := client.Echo(packet)
+        if err != nil { panic(err) }
+        if (result.Data == nil) != (data == nil) || result.Optional_data == nil { return -2 }
+        if (*result.Optional_data == nil) != (data == nil) || len(result.Data) != len(data) { return -3 }
+    }
+    counter, _, err := client.Open(40)
+    if err != nil { panic(err) }
+    defer counter.Close()
+    value, err := counter.Add(2)
+    if err != nil { panic(err) }
+    actual, err := client.Read(counter)
+    if err != nil { panic(err) }
+    if actual != value { return -1 }
+    return int(value)
+}

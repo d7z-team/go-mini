@@ -1,0 +1,5 @@
+//go:build feature
+
+package main
+
+func selected() int { return 42 }

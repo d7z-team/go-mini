@@ -1,0 +1,11 @@
+[
+  {"name":"close-lease-seven","kind":"ffi-request","hex":"126d696e69676f2e6d7270632e6666692f763305636c6f7365000700000000000000000000000000000000"},
+  {"name":"lease-seven-reply","kind":"ffi-response","hex":"126d696e69676f2e6d7270632e6666692f7633000700000000000000000000"},
+  {"name":"ready-from-p","kind":"endpoint","hex":"4d47525001020000000000017000000000000000000000000000000000"},
+  {"name":"whole-abc","kind":"fragment","hex":"4d47524601010300616263"},
+  {"name":"truncated-request","kind":"ffi-request","hex":"116d69","invalid":true},
+  {"name":"trailing-reply","kind":"ffi-response","hex":"126d696e69676f2e6d7270632e6666692f763300070000000000000000000001","invalid":true},
+  {"name":"unsupported-envelope-version","kind":"endpoint","hex":"4d4752500202000001700000000000000000000000000000000000","invalid":true},
+  {"name":"noncanonical-kind","kind":"endpoint","hex":"4d475250018200000001700000000000000000000000000000000000","invalid":true},
+  {"name":"fragment-past-total","kind":"fragment","hex":"4d47524601010303616263","invalid":true}
+]

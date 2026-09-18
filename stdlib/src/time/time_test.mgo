@@ -1,0 +1,83 @@
+package time_test
+
+import (
+	"testing"
+	"time"
+)
+
+func TestCalendarAndUnix(t *testing.T) {
+	now := time.Now()
+	if now.Unix() != 1700000000 || now.Nanosecond() != 123456789 {
+		t.Fatalf("Now = %d.%09d", now.Unix(), now.Nanosecond())
+	}
+	value := time.Date(2024, time.February, 29, 12, 34, 56, 123000000, time.UTC)
+	if value.Year() != 2024 || value.Month() != time.February || value.Day() != 29 || value.Weekday() != time.Thursday {
+		t.Fatalf("Date returned wrong calendar values")
+	}
+	if value.Format(time.RFC3339Nano) != "2024-02-29T12:34:56.123Z" {
+		t.Fatalf("Format returned wrong RFC3339 value: %s", value.Format(time.RFC3339Nano))
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, "2024-02-29T12:34:56.123Z")
+	if err != nil || !parsed.Equal(value) {
+		t.Fatalf("Parse did not round trip: %v", err)
+	}
+	if time.Unix(value.Unix(), int64(value.Nanosecond())).UTC().Compare(value) != 0 {
+		t.Fatalf("Unix did not round trip")
+	}
+}
+
+func TestDurationAndBinary(t *testing.T) {
+	duration, err := time.ParseDuration("1h2m3.5s")
+	if err != nil || duration.String() != "1h2m3.5s" || duration.Milliseconds() != 3723500 {
+		t.Fatalf("duration returned wrong value: %s (%v)", duration.String(), err)
+	}
+	value := time.Date(2025, time.January, 2, 3, 4, 5, 6, time.FixedZone("test", 3600))
+	data, err := value.MarshalBinary()
+	var decoded time.Time
+	if err != nil || decoded.UnmarshalBinary(data) != nil || !decoded.Equal(value) {
+		t.Fatalf("binary time did not round trip")
+	}
+}
+
+func TestVirtualClockAndTimers(t *testing.T) {
+	before := time.Now()
+	time.Sleep(1250 * time.Millisecond)
+	if elapsed := time.Now().Sub(before); elapsed != 1250 * time.Millisecond {
+		t.Fatalf("Sleep advanced clock by %s", elapsed)
+	}
+	timer := time.NewTimer(10 * time.Millisecond)
+	fired := <-timer.C
+	if fired.Sub(before) != 1260 * time.Millisecond || timer.Stop() {
+		t.Fatalf("Timer fired at %s", fired.Sub(before))
+	}
+	stopped := time.NewTimer(time.Second)
+	if !stopped.Stop() || stopped.Stop() {
+		t.Fatal("Timer.Stop returned the wrong active state")
+	}
+	if stopped.Reset(5 * time.Millisecond) {
+		t.Fatal("Timer.Reset reported a stopped timer as active")
+	}
+	<-stopped.C
+	ticker := time.NewTicker(2 * time.Millisecond)
+	first := <-ticker.C
+	second := <-ticker.C
+	if second.Sub(first) != 2 * time.Millisecond {
+		t.Fatalf("Ticker interval = %s", second.Sub(first))
+	}
+	ticker.Stop()
+}
+
+func TestConcurrentSleepersShareDeadline(t *testing.T) {
+	before := time.Now()
+	done := make(chan time.Duration, 2)
+	for range 2 {
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			done <- time.Now().Sub(before)
+		}()
+	}
+	first, second := <-done, <-done
+	if first != 10 * time.Millisecond || second != 10 * time.Millisecond {
+		t.Fatalf("concurrent Sleep elapsed = %s, %s", first, second)
+	}
+}

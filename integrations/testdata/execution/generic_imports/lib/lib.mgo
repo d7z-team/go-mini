@@ -1,0 +1,10 @@
+package lib
+
+type Box[T any] struct {
+	Value T
+}
+
+func Identity[T any](v T) T { return v }
+func Value() int           { return 3 }
+func Plus[T ~int](v T) int { return Value() + int(v) }
+func Wrap[T any](v T) []T { return []T{v} }

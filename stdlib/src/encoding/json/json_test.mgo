@@ -1,0 +1,577 @@
+package json_test
+
+import (
+	"bytes"
+	"encoding/json"
+	"testing"
+)
+
+func TestJSONMarshalAndValid(t *testing.T) {
+	data, err := json.Marshal(sample{Name: "go", Count: 2})
+	if err != nil {
+		t.Fatalf("Marshal returned error: %v", err)
+	}
+	text := string(data)
+	if text != "{\"name\":\"go\",\"Count\":2}" {
+		t.Fatalf("Marshal returned wrong JSON: %s", text)
+	}
+	if !json.Valid(data) {
+		t.Fatalf("Valid should accept marshaled JSON")
+	}
+	if json.Valid([]byte("{bad")) {
+		t.Fatalf("Valid should reject malformed JSON")
+	}
+	if !json.Valid([]byte("\"\\u4e16\\ud83d\\ude00\"")) {
+		t.Fatalf("Valid should accept unicode escapes")
+	}
+	if json.Valid([]byte("\"\\u12x4\"")) {
+		t.Fatalf("Valid should reject malformed unicode escape")
+	}
+	anon, anonErr := json.Marshal(struct {
+		Name string `json:"name"`
+		Skip string `json:"-"`
+		Empty string `json:"empty,omitempty"`
+		Count int
+	}{Name: "mini", Skip: "hidden", Count: 4})
+	if anonErr != nil {
+		t.Fatalf("Marshal anonymous struct returned error: %v", anonErr)
+	}
+	if string(anon) != "{\"name\":\"mini\",\"Count\":4}" {
+		t.Fatalf("Marshal anonymous struct tags returned wrong JSON: %s", string(anon))
+	}
+	tagged, taggedErr := json.Marshal(taggedContainer{taggedEmbedded: taggedEmbedded{Label: "visible", Empty: ""}, Name: "mini", Count: 4, Skip: "hidden"})
+	if taggedErr != nil {
+		t.Fatalf("Marshal tagged embedded struct returned error: %v", taggedErr)
+	}
+	if string(tagged) != "{\"label\":\"visible\",\"name\":\"mini\",\"Count\":4}" {
+		t.Fatalf("Marshal tagged embedded struct returned wrong JSON: %s", string(tagged))
+	}
+	escaped, escapedErr := json.Marshal("a\b\f\n\r\t\\\"")
+	if escapedErr != nil {
+		t.Fatalf("Marshal escaped string returned error: %v", escapedErr)
+	}
+	if string(escaped) != "\"a\\b\\f\\n\\r\\t\\\\\\\"\"" {
+		t.Fatalf("Marshal escaped string returned wrong JSON: %s", string(escaped))
+	}
+	html, htmlErr := json.Marshal("<tag>&")
+	if htmlErr != nil || string(html) != "\"\\u003ctag\\u003e\\u0026\"" {
+		t.Fatalf("Marshal HTML string returned wrong JSON: %s (%v)", string(html), htmlErr)
+	}
+	intKeyed, intKeyErr := json.Marshal(map[int]string{2: "b", 1: "a"})
+	if intKeyErr != nil {
+		t.Fatalf("Marshal int-keyed map returned error: %v", intKeyErr)
+	}
+	if string(intKeyed) != "{\"1\":\"a\",\"2\":\"b\"}" {
+		t.Fatalf("Marshal int-keyed map returned wrong JSON: %s", string(intKeyed))
+	}
+	uintKeyed, uintKeyErr := json.Marshal(map[uint8]string{2: "b", 1: "a"})
+	if uintKeyErr != nil {
+		t.Fatalf("Marshal uint-keyed map returned error: %v", uintKeyErr)
+	}
+	if string(uintKeyed) != "{\"1\":\"a\",\"2\":\"b\"}" {
+		t.Fatalf("Marshal uint-keyed map returned wrong JSON: %s", string(uintKeyed))
+	}
+	namedKeyed, namedKeyErr := json.Marshal(map[namedString]string{namedString("key"): "value"})
+	if namedKeyErr != nil || string(namedKeyed) != "{\"key\":\"value\"}" {
+		t.Fatalf("Marshal named string-keyed map returned wrong JSON: %s (%v)", string(namedKeyed), namedKeyErr)
+	}
+	pointed := &sample{Name: "ptr", Count: 3}
+	pointedJSON, pointedErr := json.Marshal(pointed)
+	if pointedErr != nil {
+		t.Fatalf("Marshal pointer returned error: %v", pointedErr)
+	}
+	if string(pointedJSON) != "{\"name\":\"ptr\",\"Count\":3}" {
+		t.Fatalf("Marshal pointer returned wrong JSON: %s", string(pointedJSON))
+	}
+	var nilSample *sample
+	nilJSON, nilErr := json.Marshal(nilSample)
+	if nilErr != nil {
+		t.Fatalf("Marshal nil pointer returned error: %v", nilErr)
+	}
+	if string(nilJSON) != "null" {
+		t.Fatalf("Marshal nil pointer returned wrong JSON: %s", string(nilJSON))
+	}
+	empty, emptyErr := json.Marshal(emptyContainer{})
+	if emptyErr != nil || string(empty) != "{\"nested\":{}}" {
+		t.Fatalf("Marshal zero struct with omitempty returned wrong JSON: %s (%v)", string(empty), emptyErr)
+	}
+}
+
+func TestJSONDecoderDisallowUnknownFields(t *testing.T) {
+	decoder := json.NewDecoder(bytes.NewBufferString(`{"name":"mini","unknown":true}`))
+	decoder.DisallowUnknownFields()
+	var value sample
+	if err := decoder.Decode(&value); err == nil {
+		t.Fatalf("Decoder accepted an unknown struct field")
+	}
+}
+
+func TestJSONEncoderAndCompact(t *testing.T) {
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	err := encoder.Encode(sample{Name: "go", Count: 2})
+	if err != nil {
+		t.Fatalf("Encoder.Encode returned error: %v", err)
+	}
+	if buffer.String() != "{\"name\":\"go\",\"Count\":2}\n" {
+		t.Fatalf("Encoder.Encode wrote wrong JSON: %s", buffer.String())
+	}
+	var htmlBuffer bytes.Buffer
+	htmlEncoder := json.NewEncoder(&htmlBuffer)
+	htmlEncoder.SetEscapeHTML(false)
+	if err = htmlEncoder.Encode("<tag>&"); err != nil || htmlBuffer.String() != "\"<tag>&\"\n" {
+		t.Fatalf("Encoder.SetEscapeHTML(false) wrote wrong JSON: %s (%v)", htmlBuffer.String(), err)
+	}
+	var compact bytes.Buffer
+	err = json.Compact(&compact, []byte("{ \"a\" : [ 1, true, null ] }"))
+	if err != nil {
+		t.Fatalf("Compact returned error: %v", err)
+	}
+	if compact.String() != "{\"a\":[1,true,null]}" {
+		t.Fatalf("Compact wrote wrong JSON: %s", compact.String())
+	}
+}
+
+func TestJSONStreamingAPI(t *testing.T) {
+	decoder := json.NewDecoder(bytes.NewBufferString("[1,true]"))
+	token, err := decoder.Token()
+	if err != nil || token.(json.Delim).String() != "[" || !decoder.More() {
+		t.Fatalf("Decoder.Token did not read array start")
+	}
+	decoder.UseNumber()
+	token, err = decoder.Token()
+	if err != nil || token.(json.Number).String() != "1" {
+		t.Fatalf("Decoder.Token did not preserve Number")
+	}
+	token, err = decoder.Token()
+	if err != nil || token.(bool) != true {
+		t.Fatalf("Decoder.Token did not read bool")
+	}
+	if decoder.More() {
+		t.Fatalf("Decoder.More should report array end")
+	}
+	if _, err = decoder.Token(); err != nil || decoder.InputOffset() != int64(len("[1,true]")) {
+		t.Fatalf("Decoder did not consume array end")
+	}
+	var encoded bytes.Buffer
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetIndent("", "  ")
+	if err = encoder.Encode([]int{1, 2}); err != nil || encoded.String() != "[\n  1,\n  2\n]\n" {
+		t.Fatalf("Encoder.SetIndent returned wrong output: %s", encoded.String())
+	}
+	raw := json.RawMessage([]byte("old"))
+	input := []byte("{\"ok\":true}")
+	if err = (&raw).UnmarshalJSON(input); err != nil {
+		t.Fatalf("RawMessage.UnmarshalJSON returned error: %v", err)
+	}
+	input[0] = byte('[')
+	if string(raw) != "{\"ok\":true}" {
+		t.Fatalf("RawMessage.UnmarshalJSON must copy its input")
+	}
+}
+
+func TestJSONUnmarshalStructAndScalars(t *testing.T) {
+	var out sample
+	err := json.Unmarshal([]byte("{\"name\":\"mini\",\"Count\":7,\"Ignored\":true}"), &out)
+	if err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+	if out.Name != "mini" || out.Count != 7 {
+		t.Fatalf("Unmarshal wrote wrong struct: %s %d", out.Name, out.Count)
+	}
+	var text string
+	err = json.Unmarshal([]byte("\"\\u4e16\\u754c \\ud83d\\ude00\""), &text)
+	if err != nil {
+		t.Fatalf("Unmarshal unicode string returned error: %v", err)
+	}
+	if text != "世界 😀" {
+		t.Fatalf("Unmarshal unicode string wrote wrong value: %s", text)
+	}
+	err = json.Unmarshal([]byte("\"\\ud800\""), &text)
+	if err != nil {
+		t.Fatalf("Unmarshal lone surrogate returned error: %v", err)
+	}
+	if text != "�" {
+		t.Fatalf("Unmarshal lone surrogate should use RuneError, got %s", text)
+	}
+	var anon struct {
+		Name string `json:"name"`
+		Skip string `json:"-"`
+		Empty string `json:"empty,omitempty"`
+		Count int
+	}
+	err = json.Unmarshal([]byte("{\"name\":\"anon\",\"Skip\":\"hidden\",\"empty\":\"set\",\"Count\":9}"), &anon)
+	if err != nil {
+		t.Fatalf("Unmarshal anonymous struct returned error: %v", err)
+	}
+	if anon.Name != "anon" || anon.Skip != "" || anon.Empty != "set" || anon.Count != 9 {
+		t.Fatalf("Unmarshal anonymous struct tags wrote wrong values")
+	}
+	var tagged taggedContainer
+	err = json.Unmarshal([]byte("{\"label\":\"promoted\",\"name\":\"root\",\"Skip\":\"hidden\",\"Count\":5}"), &tagged)
+	if err != nil {
+		t.Fatalf("Unmarshal tagged embedded struct returned error: %v", err)
+	}
+	if tagged.taggedEmbedded.Label != "promoted" || tagged.Name != "root" || tagged.Skip != "" || tagged.Count != 5 {
+		t.Fatalf("Unmarshal tagged embedded struct wrote wrong values")
+	}
+	var flag bool
+	if err = json.Unmarshal([]byte("true"), &flag); err != nil || !flag {
+		t.Fatalf("Unmarshal bool failed: %v", err)
+	}
+	var number uint16
+	if err = json.Unmarshal([]byte("42"), &number); err != nil || number != 42 {
+		t.Fatalf("Unmarshal uint failed: %v", err)
+	}
+	var ratio float32
+	if err = json.Unmarshal([]byte("1.5"), &ratio); err != nil || ratio != 1.5 {
+		t.Fatalf("Unmarshal float failed: %v", err)
+	}
+	var rawNumber json.Number
+	err = json.Unmarshal([]byte("-42"), &rawNumber)
+	if err != nil || rawNumber.String() != "-42" {
+		t.Fatalf("Unmarshal Number failed: %v", err)
+	}
+	numberInt, numberIntErr := rawNumber.Int64()
+	if numberIntErr != nil || numberInt != -42 {
+		t.Fatalf("Number.Int64 returned wrong value")
+	}
+	var decimalNumber json.Number
+	err = json.Unmarshal([]byte("1.25"), &decimalNumber)
+	if err != nil {
+		t.Fatalf("Unmarshal decimal Number failed: %v", err)
+	}
+	numberFloat, numberFloatErr := decimalNumber.Float64()
+	if numberFloatErr != nil || numberFloat != 1.25 {
+		t.Fatalf("Number.Float64 returned wrong value")
+	}
+}
+
+func TestJSONUnmarshalRawMessage(t *testing.T) {
+	input := []byte("{\"value\":{\"items\":[1,true,null]}}")
+	var out struct {
+		Value json.RawMessage `json:"value"`
+	}
+	if err := json.Unmarshal(input, &out); err != nil {
+		t.Fatalf("Unmarshal RawMessage returned error: %v", err)
+	}
+	if string(out.Value) != "{\"items\":[1,true,null]}" {
+		t.Fatalf("Unmarshal RawMessage wrote wrong bytes: %s", string(out.Value))
+	}
+	input[9] = byte('x')
+	if string(out.Value) != "{\"items\":[1,true,null]}" {
+		t.Fatalf("Unmarshal RawMessage must copy input bytes")
+	}
+	var scalar json.RawMessage
+	if err := json.Unmarshal([]byte("null"), &scalar); err != nil || string(scalar) != "null" {
+		t.Fatalf("Unmarshal RawMessage null failed: %s %v", string(scalar), err)
+	}
+}
+
+func TestJSONMarshalRawMessage(t *testing.T) {
+	type envelope struct {
+		Payload json.RawMessage `json:"payload"`
+	}
+	data, err := json.Marshal(envelope{Payload: rawMessage([]byte(`{"answer":42}`))})
+	if err != nil {
+		t.Fatalf("Marshal RawMessage returned error: %v", err)
+	}
+	if string(data) != `{"payload":{"answer":42}}` {
+		t.Fatalf("Marshal RawMessage encoded bytes instead of JSON: %s", string(data))
+	}
+}
+
+func rawMessage(data []byte) json.RawMessage {
+	return data
+}
+
+func TestJSONUnmarshalArrayTargets(t *testing.T) {
+	values := [3]int{0, 0, 0}
+	err := json.Unmarshal([]byte("[1,2,3]"), &values)
+	if err != nil {
+		t.Fatalf("Unmarshal array returned error: %v", err)
+	}
+	if values[0] != 1 || values[1] != 2 || values[2] != 3 {
+		t.Fatalf("Unmarshal array wrote wrong values")
+	}
+	items := []string{"", ""}
+	err = json.Unmarshal([]byte("[\"a\",\"b\"]"), &items)
+	if err != nil {
+		t.Fatalf("Unmarshal slice returned error: %v", err)
+	}
+	if items[0] != "a" || items[1] != "b" {
+		t.Fatalf("Unmarshal slice wrote wrong values")
+	}
+	var resized []int
+	err = json.Unmarshal([]byte("[4,5,6]"), &resized)
+	if err != nil {
+		t.Fatalf("Unmarshal dynamic slice returned error: %v", err)
+	}
+	if len(resized) != 3 || resized[0] != 4 || resized[2] != 6 {
+		t.Fatalf("Unmarshal dynamic slice wrote wrong values")
+	}
+}
+
+func TestJSONUnmarshalConstructedTargets(t *testing.T) {
+	var nested *sample
+	err := json.Unmarshal([]byte("{\"name\":\"alloc\",\"Count\":5}"), &nested)
+	if err != nil {
+		t.Fatalf("Unmarshal pointer returned error: %v", err)
+	}
+	if nested == nil || nested.Name != "alloc" || nested.Count != 5 {
+		t.Fatalf("Unmarshal pointer wrote wrong values")
+	}
+	var lookup map[string]int
+	err = json.Unmarshal([]byte("{\"a\":1,\"b\":2}"), &lookup)
+	if err != nil {
+		t.Fatalf("Unmarshal map returned error: %v", err)
+	}
+	if lookup["a"] != 1 || lookup["b"] != 2 {
+		t.Fatalf("Unmarshal map wrote wrong values: len=%d a=%d b=%d", len(lookup), lookup["a"], lookup["b"])
+	}
+	var intLookup map[int]string
+	err = json.Unmarshal([]byte("{\"1\":\"a\",\"2\":\"b\"}"), &intLookup)
+	if err != nil {
+		t.Fatalf("Unmarshal int-keyed map returned error: %v", err)
+	}
+	if intLookup[1] != "a" || intLookup[2] != "b" {
+		t.Fatalf("Unmarshal int-keyed map wrote wrong values")
+	}
+	var uintLookup map[uint8]string
+	err = json.Unmarshal([]byte("{\"1\":\"a\",\"2\":\"b\"}"), &uintLookup)
+	if err != nil {
+		t.Fatalf("Unmarshal uint-keyed map returned error: %v", err)
+	}
+	if uintLookup[1] != "a" || uintLookup[2] != "b" {
+		t.Fatalf("Unmarshal uint-keyed map wrote wrong values")
+	}
+}
+
+func TestJSONUnmarshalAny(t *testing.T) {
+	var out any
+	err := json.Unmarshal([]byte("{\"name\":\"mini\",\"values\":[1,true,\"go\"]}"), &out)
+	if err != nil {
+		t.Fatalf("Unmarshal any returned error: %v", err)
+	}
+	object, objectOK := out.(map[string]any)
+	if !objectOK {
+		t.Fatalf("Unmarshal any should produce object")
+	}
+	if object["name"] != "mini" {
+		t.Fatalf("Unmarshal any wrote wrong string")
+	}
+	values, valuesOK := object["values"].([]any)
+	if !valuesOK || len(values) != 3 {
+		t.Fatalf("Unmarshal any should produce array")
+	}
+	if values[0] != 1.0 || values[1] != true || values[2] != "go" {
+		t.Fatalf("Unmarshal any wrote wrong array values")
+	}
+}
+
+func TestJSONDefinedScalars(t *testing.T) {
+	want := definedScalars{Text: "mini", Flag: true, Count: 42, Size: 7, Ratio: 1.5}
+	data, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("Marshal defined scalars failed: %v", err)
+	}
+	var got definedScalars
+	if err = json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal defined scalars failed: %v", err)
+	}
+	if got != want {
+		t.Fatalf("defined scalar round trip = %v", got)
+	}
+}
+
+type sample struct {
+	Name string `json:"name"`
+	Count int
+}
+
+type taggedEmbedded struct {
+	Label string `json:"label,omitempty"`
+	Empty string `json:"empty,omitempty"`
+	Hidden string `json:"-"`
+}
+
+type taggedContainer struct {
+	taggedEmbedded
+	Name string `json:"name"`
+	Skip string `json:"-"`
+	Count int
+}
+
+type emptyNested struct{}
+
+type emptyContainer struct {
+	Nested emptyNested `json:"nested,omitempty"`
+}
+
+type namedString string
+
+type namedBytes []byte
+
+type definedString string
+
+type definedBool bool
+
+type definedInt int
+
+type definedUint uint32
+
+type definedFloat float64
+
+type definedScalars struct {
+	Text definedString
+	Flag definedBool
+	Count definedInt
+	Size definedUint
+	Ratio definedFloat
+}
+
+type nestedMarshalValue struct {
+	Name string
+	Data []int
+}
+
+type nestedMarshalDocument struct {
+	Items []nestedMarshalValue
+}
+
+func TestJSONByteSliceBase64(t *testing.T) {
+	data, err := json.Marshal([]byte("hello"))
+	if err != nil || string(data) != `"aGVsbG8="` {
+		t.Fatalf("Marshal byte slice = %s, %v", string(data), err)
+	}
+	var decoded namedBytes
+	if err = json.Unmarshal(data, &decoded); err != nil || string(decoded) != "hello" {
+		t.Fatalf("Unmarshal byte slice = %s, %v", string(decoded), err)
+	}
+	if err = json.Unmarshal([]byte(`"%%%"`), &decoded); err == nil {
+		t.Fatal("Unmarshal byte slice accepted invalid base64")
+	}
+	binary := []byte{0, 0x80, 0xff}
+	data, err = json.Marshal(binary)
+	if err != nil || string(data) != `"AID/"` {
+		t.Fatalf("Marshal binary byte slice = %s, %v", string(data), err)
+	}
+	if err = json.Unmarshal(data, &decoded); err != nil || len(decoded) != len(binary) {
+		t.Fatalf("Unmarshal binary byte slice = %v, %v", decoded, err)
+	}
+	for i := 0; i < len(binary); i++ {
+		if decoded[i] != binary[i] {
+			t.Fatalf("Unmarshal binary byte %d = %d, want %d", i, decoded[i], binary[i])
+		}
+	}
+}
+
+func TestJSONMarshalInvalidUTF8(t *testing.T) {
+	invalid := string([]byte{'a', 0xff, 'b'})
+	data, err := json.Marshal(invalid)
+	if err != nil || string(data) != `"a\ufffdb"` {
+		t.Fatalf("Marshal invalid UTF-8 = %s, %v", string(data), err)
+	}
+	data, err = json.Marshal("�")
+	if err != nil || string(data) != `"�"` {
+		t.Fatalf("Marshal valid RuneError = %s, %v", string(data), err)
+	}
+}
+
+func TestJSONMarshalNestedValues(t *testing.T) {
+	items := make([]nestedMarshalValue, 32)
+	for i := 0; i < len(items); i++ {
+		data := make([]int, 32)
+		for j := 0; j < len(data); j++ {
+			data[j] = i * len(data) + j
+		}
+		items[i] = nestedMarshalValue{Name: "item", Data: data}
+	}
+
+	encoded, err := json.Marshal(nestedMarshalDocument{Items: items})
+	if err != nil {
+		t.Fatalf("Marshal nested values failed: %v", err)
+	}
+	var decoded nestedMarshalDocument
+	if err = json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal nested values failed: %v", err)
+	}
+	if len(decoded.Items) != len(items) || len(decoded.Items[31].Data) != 32 || decoded.Items[31].Data[31] != 1023 {
+		t.Fatalf("nested value round trip lost data")
+	}
+}
+
+type customJSON struct {
+	Value string
+}
+
+func (value customJSON) MarshalJSON() ([]byte, error) {
+	return []byte(`"json:` + value.Value + `"`), nil
+}
+
+func (value *customJSON) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+	value.Value = "decoded:" + text
+	return nil
+}
+
+type textValue string
+
+func (value textValue) MarshalText() ([]byte, error) {
+	return []byte("text:" + string(value)), nil
+}
+
+func (value *textValue) UnmarshalText(data []byte) error {
+	*value = textValue("decoded:" + string(data))
+	return nil
+}
+
+func TestJSONCustomInterfaces(t *testing.T) {
+	data, err := json.Marshal(customJSON{Value: "value"})
+	if err != nil || string(data) != `"json:value"` {
+		t.Fatalf("Marshaler = %s, %v", string(data), err)
+	}
+	var decoded customJSON
+	if err = json.Unmarshal([]byte(`"value"`), &decoded); err != nil || decoded.Value != "decoded:value" {
+		t.Fatalf("Unmarshaler = %v, %v", decoded, err)
+	}
+	data, err = json.Marshal(textValue("value"))
+	if err != nil || string(data) != `"text:value"` {
+		t.Fatalf("TextMarshaler = %s, %v", string(data), err)
+	}
+	var text textValue
+	if err = json.Unmarshal([]byte(`"value"`), &text); err != nil || text != textValue("decoded:value") {
+		t.Fatalf("TextUnmarshaler = %q, %v", string(text), err)
+	}
+}
+
+func TestJSONFormattingAndErrors(t *testing.T) {
+	var indented bytes.Buffer
+	if err := json.Indent(&indented, []byte(`{"a":[1,true]}`), "", "  "); err != nil {
+		t.Fatal(err)
+	}
+	if indented.String() != "{\n  \"a\": [\n    1,\n    true\n  ]\n}" {
+		t.Fatalf("Indent = %q", indented.String())
+	}
+	var escaped bytes.Buffer
+	json.HTMLEscape(&escaped, []byte(`{"value":"<>&"}`))
+	if escaped.String() != `{"value":"\u003c\u003e\u0026"}` {
+		t.Fatalf("HTMLEscape = %q", escaped.String())
+	}
+	if _, ok := json.Unmarshal([]byte("null"), nil).(*json.InvalidUnmarshalError); !ok {
+		t.Fatal("Unmarshal did not return InvalidUnmarshalError")
+	}
+	var target any
+	if _, ok := json.Unmarshal([]byte("{"), &target).(*json.SyntaxError); !ok {
+		t.Fatal("Unmarshal did not return SyntaxError")
+	}
+	if _, err := json.Marshal(make(chan int)); err == nil {
+		t.Fatal("Marshal accepted channel")
+	} else if _, ok := err.(*json.UnsupportedTypeError); !ok {
+		t.Fatalf("Marshal returned %T, want UnsupportedTypeError", err)
+	}
+}

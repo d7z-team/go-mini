@@ -1,0 +1,4 @@
+package main
+import "encoding/json"
+type Record struct { Number int; Text string; Values []int }
+func Main() int { var record Record; if json.Unmarshal([]byte("{\"Number\":40,\"Text\":\"a\\nb\",\"Values\":[2]}"), &record) != nil { return -1 }; encoded, err := json.Marshal(record); if err != nil { return -2 }; var copy Record; if json.Unmarshal(encoded, &copy) != nil { return -3 }; if copy.Text != "a\nb" { return -4 }; if json.Unmarshal([]byte("{invalid}"), &copy) == nil { return -5 }; return copy.Number + copy.Values[0] }

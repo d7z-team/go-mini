@@ -1,0 +1,44 @@
+package iter_test
+
+import (
+	"iter"
+	"testing"
+)
+
+func TestPullAndStop(t *testing.T) {
+	visited := 0
+	seq := iter.Seq[int](func(yield func(int) bool) {
+		for i := 1; i <= 3; i++ {
+			visited++
+			if !yield(i) {
+				return
+			}
+		}
+	})
+	next, stop := iter.Pull(seq)
+	value, ok := next()
+	if !ok || value != 1 {
+		t.Fatalf("first pull = %d, %t", value, ok)
+	}
+	stop()
+	stop()
+	if visited != 1 {
+		t.Fatalf("stop did not halt the iterator: %d", visited)
+	}
+}
+
+func TestPull2Completion(t *testing.T) {
+	seq := iter.Seq2[int, string](func(yield func(int, string) bool) {
+		yield(1, "one")
+	})
+	next, stop := iter.Pull2(seq)
+	defer stop()
+	key, value, ok := next()
+	if !ok || key != 1 || value != "one" {
+		t.Fatalf("first pair is incorrect")
+	}
+	_, _, ok = next()
+	if ok {
+		t.Fatalf("completed iterator returned another pair")
+	}
+}

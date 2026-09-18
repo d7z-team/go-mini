@@ -1,0 +1,208 @@
+package strings
+
+import "unicode/utf8"
+
+// Index returns the index of the first instance of substr in s, or -1 if substr is not present in s.
+func Index(s string, substr string) int {
+	n := len(substr)
+	if n == 0 {
+		return 0
+	}
+	if n > len(s) {
+		return -1
+	}
+	if n == 1 {
+		return IndexByte(s, substr[0])
+	}
+	first := substr[0]
+	last := substr[n - 1]
+	limit := len(s) - n
+	for i := 0; i <= limit; i++ {
+		if s[i] == first && s[i + n - 1] == last && s[i:i + n] == substr {
+			return i
+		}
+	}
+	return -1
+}
+
+// Count counts the number of non-overlapping instances of substr in s.
+// If substr is an empty string, Count returns 1 + the number of Unicode code points in s.
+func Count(s string, substr string) int {
+	if substr == "" {
+		count := 1
+		for range s {
+			count++
+		}
+		return count
+	}
+	count := 0
+	start := 0
+	for start <= len(s) {
+		index := Index(s[start:], substr)
+		if index < 0 {
+			return count
+		}
+		count++
+		start = start + index + len(substr)
+	}
+	return count
+}
+
+// LastIndex returns the index of the last instance of substr in s, or -1 if substr is not present in s.
+func LastIndex(s string, substr string) int {
+	n := len(substr)
+	if n == 0 {
+		return len(s)
+	}
+	if n > len(s) {
+		return -1
+	}
+	if n == 1 {
+		return LastIndexByte(s, substr[0])
+	}
+	first := substr[0]
+	last := substr[n - 1]
+	for i := len(s) - n; i >= 0; i-- {
+		if s[i] == first && s[i + n - 1] == last && s[i:i + n] == substr {
+			return i
+		}
+	}
+	return -1
+}
+
+// IndexByte returns the index of the first instance of c in s, or -1 if c is not present in s.
+func IndexByte(s string, c byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
+// LastIndexByte returns the index of the last instance of c in s, or -1 if c is not present in s.
+func LastIndexByte(s string, c byte) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
+// IndexRune returns the index of the first instance of the Unicode code point
+// r, or -1 if rune is not present in s.
+// If r is [utf8.RuneError], it returns the first instance of any
+// invalid UTF-8 byte sequence.
+func IndexRune(s string, r rune) int {
+	for i, value := range s {
+		if value == r {
+			return i
+		}
+	}
+	return -1
+}
+
+// IndexAny returns the index of the first instance of any Unicode code point
+// from chars in s, or -1 if no Unicode code point from chars is present in s.
+func IndexAny(s string, chars string) int {
+	if chars == "" {
+		return -1
+	}
+	if len(chars) == 1 && chars[0] < utf8.RuneSelf {
+		return IndexByte(s, chars[0])
+	}
+	var ascii [utf8.RuneSelf]bool
+	asciiOnly := true
+	for i := 0; i < len(chars); i++ {
+		if chars[i] >= utf8.RuneSelf {
+			asciiOnly = false
+			break
+		}
+		ascii[chars[i]] = true
+	}
+	if asciiOnly {
+		for i := 0; i < len(s); i++ {
+			if s[i] >= utf8.RuneSelf {
+				asciiOnly = false
+				break
+			}
+			if ascii[s[i]] {
+				return i
+			}
+		}
+		if asciiOnly {
+			return -1
+		}
+	}
+	for i, value := range s {
+		if containsCutsetRune(chars, value) {
+			return i
+		}
+	}
+	return -1
+}
+
+// LastIndexAny returns the index of the last instance of any Unicode code
+// point from chars in s, or -1 if no code point is present.
+func LastIndexAny(s string, chars string) int {
+	if chars == "" {
+		return -1
+	}
+	if len(chars) == 1 && chars[0] < utf8.RuneSelf {
+		return LastIndexByte(s, chars[0])
+	}
+	var ascii [utf8.RuneSelf]bool
+	asciiOnly := true
+	for i := 0; i < len(chars); i++ {
+		if chars[i] >= utf8.RuneSelf {
+			asciiOnly = false
+			break
+		}
+		ascii[chars[i]] = true
+	}
+	if asciiOnly {
+		for i := len(s) - 1; i >= 0; i-- {
+			if s[i] >= utf8.RuneSelf {
+				asciiOnly = false
+				break
+			}
+			if ascii[s[i]] {
+				return i
+			}
+		}
+		if asciiOnly {
+			return -1
+		}
+	}
+	last := -1
+	for i, value := range s {
+		if containsCutsetRune(chars, value) {
+			last = i
+		}
+	}
+	return last
+}
+
+// IndexFunc returns the index into s of the first Unicode
+// code point satisfying f(c), or -1 if none do.
+func IndexFunc(s string, f func(rune) bool) int {
+	for i, value := range s {
+		if f(value) {
+			return i
+		}
+	}
+	return -1
+}
+
+// LastIndexFunc returns the index into s of the last
+// Unicode code point satisfying f(c), or -1 if none do.
+func LastIndexFunc(s string, f func(rune) bool) int {
+	last := -1
+	for i, value := range s {
+		if f(value) {
+			last = i
+		}
+	}
+	return last
+}

@@ -1,0 +1,49 @@
+package errors
+
+type joinError struct {
+	errors []error
+}
+
+func (e *joinError) Error() string {
+	out := ""
+	first := true
+	for _, err := range e.errors {
+		if err == nil {
+			continue
+		}
+		if !first {
+			out += "\n"
+		}
+		out += err.Error()
+		first = false
+	}
+	return out
+}
+
+func (e *joinError) Unwrap() []error {
+	return e.errors
+}
+
+// Join returns an error that wraps the given errors.
+// Any nil error values are discarded.
+// Join returns nil if every value in errs is nil.
+// The error formats as the concatenation of the strings obtained
+// by calling the Error method of each element of errs, with a newline
+// between each string.
+//
+// A non-nil error returned by Join implements the Unwrap() []error method.
+// The errors may be inspected with [Is] and [As].
+func Join(errs ...error) error {
+	nonNil := []error{}
+	for _, err := range errs {
+		if err != nil {
+			nonNil = append(nonNil, err)
+		}
+	}
+	if len(nonNil) == 0 {
+		return nil
+	}
+	e := new(joinError)
+	e.errors = nonNil
+	return e
+}

@@ -1,0 +1,205 @@
+// Package time provides durations, Gregorian calendar values, formatting,
+// parsing, clocks, and timers.
+package time
+
+import "errors"
+
+// A Month specifies a month of the year (January = 1, ...).
+type Month int
+
+const (
+	// January is the first month of the year.
+	January Month = 1 + iota
+
+	// February is the second month of the year.
+	February
+	// March is the third month of the year.
+	March
+	// April is the fourth month of the year.
+	April
+	// May is the fifth month of the year.
+	May
+	// June is the sixth month of the year.
+	June
+	// July is the seventh month of the year.
+	July
+	// August is the eighth month of the year.
+	August
+	// September is the ninth month of the year.
+	September
+	// October is the tenth month of the year.
+	October
+	// November is the eleventh month of the year.
+	November
+	// December is the twelfth month of the year.
+	December
+)
+
+// A Weekday specifies a day of the week (Sunday = 0, ...).
+type Weekday int
+
+const (
+	// Sunday is the first Weekday value.
+	Sunday Weekday = iota
+
+	// Monday is the weekday after Sunday.
+	Monday
+	// Tuesday is the weekday after Monday.
+	Tuesday
+	// Wednesday is the weekday after Tuesday.
+	Wednesday
+	// Thursday is the weekday after Wednesday.
+	Thursday
+	// Friday is the weekday after Thursday.
+	Friday
+	// Saturday is the weekday after Friday.
+	Saturday
+)
+
+var monthNames = []string{"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"}
+
+var weekdayNames = []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+
+// String returns the English name of the month ("January", "February", ...).
+func (m Month) String() string {
+	if m < January || m > December {
+		return "Month(" + Duration(m).String() + ")"
+	}
+	return monthNames[int(m) - 1]
+}
+
+// String returns the English name of the day ("Sunday", "Monday", ...).
+func (d Weekday) String() string {
+	if d < Sunday || d > Saturday {
+		return "Weekday(" + Duration(d).String() + ")"
+	}
+	return weekdayNames[int(d)]
+}
+
+// A Location supplies the UTC offset and daylight-saving transitions used to interpret Time values.
+type Location struct {
+	name string
+	offset int
+	zones []timeZone
+	transitions []zoneTransition
+	extend string
+}
+
+// UTC represents Universal Coordinated Time (UTC).
+var UTC = &Location{name: "UTC"}
+
+// Local is the named local location supplied by this package.
+var Local = &Location{name: "Local"}
+
+// String returns a descriptive name for the time zone information,
+// corresponding to the name argument to [LoadLocation] or [FixedZone].
+func (l *Location) String() string {
+	if l == nil {
+		return "UTC"
+	}
+	return l.name
+}
+
+// FixedZone returns a [Location] that always uses
+// the given zone name and offset (seconds east of UTC).
+func FixedZone(name string, offset int) *Location {
+	return &Location{name: name, offset: offset}
+}
+
+// LoadLocation returns the Location with the given name.
+//
+// If the name is "" or "UTC", LoadLocation returns UTC.
+// If the name is "Local", LoadLocation returns Local.
+//
+// Other names return an error.
+func LoadLocation(name string) (*Location, error) {
+	switch name {
+		case "", "UTC":
+			return UTC, nil
+		case "Local":
+			return Local, nil
+		default:
+			return nil, errors.New("unknown time zone " + name)
+	}
+}
+
+func isLeap(year int) bool {
+	return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+}
+
+func daysIn(month Month, year int) int {
+	switch month {
+		case April, June, September, November:
+			return 30
+		case February:
+			if isLeap(year) {
+				return 29
+			}
+			return 28
+		default:
+			return 31
+	}
+}
+
+func daysBeforeYear(year int) int64 {
+	y := int64(year) - 1
+	q4, q100, q400 := y / 4, y / 100, y / 400
+	if y < 0 {
+		if y % 4 != 0 {
+			q4--
+		}
+		if y % 100 != 0 {
+			q100--
+		}
+		if y % 400 != 0 {
+			q400--
+		}
+	}
+	return 365 * y + q4 - q100 + q400 - 719162
+}
+
+func unixDays(year int, month Month, day int) int64 {
+	months := int64(month) - 1
+	years := months / 12
+	months %= 12
+	if months < 0 {
+		months += 12
+		years--
+	}
+	year += int(years)
+	month = Month(months + 1)
+	days := daysBeforeYear(year)
+	for current := January; current < month; current++ {
+		days += int64(daysIn(current, year))
+	}
+	return days + int64(day) - 1
+}
+
+func civilDate(days int64) (int, Month, int) {
+	days += 719162
+	era := days / 146097
+	days %= 146097
+	if days < 0 {
+		days += 146097
+		era--
+	}
+	centuries := days / 36524
+	if centuries == 4 {
+		centuries = 3
+	}
+	days -= centuries * 36524
+	fours := days / 1461
+	days -= fours * 1461
+	years := days / 365
+	if years == 4 {
+		years = 3
+	}
+	days -= years * 365
+	year := int(era * 400 + centuries * 100 + fours * 4 + years + 1)
+	month := January
+	for days >= int64(daysIn(month, year)) {
+		days -= int64(daysIn(month, year))
+		month++
+	}
+	return year, month, int(days) + 1
+}

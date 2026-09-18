@@ -1,0 +1,9 @@
+package main
+
+func Main(n int) int {
+	next := func() int {
+		n++
+		return n
+	}
+	return next() + next()
+}

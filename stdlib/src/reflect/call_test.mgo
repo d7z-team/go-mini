@@ -1,0 +1,237 @@
+package reflect_test
+
+import (
+	"reflect"
+	"testing"
+)
+
+func TestReflectValueCallAndMethod(t *testing.T) {
+	counter := methodCounter{Base: 40}
+	addMethod := reflect.ValueOf(counter).MethodByName("Add")
+	if !addMethod.IsValid() || addMethod.Kind() != reflect.Func || addMethod.Type().NumIn() != 1 || addMethod.Type().NumOut() != 1 {
+		t.Fatalf("MethodByName should return a callable method value")
+	}
+	addMethodResults := addMethod.Call([]reflect.Value{reflect.ValueOf(2)})
+	if len(addMethodResults) != 1 || addMethodResults[0].Int() != 42 {
+		t.Fatalf("method Value.Call returned wrong result")
+	}
+	pointerMethod := reflect.ValueOf(&counter).MethodByName("AddPtr")
+	pointerResults := pointerMethod.Call([]reflect.Value{reflect.ValueOf(3)})
+	if len(pointerResults) != 1 || pointerResults[0].Int() != 43 || counter.Base != 43 {
+		t.Fatalf("pointer receiver method Value.Call should write through receiver")
+	}
+	missing := reflect.ValueOf(counter).MethodByName("Missing")
+	if missing.IsValid() {
+		t.Fatalf("missing MethodByName should return invalid Value")
+	}
+	expectPanic(t, func() {
+		_ = reflect.ValueOf(1).Call([]reflect.Value{})
+	})
+}
+
+func TestReflectValueCallVariadic(t *testing.T) {
+	counter := methodCounter{Base: 30}
+	sumMethod := reflect.ValueOf(counter).MethodByName("Sum")
+	results := sumMethod.Call([]reflect.Value{reflect.ValueOf(2), reflect.ValueOf(4), reflect.ValueOf(6)})
+	if !sumMethod.Type().IsVariadic() || len(results) != 1 || results[0].Int() != 42 {
+		t.Fatalf("Value.Call should pack variadic method arguments: type=%s variadic=%t results=%d", sumMethod.Type(), sumMethod.Type().IsVariadic(), len(results))
+	}
+	packed := []int{5, 7}
+	sliceResults := sumMethod.CallSlice([]reflect.Value{reflect.ValueOf(packed)})
+	if len(sliceResults) != 1 || sliceResults[0].Int() != 42 {
+		t.Fatalf("Value.CallSlice should use final variadic slice")
+	}
+	expectPanic(t, func() {
+		_ = reflect.ValueOf(func() {}).CallSlice([]reflect.Value{})
+	})
+}
+
+func addValue(value int) int {
+	return value + 40
+}
+
+func sumValues(base int, values ...int) int {
+	total := base
+	for _, value := range values {
+		total += value
+	}
+	return total
+}
+
+func spawnReflectedValue() int {
+	values := make(chan int)
+	go func() {
+		values <- 42
+	}()
+	return <-values
+}
+
+func panicReflectedValue() {
+	panic("reflect callback panic")
+}
+
+type reflectedRunner struct{}
+
+func (reflectedRunner) Run() int {
+	return spawnReflectedValue()
+}
+
+type valueAdder func(int) int
+
+type valueSummer func(int, ...int) int
+
+func TestReflectValueCallFunction(t *testing.T) {
+	functionValue := reflect.ValueOf(addValue)
+	if !functionValue.IsValid() || functionValue.Kind() != reflect.Func || functionValue.Type().NumIn() != 1 || functionValue.Type().NumOut() != 1 {
+		t.Fatalf("ValueOf should preserve function value metadata")
+	}
+	results := functionValue.Call([]reflect.Value{reflect.ValueOf(2)})
+	if len(results) != 1 || results[0].Int() != 42 {
+		t.Fatalf("Value.Call should invoke a function value")
+	}
+	expectPanic(t, func() {
+		_ = functionValue.Call([]reflect.Value{reflect.ValueOf("wrong")})
+	})
+	var namedAdder valueAdder = addValue
+	namedResults := reflect.ValueOf(namedAdder).Call([]reflect.Value{reflect.ValueOf(2)})
+	if len(namedResults) != 1 || namedResults[0].Int() != 42 {
+		t.Fatalf("Value.Call should use the artifact signature for a named function value")
+	}
+	methodValue := methodCounter{Base: 30}.Sum
+	methodResults := reflect.ValueOf(methodValue).Call([]reflect.Value{reflect.ValueOf(5), reflect.ValueOf(7)})
+	if len(methodResults) != 1 || methodResults[0].Int() != 42 {
+		t.Fatalf("Value.Call should invoke a generated method value")
+	}
+	variadic := reflect.ValueOf(sumValues)
+	packed := variadic.Call([]reflect.Value{reflect.ValueOf(30), reflect.ValueOf(5), reflect.ValueOf(7)})
+	if !variadic.Type().IsVariadic() || len(packed) != 1 || packed[0].Int() != 42 {
+		t.Fatalf("Value.Call should pack a variadic function value")
+	}
+	sliceResults := variadic.CallSlice([]reflect.Value{reflect.ValueOf(30), reflect.ValueOf([]int{5, 7})})
+	if len(sliceResults) != 1 || sliceResults[0].Int() != 42 {
+		t.Fatalf("Value.CallSlice should pass a variadic function slice")
+	}
+	var namedSummer valueSummer = sumValues
+	namedSliceResults := reflect.ValueOf(namedSummer).CallSlice([]reflect.Value{reflect.ValueOf(30), reflect.ValueOf([]int{5, 7})})
+	if len(namedSliceResults) != 1 || namedSliceResults[0].Int() != 42 {
+		t.Fatalf("Value.CallSlice should use the artifact signature for a named variadic function value")
+	}
+}
+
+func TestReflectValueCallSchedulerContinuation(t *testing.T) {
+	values := make(chan int)
+	receive := func() int {
+		return <-values
+	}
+	go func() {
+		values <- 42
+	}()
+	results := reflect.ValueOf(receive).Call([]reflect.Value{})
+	if len(results) != 1 || results[0].Int() != 42 {
+		t.Fatalf("Value.Call callback should rendezvous with the caller scheduler")
+	}
+	spawned := reflect.ValueOf(spawnReflectedValue).Call([]reflect.Value{})
+	if len(spawned) != 1 || spawned[0].Int() != 42 {
+		t.Fatalf("Value.Call callback should be able to spawn and resume")
+	}
+	method := reflect.ValueOf(reflectedRunner{}).MethodByName("Run")
+	methodResults := method.Call([]reflect.Value{})
+	if len(methodResults) != 1 || methodResults[0].Int() != 42 {
+		t.Fatalf("method Value.Call callback should rendezvous with the caller scheduler")
+	}
+	recovered := false
+	func() {
+		defer func() {
+			if recover() != nil {
+				recovered = true
+			}
+		}()
+		_ = reflect.ValueOf(panicReflectedValue).Call([]reflect.Value{})
+	}()
+	if !recovered {
+		t.Fatalf("Value.Call callback panic should unwind through the caller")
+	}
+}
+
+func TestReflectMakeFunc(t *testing.T) {
+	typ := reflect.TypeOf((func(int) int)(nil))
+	value := reflect.MakeFunc(typ, func(args []reflect.Value) []reflect.Value {
+		return []reflect.Value{reflect.ValueOf(int(args[0].Int()) + 40)}
+	})
+	results := value.Call([]reflect.Value{reflect.ValueOf(2)})
+	if len(results) != 1 || results[0].Int() != 42 {
+		t.Fatalf("MakeFunc Value.Call returned wrong result")
+	}
+	callable, ok := value.Interface().(func(int) int)
+	if !ok || callable(2) != 42 {
+		t.Fatalf("MakeFunc Interface should expose the requested function type")
+	}
+	var namedType valueAdder
+	namedValue := reflect.MakeFunc(reflect.TypeOf(namedType), func(args []reflect.Value) []reflect.Value {
+		return []reflect.Value{reflect.ValueOf(int(args[0].Int()) + 40)}
+	})
+	namedCallable, ok := namedValue.Interface().(valueAdder)
+	if !ok || namedCallable(2) != 42 {
+		t.Fatalf("MakeFunc should preserve a defined function type")
+	}
+
+	variadicType := reflect.TypeOf((func(int, ...int) int)(nil))
+	variadicValue := reflect.MakeFunc(variadicType, func(args []reflect.Value) []reflect.Value {
+		total := int(args[0].Int())
+		values := args[1]
+		for index := 0; index < values.Len(); index++ {
+			total += int(values.Index(index).Int())
+		}
+		return []reflect.Value{reflect.ValueOf(total)}
+	})
+	variadic, ok := variadicValue.Interface().(func(int, ...int) int)
+	if !ok || variadic(30, 5, 7) != 42 {
+		t.Fatalf("MakeFunc should preserve variadic function semantics")
+	}
+	results = variadicValue.CallSlice([]reflect.Value{reflect.ValueOf(30), reflect.ValueOf([]int{5, 7})})
+	if len(results) != 1 || results[0].Int() != 42 {
+		t.Fatalf("MakeFunc Value.CallSlice returned wrong result")
+	}
+
+	wrongResults := reflect.MakeFunc(typ, func(args []reflect.Value) []reflect.Value {
+		return []reflect.Value{}
+	})
+	expectPanic(t, func() {
+		_ = wrongResults.Call([]reflect.Value{reflect.ValueOf(2)})
+	})
+	wrongType := reflect.MakeFunc(typ, func(args []reflect.Value) []reflect.Value {
+		return []reflect.Value{reflect.ValueOf("wrong")}
+	})
+	expectPanic(t, func() {
+		_ = wrongType.Call([]reflect.Value{reflect.ValueOf(2)})
+	})
+}
+
+func TestReflectRecv(t *testing.T) {
+	buffered := make(chan int, 1)
+	buffered <- 42
+	value, ok := reflect.ValueOf(buffered).Recv()
+	if !ok || value.Int() != 42 {
+		t.Fatalf("Recv should receive buffered channel values")
+	}
+
+	values := make(chan int)
+	go func() {
+		values <- 42
+	}()
+	value, ok = reflect.ValueOf(values).Recv()
+	if !ok || value.Int() != 42 {
+		t.Fatalf("Recv should resume after a channel send")
+	}
+
+	close(values)
+	value, ok = reflect.ValueOf(values).Recv()
+	if ok || !value.IsValid() || value.Int() != 0 {
+		t.Fatalf("Recv should return the channel element zero value after close")
+	}
+
+	sendOnly := (chan<- int)(make(chan int))
+	expectPanic(t, func() {
+		_, _ = reflect.ValueOf(sendOnly).Recv()
+	})
+}

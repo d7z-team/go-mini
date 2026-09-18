@@ -1,0 +1,17 @@
+[
+ {"Operation":"hover","Position":{"line":2,"character":6}},
+ {"Operation":"completion","Position":{"line":2,"character":6}},
+ {"Operation":"definition","Position":{"line":2,"character":6}},
+ {"Operation":"references","Position":{"line":2,"character":6},"IncludeDeclaration":true},
+ {"Operation":"documentHighlight","Position":{"line":2,"character":6}},
+ {"Operation":"documentSymbol"},
+ {"Operation":"workspaceSymbol","Text":"Answer"},
+ {"Operation":"prepareRename","Position":{"line":2,"character":6}},
+ {"Operation":"rename","Position":{"line":2,"character":6},"Text":"Result"},
+ {"Operation":"diagnostic"},
+ {"Operation":"formatting"},
+ {"Operation":"semanticTokens"},
+ {"Operation":"foldingRange"},
+ {"Operation":"selectionRange","Positions":[{"line":2,"character":6}]},
+ {"Operation":"codeAction"}
+]

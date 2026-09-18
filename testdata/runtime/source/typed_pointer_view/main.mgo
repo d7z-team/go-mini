@@ -1,0 +1,13 @@
+package main
+type A struct { X struct { Y int `json:"a"` } }
+type B struct { X struct { Y int `json:"b"` } }
+type Count int
+type Other int
+func read(value struct { Y int `json:"b"` }) int { return value.Y }
+func Main() int {
+ a := A{}; a.X.Y = 20; b := B(a); b.X.Y = 0; if a.X.Y != 20 { return -1 }
+ p := (*B)(&a); p.X.Y = 21; if read(p.X) != 21 || a.X.Y != 21 { return -2 }
+ if (*A)(p) != &a { return -3 }; *p = B{}; p.X.Y = 20
+ n := Count(1); q := (*Other)(&n); *q = 22; if n != 22 || (*Count)(q) != &n { return -4 }
+ var zero *A; if (*B)(zero) != nil { return -5 }; return a.X.Y + int(n)
+}

@@ -1,0 +1,98 @@
+// Package crc32 implements the 32-bit cyclic redundancy check.
+package crc32
+
+import "hash"
+
+const (
+	// IEEE is the IEEE polynomial.
+	IEEE = 0xedb88320
+
+	// Castagnoli is the Castagnoli polynomial.
+	Castagnoli = 0x82f63b78
+	// Koopman is the Koopman polynomial.
+	Koopman = 0xeb31d82e
+	// Size is the size of a CRC-32 checksum in bytes.
+	Size = 4
+)
+
+// Table is a 256-word table representing a polynomial for efficient processing.
+type Table [256]uint32
+
+// MakeTable returns the table constructed from poly.
+func MakeTable(poly uint32) *Table {
+	table := new(Table)
+	for i := 0; i < 256; i++ {
+		crc := uint32(i)
+		for j := 0; j < 8; j++ {
+			if crc & 1 != 0 {
+				crc = crc >> 1 ^ poly
+			} else {
+				crc >>= 1
+			}
+		}
+		table[i] = crc
+	}
+	return table
+}
+
+// IEEETable is the table for the IEEE polynomial.
+var IEEETable = MakeTable(IEEE)
+
+// Update returns the result of adding p to crc using tab.
+func Update(crc uint32, tab *Table, p []byte) uint32 {
+	crc = ^crc
+	for _, value := range p {
+		crc = tab[byte(crc) ^ value] ^ crc >> 8
+	}
+	return ^crc
+}
+
+// Checksum returns the CRC-32 checksum of data using tab.
+func Checksum(data []byte, tab *Table) uint32 {
+	return Update(0, tab, data)
+}
+
+// ChecksumIEEE returns the CRC-32 checksum of data using the IEEE polynomial.
+func ChecksumIEEE(data []byte) uint32 {
+	return Checksum(data, IEEETable)
+}
+
+type digest struct {
+	crc uint32
+	table *Table
+}
+
+func (d *digest) Write(data []byte) (int, error) {
+	d.crc = Update(d.crc, d.table, data)
+	return len(data), nil
+}
+
+func (d *digest) Sum32() uint32 {
+	return d.crc
+}
+
+func (d *digest) Sum(buffer []byte) []byte {
+	return append(buffer, byte(d.crc >> 24), byte(d.crc >> 16), byte(d.crc >> 8), byte(d.crc))
+}
+
+func (d *digest) Reset() {
+	d.crc = 0
+}
+
+func (d *digest) Size() int {
+	return Size
+}
+
+func (d *digest) BlockSize() int {
+	return 1
+}
+
+// New creates a new hash.Hash32 computing the CRC-32 checksum using tab.
+func New(tab *Table) hash.Hash32 {
+	return &digest{table: tab}
+}
+
+// NewIEEE creates a new hash.Hash32 computing the IEEE checksum.
+func NewIEEE() hash.Hash32 {
+	return New(IEEETable)
+}

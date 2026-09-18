@@ -1,0 +1,665 @@
+// Copyright 2021 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license.
+// Adapted for the Mini-Go runtime-neutral standard library.
+
+// Package netip defines an IP address type that's a small value type.
+// Building on that [Addr] type, the package also defines [AddrPort] (an
+// IP address and a port) and [Prefix] (an IP address and a bit length
+// prefix).
+//
+// Compared to the [net.IP] type, [Addr] type takes less memory, is immutable,
+// and is comparable (supports == and being a map key).
+package netip
+
+import (
+	"errors"
+	"strconv"
+	"strings"
+)
+
+var errInvalidAddr = errors.New("invalid IP address")
+
+// Addr represents an IPv4 or IPv6 address (with or without a scoped
+// addressing zone), similar to [net.IP] or [net.IPAddr].
+//
+// Unlike [net.IP] or [net.IPAddr], Addr is a comparable value
+// type (it supports == and can be a map key) and is immutable.
+//
+// The zero Addr is not a valid IP address.
+// Addr{} is distinct from both 0.0.0.0 and ::.
+type Addr struct {
+	bytes [16]byte
+	family byte
+	zone string
+	v4in6 bool
+}
+
+// AddrFrom4 returns the address of the IPv4 address given by the bytes in addr.
+func AddrFrom4(value [4]byte) Addr {
+	var bytes [16]byte
+	copy(bytes[12:], value[:])
+	return Addr{bytes: bytes, family: 4}
+}
+
+// AddrFrom16 returns the IPv6 address given by the bytes in addr.
+// An IPv4-mapped IPv6 address is left as an IPv6 address.
+// (Use Unmap to convert them if needed.)
+func AddrFrom16(value [16]byte) Addr {
+	return Addr{bytes: value, family: 6, v4in6: isMapped(value)}
+}
+
+// AddrFromSlice parses the 4- or 16-byte byte slice as an IPv4 or IPv6 address.
+// Note that a [net.IP] can be passed directly as the []byte argument.
+// If slice's length is not 4 or 16, AddrFromSlice returns [Addr]{}, false.
+func AddrFromSlice(value []byte) (Addr, bool) {
+	if len(value) == 4 {
+		var bytes [4]byte
+		copy(bytes[:], value)
+		return AddrFrom4(bytes), true
+	}
+	if len(value) == 16 {
+		var bytes [16]byte
+		copy(bytes[:], value)
+		return AddrFrom16(bytes), true
+	}
+	return Addr{}, false
+}
+
+func isMapped(value [16]byte) bool {
+	for index := 0; index < 10; index++ {
+		if value[index] != 0 {
+			return false
+		}
+	}
+	return value[10] == 255 && value[11] == 255
+}
+
+func parseIPv4(value string) (Addr, bool) {
+	parts := strings.Split(value, ".")
+	if len(parts) != 4 {
+		return Addr{}, false
+	}
+	var bytes [4]byte
+	for index, part := range parts {
+		if part == "" || len(part) > 1 && part[0] == '0' {
+			return Addr{}, false
+		}
+		number, err := strconv.Atoi(part)
+		if err != nil || number < 0 || number > 255 {
+			return Addr{}, false
+		}
+		bytes[index] = byte(number)
+	}
+	return AddrFrom4(bytes), true
+}
+
+func parseHexGroup(value string) (uint16, bool) {
+	if value == "" || len(value) > 4 {
+		return 0, false
+	}
+	number, err := strconv.ParseUint(value, 16, 16)
+	return uint16(number), err == nil
+}
+
+func appendIPv6Part(groups []uint16, part string) ([]uint16, bool) {
+	if strings.Contains(part, ".") {
+		address, ok := parseIPv4(part)
+		if !ok {
+			return nil, false
+		}
+		groups = append(groups, uint16(address.bytes[12]) << 8 | uint16(address.bytes[13]))
+		groups = append(groups, uint16(address.bytes[14]) << 8 | uint16(address.bytes[15]))
+		return groups, true
+	}
+	group, ok := parseHexGroup(part)
+	if !ok {
+		return nil, false
+	}
+	return append(groups, group), true
+}
+
+func parseIPv6(value string) (Addr, bool) {
+	zone := ""
+	if percent := strings.LastIndex(value, "%"); percent >= 0 {
+		zone, value = value[percent + 1:], value[:percent]
+		if zone == "" {
+			return Addr{}, false
+		}
+	}
+	double := strings.Index(value, "::")
+	if double >= 0 && strings.Index(value[double + 2:], "::") >= 0 {
+		return Addr{}, false
+	}
+	leftText, rightText := value, ""
+	if double >= 0 {
+		leftText, rightText = value[:double], value[double + 2:]
+	}
+	left := []uint16{}
+	if leftText != "" {
+		for _, part := range strings.Split(leftText, ":") {
+			var ok bool
+			left, ok = appendIPv6Part(left, part)
+			if !ok {
+				return Addr{}, false
+			}
+		}
+	}
+	right := []uint16{}
+	if rightText != "" {
+		for _, part := range strings.Split(rightText, ":") {
+			var ok bool
+			right, ok = appendIPv6Part(right, part)
+			if !ok {
+				return Addr{}, false
+			}
+		}
+	}
+	if double < 0 && len(left) != 8 || double >= 0 && len(left) + len(right) >= 8 {
+		return Addr{}, false
+	}
+	groups := append([]uint16{}, left...)
+	for len(groups) + len(right) < 8 {
+		groups = append(groups, 0)
+	}
+	groups = append(groups, right...)
+	if len(groups) != 8 {
+		return Addr{}, false
+	}
+	var bytes [16]byte
+	for index, group := range groups {
+		bytes[index * 2], bytes[index * 2 + 1] = byte(group >> 8), byte(group)
+	}
+	return Addr{bytes: bytes, family: 6, zone: zone, v4in6: isMapped(bytes)}, true
+}
+
+// ParseAddr parses s as an IP address, returning the result. The string
+// s can be in dotted decimal ("192.0.2.1"), IPv6 ("2001:db8::68"),
+// or IPv6 with a scoped addressing zone ("fe80::1cc0:3e8c:119f:c2e1%ens18").
+func ParseAddr(value string) (Addr, error) {
+	if strings.Contains(value, ":") {
+		if address, ok := parseIPv6(value); ok {
+			return address, nil
+		}
+	} else if address, ok := parseIPv4(value); ok {
+		return address, nil
+	}
+	return Addr{}, errInvalidAddr
+}
+
+// MustParseAddr calls [ParseAddr](s) and panics on error.
+// It is intended for use in tests with hard-coded strings.
+func MustParseAddr(value string) Addr {
+	address, err := ParseAddr(value)
+	if err != nil {
+		panic("ParseAddr(" + value + "): " + err.Error())
+	}
+	return address
+}
+
+// IsValid reports whether the [Addr] is an initialized address (not the zero Addr).
+//
+// Note that "0.0.0.0" and "::" are both valid values.
+func (address Addr) IsValid() bool {
+	return address.family == 4 || address.family == 6
+}
+
+// Is4 reports whether ip is an IPv4 address.
+//
+// It returns false for IPv4-mapped IPv6 addresses. See [Addr.Unmap].
+func (address Addr) Is4() bool {
+	return address.family == 4
+}
+
+// Is4In6 reports whether ip is an "IPv4-mapped IPv6 address"
+// as defined by RFC 4291.
+// That is, it reports whether ip is in ::ffff:0:0/96.
+func (address Addr) Is4In6() bool {
+	return address.family == 6 && address.v4in6
+}
+
+// Is6 reports whether ip is an IPv6 address, including IPv4-mapped
+// IPv6 addresses.
+func (address Addr) Is6() bool {
+	return address.family == 6
+}
+
+// Zone returns ip's IPv6 scoped addressing zone, if any.
+func (address Addr) Zone() string {
+	return address.zone
+}
+
+// WithZone returns an IP that's the same as ip but with the provided
+// zone. If zone is empty, the zone is removed. If ip is an IPv4
+// address, WithZone is a no-op and returns ip unchanged.
+func (address Addr) WithZone(zone string) Addr {
+	if address.family != 6 {
+		return address
+	}
+	address.zone = zone
+	return address
+}
+
+// Unmap returns ip with any IPv4-mapped IPv6 address prefix removed.
+//
+// That is, if ip is an IPv6 address wrapping an IPv4 address, it
+// returns the wrapped IPv4 address. Otherwise it returns ip unmodified.
+func (address Addr) Unmap() Addr {
+	if !address.Is4In6() {
+		return address
+	}
+	var bytes [4]byte
+	copy(bytes[:], address.bytes[12:])
+	return AddrFrom4(bytes)
+}
+
+// As4 returns an IPv4 or IPv4-in-IPv6 address in its 4-byte representation.
+// If ip is the zero [Addr] or an IPv6 address, As4 panics.
+// Note that 0.0.0.0 is not the zero Addr.
+func (address Addr) As4() [4]byte {
+	if !address.Is4() && !address.Is4In6() {
+		panic("As4 called on IPv6 address")
+	}
+	var out [4]byte
+	copy(out[:], address.bytes[12:])
+	return out
+}
+
+// As16 returns the IP address in its 16-byte representation.
+// IPv4 addresses are returned as IPv4-mapped IPv6 addresses.
+// IPv6 addresses with zones are returned without their zone (use the
+// [Addr.Zone] method to get it).
+// The ip zero value returns all zeroes.
+func (address Addr) As16() [16]byte {
+	if !address.IsValid() {
+		panic("As16 called on invalid address")
+	}
+	if address.Is4() {
+		out := address.bytes
+		out[10], out[11] = 255, 255
+		return out
+	}
+	return address.bytes
+}
+
+// AsSlice returns an IPv4 or IPv6 address in its respective 4-byte or 16-byte representation.
+func (address Addr) AsSlice() []byte {
+	if address.Is4() {
+		value := address.As4()
+		return append([]byte{}, value[:]...)
+	}
+	if address.Is6() {
+		return append([]byte{}, address.bytes[:]...)
+	}
+	return nil
+}
+
+// BitLen returns the number of bits in the IP address:
+// 128 for IPv6, 32 for IPv4, and 0 for the zero [Addr].
+//
+// Note that IPv4-mapped IPv6 addresses are considered IPv6 addresses
+// and therefore have bit length 128.
+func (address Addr) BitLen() int {
+	if address.Is4() {
+		return 32
+	}
+	if address.Is6() {
+		return 128
+	}
+	return 0
+}
+
+func ipv4String(value [4]byte) string {
+	return strconv.Itoa(int(value[0])) + "." + strconv.Itoa(int(value[1])) + "." + strconv.Itoa(int(value[2])) + "." + strconv.Itoa(int(value[3]))
+}
+
+func ipv6Groups(address Addr) [8]uint16 {
+	var groups [8]uint16
+	for index := range groups {
+		groups[index] = uint16(address.bytes[index * 2]) << 8 | uint16(address.bytes[index * 2 + 1])
+	}
+	return groups
+}
+
+// StringExpanded is like [Addr.String] but IPv6 addresses are expanded with leading
+// zeroes and no "::" compression. For example, "2001:db8::1" becomes
+// "2001:0db8:0000:0000:0000:0000:0000:0001".
+func (address Addr) StringExpanded() string {
+	if address.Is4() {
+		return ipv4String(address.As4())
+	}
+	if !address.Is6() {
+		return "invalid IP"
+	}
+	groups := ipv6Groups(address)
+	out := ""
+	for index, group := range groups {
+		if index != 0 {
+			out += ":"
+		}
+		text := strconv.FormatUint(uint64(group), 16)
+		for len(text) < 4 {
+			text = "0" + text
+		}
+		out += text
+	}
+	if address.zone != "" {
+		out += "%" + address.zone
+	}
+	return out
+}
+
+// String returns the string form of the IP address ip.
+// It returns one of 5 forms:
+//
+//   - "invalid IP", if ip is the zero [Addr]
+//   - IPv4 dotted decimal ("192.0.2.1")
+//   - IPv6 ("2001:db8::1")
+//   - "::ffff:1.2.3.4" (if [Addr.Is4In6])
+//   - IPv6 with zone ("fe80:db8::1%eth0")
+//
+// Note that unlike package net's IP.String method,
+// IPv4-mapped IPv6 addresses format with a "::ffff:"
+// prefix before the dotted quad.
+func (address Addr) String() string {
+	if address.Is4() {
+		return ipv4String(address.As4())
+	}
+	if !address.Is6() {
+		return "invalid IP"
+	}
+	if address.Is4In6() {
+		return "::ffff:" + ipv4String(address.As4())
+	}
+	groups := ipv6Groups(address)
+	bestStart, bestLength := -1, 0
+	for start := 0; start < len(groups); {
+		if groups[start] != 0 {
+			start++
+			continue
+		}
+		end := start
+		for end < len(groups) && groups[end] == 0 {
+			end++
+		}
+		if end - start > bestLength && end - start >= 2 {
+			bestStart, bestLength = start, end - start
+		}
+		start = end
+	}
+	out := ""
+	for index := 0; index < len(groups); {
+		if index == bestStart {
+			if out == "" {
+				out = "::"
+			} else {
+				out += "::"
+			}
+			index += bestLength
+			continue
+		}
+		if out != "" && out[len(out) - 1] != ':' {
+			out += ":"
+		}
+		out += strconv.FormatUint(uint64(groups[index]), 16)
+		index++
+	}
+	if address.zone != "" {
+		out += "%" + address.zone
+	}
+	return out
+}
+
+// Compare returns an integer comparing two IPs.
+// The result will be 0 if ip == ip2, -1 if ip < ip2, and +1 if ip > ip2.
+// The definition of "less than" is the same as the [Addr.Less] method.
+func (address Addr) Compare(other Addr) int {
+	if address.family != other.family {
+		if address.family < other.family {
+			return -1
+		}
+		return 1
+	}
+	for index := 0; index < 16; index++ {
+		if address.bytes[index] < other.bytes[index] {
+			return -1
+		}
+		if address.bytes[index] > other.bytes[index] {
+			return 1
+		}
+	}
+	if address.zone < other.zone {
+		return -1
+	}
+	if address.zone > other.zone {
+		return 1
+	}
+	return 0
+}
+
+// Less reports whether ip sorts before ip2.
+// IP addresses sort first by length, then their address.
+// IPv6 addresses with zones sort just after the same address without a zone.
+func (address Addr) Less(other Addr) bool {
+	return address.Compare(other) < 0
+}
+
+// Next returns the address following ip.
+// If there is none, it returns the zero [Addr].
+func (address Addr) Next() Addr {
+	if !address.IsValid() {
+		return Addr{}
+	}
+	start := 0
+	if address.Is4() {
+		start = 12
+	}
+	out := address
+	for index := 15; index >= start; index-- {
+		out.bytes[index]++
+		if out.bytes[index] != 0 {
+			return out
+		}
+	}
+	return Addr{}
+}
+
+// Prev returns the IP before ip.
+// If there is none, it returns the IP zero value.
+func (address Addr) Prev() Addr {
+	if !address.IsValid() {
+		return Addr{}
+	}
+	start := 0
+	if address.Is4() {
+		start = 12
+	}
+	out := address
+	for index := 15; index >= start; index-- {
+		before := out.bytes[index]
+		out.bytes[index]--
+		if before != 0 {
+			return out
+		}
+	}
+	return Addr{}
+}
+
+// IsUnspecified reports whether ip is an unspecified address, either the IPv4
+// address "0.0.0.0" or the IPv6 address "::".
+//
+// Note that the zero [Addr] is not an unspecified address.
+func (address Addr) IsUnspecified() bool {
+	if !address.IsValid() {
+		return false
+	}
+	for _, value := range address.AsSlice() {
+		if value != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// IsLoopback reports whether ip is a loopback address.
+func (address Addr) IsLoopback() bool {
+	if address.Is4() {
+		return address.bytes[12] == 127
+	}
+	return address.Is6() && address.bytes[15] == 1 && address.Prev().IsUnspecified()
+}
+
+// IsMulticast reports whether ip is a multicast address.
+func (address Addr) IsMulticast() bool {
+	return address.Is4() && address.bytes[12] & 240 == 224 || address.Is6() && address.bytes[0] == 255
+}
+
+// IsInterfaceLocalMulticast reports whether ip is an IPv6 interface-local
+// multicast address.
+func (address Addr) IsInterfaceLocalMulticast() bool {
+	return address.Is6() && address.bytes[0] == 255 && address.bytes[1] & 15 == 1
+}
+
+// IsLinkLocalMulticast reports whether ip is a link-local multicast address.
+func (address Addr) IsLinkLocalMulticast() bool {
+	return address.Is4() && address.bytes[12] == 224 && address.bytes[13] == 0 && address.bytes[14] == 0 || address.Is6() && address.bytes[0] == 255 && address.bytes[1] & 15 == 2
+}
+
+// IsLinkLocalUnicast reports whether ip is a link-local unicast address.
+func (address Addr) IsLinkLocalUnicast() bool {
+	return address.Is4() && address.bytes[12] == 169 && address.bytes[13] == 254 || address.Is6() && address.bytes[0] == 254 && address.bytes[1] & 192 == 128
+}
+
+// IsPrivate reports whether ip is a private address, according to RFC 1918
+// (IPv4 addresses) and RFC 4193 (IPv6 addresses). That is, it reports whether
+// ip is in 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, or fc00::/7. This is the
+// same as [net.IP.IsPrivate].
+func (address Addr) IsPrivate() bool {
+	if address.Is4() {
+		return address.bytes[12] == 10 || address.bytes[12] == 172 && address.bytes[13] & 240 == 16 || address.bytes[12] == 192 && address.bytes[13] == 168
+	}
+	return address.Is6() && address.bytes[0] & 254 == 252
+}
+
+// IsGlobalUnicast reports whether ip is a global unicast address.
+//
+// It returns true for IPv6 addresses which fall outside of the current
+// IANA-allocated 2000::/3 global unicast space, with the exception of the
+// link-local address space. It also returns true even if ip is in the IPv4
+// private address space or IPv6 unique local address space.
+// It returns false for the zero [Addr].
+//
+// For reference, see RFC 1122, RFC 4291, and RFC 4632.
+func (address Addr) IsGlobalUnicast() bool {
+	return address.IsValid() && !address.IsUnspecified() && !address.IsLoopback() && !address.IsMulticast() && !address.IsLinkLocalUnicast()
+}
+
+// MarshalText implements the [encoding.TextMarshaler] interface,
+// The encoding is the same as returned by [Addr.String], with one exception:
+// If ip is the zero [Addr], the encoding is the empty string.
+func (address Addr) MarshalText() ([]byte, error) {
+	if !address.IsValid() {
+		return nil, errInvalidAddr
+	}
+	return []byte(address.String()), nil
+}
+
+// AppendText implements the [encoding.TextAppender] interface,
+// It is the same as [Addr.AppendTo].
+func (address Addr) AppendText(dst []byte) ([]byte, error) {
+	text, err := address.MarshalText()
+	return append(dst, text...), err
+}
+
+// AppendTo appends a text encoding of ip,
+// as generated by [Addr.MarshalText],
+// to b and returns the extended buffer.
+func (address Addr) AppendTo(dst []byte) []byte {
+	if !address.IsValid() {
+		return append(dst, []byte("invalid IP")...)
+	}
+	return append(dst, []byte(address.String())...)
+}
+
+// MarshalBinary implements the [encoding.BinaryMarshaler] interface.
+// It returns a zero-length slice for the zero [Addr],
+// the 4-byte form for an IPv4 address,
+// and the 16-byte form with zone appended for an IPv6 address.
+func (address Addr) MarshalBinary() ([]byte, error) {
+	if !address.IsValid() {
+		return []byte{}, nil
+	}
+	data := address.AsSlice()
+	if address.zone != "" {
+		data = append(data, []byte(address.zone)...)
+	}
+	return data, nil
+}
+
+// AppendBinary implements the [encoding.BinaryAppender] interface.
+func (address Addr) AppendBinary(dst []byte) ([]byte, error) {
+	data, err := address.MarshalBinary()
+	return append(dst, data...), err
+}
+
+// UnmarshalText implements the encoding.TextUnmarshaler interface.
+// The IP address is expected in a form accepted by [ParseAddr].
+//
+// If text is empty, UnmarshalText sets *ip to the zero [Addr] and
+// returns no error.
+func (address *Addr) UnmarshalText(data []byte) error {
+	parsed, err := ParseAddr(string(data))
+	if err == nil {
+		*address = parsed
+	}
+	return err
+}
+
+// UnmarshalBinary implements the [encoding.BinaryUnmarshaler] interface.
+// It expects data in the form generated by MarshalBinary.
+func (address *Addr) UnmarshalBinary(data []byte) error {
+	if len(data) == 0 {
+		*address = Addr{}
+		return nil
+	}
+	if len(data) == 4 {
+		parsed, _ := AddrFromSlice(data)
+		*address = parsed
+		return nil
+	}
+	if len(data) >= 16 {
+		parsed, _ := AddrFromSlice(data[:16])
+		parsed.zone = string(data[16:])
+		*address = parsed
+		return nil
+	}
+	return errInvalidAddr
+}
+
+// IPv4Unspecified returns the IPv4 unspecified address "0.0.0.0".
+func IPv4Unspecified() Addr {
+	return AddrFrom4([4]byte{})
+}
+
+// IPv6Unspecified returns the IPv6 unspecified address "::".
+func IPv6Unspecified() Addr {
+	return AddrFrom16([16]byte{})
+}
+
+// IPv6Loopback returns the IPv6 loopback address ::1.
+func IPv6Loopback() Addr {
+	var bytes [16]byte
+	bytes[15] = 1
+	return AddrFrom16(bytes)
+}
+
+// IPv6LinkLocalAllNodes returns the IPv6 link-local all nodes multicast
+// address ff02::1.
+func IPv6LinkLocalAllNodes() Addr {
+	return MustParseAddr("ff02::1")
+}
+
+// IPv6LinkLocalAllRouters returns the IPv6 link-local all routers multicast
+// address ff02::2.
+func IPv6LinkLocalAllRouters() Addr {
+	return MustParseAddr("ff02::2")
+}

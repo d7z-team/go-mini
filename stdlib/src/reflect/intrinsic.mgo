@@ -1,0 +1,200 @@
+// Package reflect provides runtime type inspection and writable value access for Mini-Go values.
+package reflect
+
+// These private declarations use ordinary Go syntax. The compiler recognizes
+// their exact package identities and lowers direct calls to VM intrinsics.
+func runtimeTypeOf(value any) Type {
+	panic("reflect intrinsic")
+}
+
+func runtimeTypeDescriptor(typ Type) (runtimeTypeData, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeDeepEqual(left any, right any) bool {
+	panic("reflect intrinsic")
+}
+
+func runtimeSameReference(left Value, right Value) bool {
+	panic("reflect intrinsic")
+}
+
+func runtimeTypeField(typ Type, index int) (StructField, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeTypeMethod(typ Type, index int) (Method, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeArrayOf(length int, elem Type) (Type, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeChanOf(dir ChanDir, elem Type) (Type, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeFuncOf(inputs []Type, outputs []Type, variadic bool) (Type, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeStructOf(fields []StructField) (Type, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeAssignableTo(source Type, target Type) bool {
+	panic("reflect intrinsic")
+}
+
+func runtimeConvertibleTo(source Type, target Type) bool {
+	panic("reflect intrinsic")
+}
+
+func runtimeImplements(source Type, target Type) bool {
+	panic("reflect intrinsic")
+}
+
+func runtimePointerTo(typ Type) (Type, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeSliceOf(typ Type) (Type, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeMapOf(key Type, elem Type) (Type, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueOf(value any) Value {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueElem(value Value) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueAddr(value Value) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueSlice(value Value, start int, end int) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueSlice3(value Value, start int, end int, max int) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueCurrent(value Value) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueEqual(left Value, right Value) (bool, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueConvert(value Value, target Type) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueAppend(value Value, values []Value) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueAppendSlice(value Value, other Value) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueCopy(dst Value, src Value) (int, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueSetLen(value Value, length int) (string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueSetCap(value Value, capacity int) (string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueGrow(value Value, count int) (string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueFieldByIndex(value Value, index []int) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueIndex(value Value, index int) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueSet(value Value, other Value) (string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueSwap(value Value, i int, j int) (string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueSetMapIndex(value Value, key Value, elem Value) (string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueMethod(value Value, method Method) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueCall(value Value, args []Value, slice bool) ([]Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeMakeFunc(typ Type, function func([]Value) []Value) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueRecv(value Value) (Value, bool, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeMakeChan(typ Type, buffer int) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueSend(channel Value, value Value) (string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueTryRecv(channel Value) (Value, bool, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueTrySend(channel Value, value Value) (bool, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeValueClose(channel Value) (string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeSelect(cases []SelectCase) (int, Value, bool, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeZero(typ Type) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeNew(typ Type) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeMakeSlice(typ Type, length int, capacity int) (Value, string, bool) {
+	panic("reflect intrinsic")
+}
+
+func runtimeMakeMap(typ Type) (Value, string, bool) {
+	panic("reflect intrinsic")
+}

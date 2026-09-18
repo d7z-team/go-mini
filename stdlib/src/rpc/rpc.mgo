@@ -1,0 +1,671 @@
+// Package rpc provides the transport-neutral support used by generated MRPC
+// clients and services.
+package rpc
+
+import (
+	"errors"
+	"ffi"
+	"sync"
+)
+
+const ffiRoute = "minigo.mrpc/v2"
+
+const ffiVersion = "minigo.mrpc.ffi/v3"
+
+// ContractProtocol identifies generated MRPC method contracts.
+const ContractProtocol = "minigo.rpc.contract.v2"
+
+// Method is the stable identity of one generated MRPC method.
+type Method struct {
+	// ID is the complete method identity.
+	ID string
+	// Service is the declaring service or resource identity.
+	Service string
+	// Name is the source method name.
+	Name string
+	// ContractHash fixes the declaring schema.
+	ContractHash string
+	// ResourceTypeHash is non-empty for resource methods.
+	ResourceTypeHash string
+}
+
+// Contract is the complete immutable method set bound by a Client.
+type Contract struct {
+	// Protocol identifies the method contract format.
+	Protocol string
+	// Methods is the exact immutable method closure.
+	Methods []Method
+}
+
+// BindOptions contains runtime route-selection input and is not part of the
+// schema identity.
+type BindOptions struct {
+	// AffinityKey requests stable provider selection when supported.
+	AffinityKey string
+	// Labels constrain provider selection when supported.
+	Labels map[string]string
+}
+
+// ClientOptions configures route selection and the timeout applied to each
+// host operation. A zero timeout leaves the operation unbounded.
+type ClientOptions struct {
+	// Bind contains route-selection input.
+	Bind BindOptions
+	// TimeoutNanoseconds bounds route opening, calls, release, and close operations.
+	TimeoutNanoseconds int64
+}
+
+// ServerOptions configures one generated provider publication.
+type ServerOptions struct {
+	// Name is the provider identity reported to an application-owned registry.
+	Name string
+}
+
+// Value is the language-independent MRPC value shape emitted by generated
+// codecs. Kind determines which data field is populated.
+type Value struct {
+	// Type is the canonical wire type or resource type hash.
+	Type string `json:"type"`
+	// Kind identifies the populated value representation.
+	Kind string `json:"kind"`
+	// Bool stores a boolean value.
+	Bool bool `json:"bool,omitempty"`
+	// Signed stores a signed integer value.
+	Signed int64 `json:"signed,omitempty"`
+	// Unsigned stores an unsigned integer value.
+	Unsigned uint64 `json:"unsigned,omitempty"`
+	// RealBits stores float or complex real IEEE bits.
+	RealBits uint64 `json:"real_bits,omitempty"`
+	// ImagBits stores complex imaginary IEEE bits.
+	ImagBits uint64 `json:"imag_bits,omitempty"`
+	// Text stores a UTF-8 string.
+	Text string `json:"text,omitempty"`
+	// Bytes stores an opaque byte sequence.
+	Bytes []byte `json:"bytes,omitempty"`
+	// Values stores slice elements.
+	Values []Value `json:"values,omitempty"`
+	// Entries stores map entries.
+	Entries []MapEntry `json:"entries,omitempty"`
+	// Fields stores message fields.
+	Fields []Field `json:"fields,omitempty"`
+	// Optional stores a present optional element.
+	Optional *Value `json:"optional,omitempty"`
+	// Resource stores an opaque resource identity.
+	Resource *Resource `json:"resource,omitempty"`
+}
+
+// MapEntry stores one canonical map key and value.
+type MapEntry struct {
+	// Key is the canonical map key.
+	Key Value `json:"key"`
+	// Value is the associated map value.
+	Value Value `json:"value"`
+}
+
+// Field stores one schema message field.
+type Field struct {
+	// ID is the positive schema field identity.
+	ID uint32 `json:"id"`
+	// Value is the encoded field value.
+	Value Value `json:"value"`
+}
+
+// Resource is the opaque, route-owned identity of an MRPC resource.
+// Concrete resource wrappers are generated from `.mrpc` contracts.
+type Resource struct {
+	// Epoch identifies the owning route transaction.
+	Epoch uint64 `json:"epoch"`
+	// ObjectID identifies the provider-local object.
+	ObjectID uint64 `json:"object_id"`
+	// TypeHash fixes the resource method contract.
+	TypeHash string `json:"type_hash"`
+	client *Client `json:"-"`
+}
+
+// Error reports a remote application, transport, cancellation, or protocol status.
+type Error struct {
+	// Code identifies the status category.
+	Code string
+	// Message describes the status.
+	Message string
+}
+
+// Is reports whether this status represents an unsupported operation.
+func (e *Error) Is(target error) bool {
+	return e != nil && e.Code == "unimplemented" && target == errors.ErrUnsupported
+}
+
+// Error returns the status code and message.
+func (e *Error) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.Code == "" {
+		return e.Message
+	}
+	if e.Message == "" {
+		return e.Code
+	}
+	return e.Code + ": " + e.Message
+}
+
+// NewError constructs a status error. An empty code represents success.
+func NewError(code string, message string) error {
+	if code == "" {
+		return nil
+	}
+	return &Error{Code: code, Message: message}
+}
+
+// CodeOf returns the status code and message carried by err. Unknown errors
+// are reported as internal so callers never need to inspect error strings.
+func CodeOf(err error) (string, string) {
+	if err == nil {
+		return "", ""
+	}
+	var status *Error
+	if errors.As(err, &status) && status != nil {
+		return status.Code, status.Message
+	}
+	return "internal", err.Error()
+}
+
+type ffiRequest struct {
+	Version string
+	Operation string
+	Target string
+	Lease uint64
+	Contract Contract
+	Options BindOptions
+	Method Method
+	Receiver *Resource
+	Payload []byte
+	Resource *Resource
+	RequestID uint64
+	Code string
+	Message string
+	TimeoutNanoseconds int64
+}
+
+type ffiResponse struct {
+	Version string
+	Operation string
+	Lease uint64
+	RequestID uint64
+	Method Method
+	Receiver *Resource
+	Payload []byte
+	Code string
+	Message string
+}
+
+// Client owns one lazily established exact route binding.
+type Client struct {
+	contract Contract
+	options BindOptions
+	timeoutNanoseconds int64
+	mu sync.Mutex
+	lease uint64
+	closed bool
+	resources map[resourceKey]*Resource
+}
+
+// NewClient creates a lazy MRPC client. It performs no host call until the
+// first method invocation.
+func NewClient(contract Contract, options ClientOptions) *Client {
+	return &Client{contract: contract, options: options.Bind, timeoutNanoseconds: options.TimeoutNanoseconds}
+}
+
+// Bind establishes the exact route without invoking a business method.
+// Repeated calls reuse the binding. A failed binding may be retried until Close.
+func (c *Client) Bind() error {
+	_, err := c.ensureLease()
+	return err
+}
+
+func callFFI(request ffiRequest, timeoutNanoseconds int64) (ffiResponse, error) {
+	if timeoutNanoseconds < 0 {
+		return ffiResponse{}, errors.New("negative MRPC timeout")
+	}
+	request.Version = ffiVersion
+	request.TimeoutNanoseconds = timeoutNanoseconds
+	payload, err := encodeFFIRequest(request)
+	if err != nil {
+		return ffiResponse{}, err
+	}
+	result, err := ffi.Call(ffiRoute, payload)
+	if err != nil {
+		return ffiResponse{}, err
+	}
+	response, err := decodeFFIResponse(result)
+	if err != nil {
+		return ffiResponse{}, err
+	}
+	if response.Version != ffiVersion {
+		return ffiResponse{}, errors.New("unsupported MRPC FFI response")
+	}
+	if response.Code != "" {
+		return ffiResponse{}, NewError(response.Code, response.Message)
+	}
+	return response, nil
+}
+
+func (c *Client) ensureLease() (uint64, error) {
+	if c == nil {
+		return 0, errors.New("nil MRPC client")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return 0, errors.New("MRPC client is closed")
+	}
+	if c.lease != 0 {
+		return c.lease, nil
+	}
+	response, err := callFFI(ffiRequest{Operation: "open", Contract: c.contract, Options: c.options}, c.timeoutNanoseconds)
+	if err != nil {
+		if errors.Is(err, ffi.ErrRouteUnavailable) {
+			return 0, NewError("unimplemented", err.Error())
+		}
+		return 0, err
+	}
+	c.lease = response.Lease
+	return c.lease, nil
+}
+
+// Call invokes one method using canonical values generated from typed source.
+func (c *Client) Call(method Method, receiver *Resource, arguments []Value) ([]Value, error) {
+	result, err := c.CallOwned(method, receiver, arguments)
+	if err != nil {
+		return nil, err
+	}
+	defer result.Discard()
+	if err := result.Accept(); err != nil {
+		return nil, err
+	}
+	return result.Values, nil
+}
+
+// Release releases one remote resource. Repeated release is harmless.
+func (c *Client) Release(resource *Resource) error {
+	if resource == nil {
+		return nil
+	}
+	lease, err := c.ensureLease()
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	if resource.ObjectID == 0 {
+		c.mu.Unlock()
+		return nil
+	}
+	if resource.client != nil && resource.client != c {
+		c.mu.Unlock()
+		return NewError("invalid_argument", "resource belongs to another binding")
+	}
+	ref := *resource
+	key := resourceKey{ref.Epoch, ref.ObjectID, ref.TypeHash}
+	resource.ObjectID = 0
+	delete(c.resources, key)
+	c.mu.Unlock()
+	_, err = callFFI(ffiRequest{Operation: "release", Lease: lease, Resource: &ref}, c.timeoutNanoseconds)
+	if err != nil {
+		c.mu.Lock()
+		if !c.closed && c.resources[key] == nil {
+			*resource = ref
+			if c.resources == nil {
+				c.resources = make(map[resourceKey]*Resource)
+			}
+			c.resources[key] = resource
+		}
+		c.mu.Unlock()
+	}
+	return err
+}
+
+// Close closes the exact route binding and all resources owned by it.
+func (c *Client) Close() error {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	c.closed = true
+	for _, resource := range c.resources {
+		resource.ObjectID = 0
+	}
+	c.resources = nil
+	lease := c.lease
+	c.lease = 0
+	c.mu.Unlock()
+	if lease == 0 {
+		return nil
+	}
+	_, err := callFFI(ffiRequest{Operation: "close", Lease: lease}, c.timeoutNanoseconds)
+	return err
+}
+
+// Event is one call, cancellation, or resource release accepted by a Server.
+type Event struct {
+	// Kind is call, cancel, or release.
+	Kind string
+	// RequestID identifies one accepted call.
+	RequestID uint64
+	// Method is the exact requested method.
+	Method Method
+	// Receiver identifies a resource call or release.
+	Receiver *Resource
+	// Arguments contains canonical call arguments.
+	Arguments []Value
+}
+
+// Context reports cancellation of one accepted provider call.
+type Context struct {
+	mu sync.Mutex
+	requestID uint64
+	done chan struct{}
+	err error
+	closed bool
+	exports []uint64
+}
+
+// RequestID returns the provider-local call identity.
+func (c *Context) RequestID() uint64 {
+	if c == nil {
+		return 0
+	}
+	return c.requestID
+}
+
+// Done is closed when the remote caller cancels the call or the server closes.
+func (c *Context) Done() <-chan struct{} {
+	if c == nil {
+		return nil
+	}
+	return c.done
+}
+
+// Err reports why the call was canceled.
+func (c *Context) Err() error {
+	if c == nil {
+		return errors.New("nil MRPC context")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.err
+}
+
+func (c *Context) cancel(err error) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	if !c.closed {
+		c.closed = true
+		c.err = err
+		close(c.done)
+	}
+	c.mu.Unlock()
+}
+
+// ResourceHandler dispatches methods for one generated resource implementation.
+type ResourceHandler func(*Context, Method, []Value) ([]Value, error)
+
+type serverResource struct {
+	value any
+	typeHash string
+	handler ResourceHandler
+}
+
+// Server owns one pull-based guest provider lease.
+type Server struct {
+	mu sync.Mutex
+	lease uint64
+	closed bool
+	nextResource uint64
+	resources map[uint64]serverResource
+	requests map[uint64]*Context
+}
+
+// NewServer publishes one exact generated service contract.
+func NewServer(options ServerOptions, contract Contract) (*Server, error) {
+	response, err := callFFI(ffiRequest{Operation: "open_provider", Target: options.Name, Contract: contract}, 0)
+	if err != nil {
+		return nil, err
+	}
+	return &Server{lease: response.Lease, resources: make(map[uint64]serverResource), requests: make(map[uint64]*Context)}, nil
+}
+
+// Accept waits for the next provider event.
+func (s *Server) Accept() (Event, error) {
+	if s == nil {
+		return Event{}, errors.New("nil MRPC server")
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return Event{}, errors.New("MRPC server is closed")
+	}
+	lease := s.lease
+	s.mu.Unlock()
+	response, err := callFFI(ffiRequest{Operation: "accept", Lease: lease}, 0)
+	if err != nil {
+		return Event{}, err
+	}
+	arguments := []Value(nil)
+	if response.Operation == "call" {
+		arguments, err = decodeValues(response.Payload)
+		if err != nil {
+			return Event{}, err
+		}
+	}
+	return Event{Kind: response.Operation, RequestID: response.RequestID, Method: response.Method, Receiver: response.Receiver, Arguments: arguments}, nil
+}
+
+// Begin creates the cancellation context for one accepted call.
+func (s *Server) Begin(event Event) (*Context, error) {
+	if s == nil || event.Kind != "call" || event.RequestID == 0 {
+		return nil, errors.New("invalid MRPC call event")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, errors.New("MRPC server is closed")
+	}
+	if _, exists := s.requests[event.RequestID]; exists {
+		return nil, errors.New("duplicate MRPC request")
+	}
+	context := &Context{requestID: event.RequestID, done: make(chan struct{})}
+	s.requests[event.RequestID] = context
+	return context, nil
+}
+
+// Cancel applies one accepted cancellation event to its active handler.
+func (s *Server) Cancel(requestID uint64) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	context := s.requests[requestID]
+	s.mu.Unlock()
+	if context != nil {
+		context.cancel(NewError("canceled", "MRPC call canceled"))
+	}
+}
+
+// Respond completes one accepted call.
+func (s *Server) Respond(requestID uint64, values []Value, callErr error) (resultErr error) {
+	if s == nil {
+		return errors.New("nil MRPC server")
+	}
+	s.mu.Lock()
+	context := s.requests[requestID]
+	delete(s.requests, requestID)
+	lease, closed := s.lease, s.closed
+	s.mu.Unlock()
+	if context == nil {
+		return NewError("not_found", "MRPC request is not active")
+	}
+	defer func() {
+		context.cancel(NewError("canceled", "MRPC request completed"))
+		keep := map[uint64]bool{}
+		if resultErr == nil && callErr == nil {
+			for _, value := range values {
+				if value.Resource != nil {
+					keep[value.Resource.ObjectID] = true
+				}
+			}
+		}
+		context.mu.Lock()
+		exports := context.exports
+		context.exports = nil
+		context.mu.Unlock()
+		for _, id := range exports {
+			if keep[id] {
+				continue
+			}
+			s.mu.Lock()
+			resource, exists := s.resources[id]
+			delete(s.resources, id)
+			s.mu.Unlock()
+			if exists {
+				if closer, ok := resource.value.(interface {
+					Close() error
+				}); ok {
+					_ = closer.Close()
+				}
+			}
+		}
+	}()
+	if err := context.Err(); err != nil {
+		return err
+	}
+	if closed {
+		return errors.New("MRPC server is closed")
+	}
+	payload := []byte(nil)
+	code, message := "", ""
+	if callErr != nil {
+		if status, ok := callErr.(*Error); ok {
+			code, message = status.Code, status.Message
+		} else {
+			code, message = "internal", callErr.Error()
+		}
+	} else {
+		var err error
+		payload, err = encodeValues(values)
+		if err != nil {
+			return err
+		}
+	}
+	_, err := callFFI(ffiRequest{Operation: "respond", Lease: lease, RequestID: requestID, Payload: payload, Code: code, Message: message}, 0)
+	return err
+}
+
+// Export retains a generated resource implementation until its remote handle
+// is released or the Server closes.
+func (s *Server) Export(context *Context, value any, typeHash string, handler ResourceHandler) (*Resource, error) {
+	if s == nil || handler == nil || typeHash == "" {
+		return nil, errors.New("invalid MRPC resource export")
+	}
+	if context == nil {
+		return nil, errors.New("resource export requires a call context")
+	}
+	context.mu.Lock()
+	defer context.mu.Unlock()
+	if context.closed {
+		return nil, context.err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.nextResource == ^uint64(0) {
+		return nil, errors.New("MRPC server cannot export a resource")
+	}
+	s.nextResource++
+	objectID := s.nextResource
+	s.resources[objectID] = serverResource{value: value, typeHash: typeHash, handler: handler}
+	context.exports = append(context.exports, objectID)
+	return &Resource{Epoch: 1, ObjectID: objectID, TypeHash: typeHash}, nil
+}
+
+// ResourceValue returns the typed implementation retained for a resource.
+func (s *Server) ResourceValue(resource *Resource) (any, bool) {
+	if s == nil || resource == nil || resource.Epoch != 1 || resource.ObjectID == 0 {
+		return nil, false
+	}
+	s.mu.Lock()
+	entry, ok := s.resources[resource.ObjectID]
+	s.mu.Unlock()
+	return entry.value, ok && resource.TypeHash == entry.typeHash
+}
+
+// DispatchResource handles a resource call or release event.
+func (s *Server) DispatchResource(context *Context, event Event) bool {
+	if s == nil || event.Receiver == nil {
+		return false
+	}
+	s.mu.Lock()
+	entry, ok := s.resources[event.Receiver.ObjectID]
+	if ok && entry.typeHash != event.Receiver.TypeHash {
+		ok = false
+	}
+	if event.Kind == "release" {
+		delete(s.resources, event.Receiver.ObjectID)
+	}
+	s.mu.Unlock()
+	if event.Kind == "release" {
+		if ok {
+			if closer, implements := entry.value.(interface {
+				Close() error
+			}); implements {
+				_ = closer.Close()
+			}
+		}
+		return true
+	}
+	if !ok || entry.handler == nil {
+		_ = s.Respond(event.RequestID, nil, NewError("not_found", "MRPC resource is closed"))
+		return true
+	}
+	go func() {
+		values, err := entry.handler(context, event.Method, event.Arguments)
+		_ = s.Respond(event.RequestID, values, err)
+	}()
+	return true
+}
+
+// Close withdraws the provider and releases all retained resources.
+func (s *Server) Close() error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return nil
+	}
+	s.closed = true
+	lease := s.lease
+	s.lease = 0
+	resources := s.resources
+	s.resources = nil
+	requests := s.requests
+	s.requests = nil
+	s.mu.Unlock()
+	for _, context := range requests {
+		context.cancel(NewError("canceled", "MRPC server closed"))
+	}
+	for _, resource := range resources {
+		if closer, ok := resource.value.(interface {
+			Close() error
+		}); ok {
+			_ = closer.Close()
+		}
+	}
+	_, err := callFFI(ffiRequest{Operation: "close_provider", Lease: lease}, 0)
+	return err
+}

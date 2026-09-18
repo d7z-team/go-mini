@@ -1,0 +1,330 @@
+package json_test
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
+	"math"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+type chunkReader struct {
+	text string
+	chunk int
+	reads int
+	final error
+}
+
+type RepeatedEmbedded struct {
+	Value int `json:"value,omitempty"`
+}
+
+type repeatedRecord struct {
+	*RepeatedEmbedded
+	Name string `json:"<name>"`
+	Number int `json:"number,string,omitempty"`
+}
+
+func TestRepeatedStructFieldsPreserveValueVisibilityAndEncodingOptions(t *testing.T) {
+	values := []repeatedRecord{
+		{Name: "first"},
+		{RepeatedEmbedded: &RepeatedEmbedded{Value: 20}, Name: "second", Number: 22},
+		{RepeatedEmbedded: &RepeatedEmbedded{}, Name: "third"},
+	}
+	data, err := json.Marshal(values)
+	want := `[{"\u003cname\u003e":"first"},{"value":20,"\u003cname\u003e":"second","number":"22"},{"\u003cname\u003e":"third"}]`
+	if err != nil || string(data) != want {
+		t.Fatalf("repeated fields: %s %v", data, err)
+	}
+	var output bytes.Buffer
+	encoder := json.NewEncoder(&output)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(values); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != strings.ReplaceAll(strings.ReplaceAll(want, `\u003c`, "<"), `\u003e`, ">") + "\n" {
+		t.Fatalf("encoder field names: %s", output.String())
+	}
+	var decoded []repeatedRecord
+	if err := json.Unmarshal(data, &decoded); err != nil || len(decoded) != 3 || decoded[0].RepeatedEmbedded != nil || decoded[1].Value != 20 || decoded[1].Number != 22 {
+		t.Fatalf("repeated fields round trip: %v", err)
+	}
+}
+
+func TestDecodeOverflowKeepsFollowingValuesAndStreamUsable(t *testing.T) {
+	decoder := json.NewDecoder(strings.NewReader(`{"Values":[1e9999,2],"Name":"later"} true`))
+	var value struct {
+		Values []any
+		Name string
+	}
+	err := decoder.Decode(&value)
+	if _, ok := err.(*json.UnmarshalTypeError); !ok {
+		t.Fatalf("overflow error: %v", err)
+	}
+	if len(value.Values) != 2 || value.Values[0] != nil || value.Values[1] != float64(2) || value.Name != "later" {
+		t.Fatalf("decoded partial value: %v", value)
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil || string(encoded) != `{"Values":[null,2],"Name":"later"}` {
+		t.Fatalf("encode partial value: %s %v", encoded, err)
+	}
+	var next bool
+	if err := decoder.Decode(&next); err != nil || !next {
+		t.Fatalf("following stream value: %v %v", next, err)
+	}
+}
+
+func TestDecodeTypeFailureContinuesAndMapMerges(t *testing.T) {
+	type small int8
+	value := struct {
+		A small
+		B int
+	}{A: 7}
+	d := json.NewDecoder(strings.NewReader(`{"A":128,"B":42} true`))
+	err := d.Decode(&value)
+	typed, ok := err.(*json.UnmarshalTypeError)
+	if !ok || typed.Offset != 8 || value.A != 7 || value.B != 42 {
+		t.Fatalf("type failure: %v", err)
+	}
+	var next bool
+	if d.Decode(&next) != nil || !next {
+		t.Fatal("type failure made decoder unusable")
+	}
+	values := map[string]int{"old": 1}
+	if json.Unmarshal([]byte(`{"new":2}`), &values) != nil || values["old"] != 1 || values["new"] != 2 {
+		t.Fatal("map merge")
+	}
+}
+
+func (r *chunkReader) Read(p []byte) (int, error) {
+	r.reads++
+	if len(r.text) == 0 {
+		if r.final != nil {
+			return 0, r.final
+		}
+		return 0, io.EOF
+	}
+	n := r.chunk
+	if n > len(p) {
+		n = len(p)
+	}
+	if n > len(r.text) {
+		n = len(r.text)
+	}
+	copy(p, r.text[:n])
+	r.text = r.text[n:]
+	if len(r.text) == 0 {
+		return n, r.final
+	}
+	return n, nil
+}
+
+func TestDecoderChunkBoundariesAndUseNumber(t *testing.T) {
+	text := `{"text":"世界\ud83d\ude00","n":[9007199254740993,1.25e-20]} true`
+	for chunk := 1; chunk <= len(text); chunk++ {
+		r := &chunkReader{text: text, chunk: chunk, final: io.EOF}
+		d := json.NewDecoder(r)
+		if r.reads != 0 {
+			t.Fatal("NewDecoder performed I/O")
+		}
+		d.UseNumber()
+		var value map[string]any
+		if err := d.Decode(&value); err != nil {
+			t.Fatal(err)
+		}
+		values := value["n"].([]any)
+		if values[0].(json.Number).String() != "9007199254740993" || value["text"].(string) != "世界😀" {
+			t.Fatal("decoded value mismatch")
+		}
+		var next bool
+		if err := d.Decode(&next); err != nil || !next {
+			t.Fatal("next value failed")
+		}
+		if err := d.Decode(&next); err != io.EOF {
+			t.Fatal("EOF not preserved")
+		}
+		if d.InputOffset() != int64(len(text)) {
+			t.Fatal("wrong absolute offset")
+		}
+	}
+}
+
+func TestDecoderTokenStateAndCompleteValueBeforeError(t *testing.T) {
+	d := json.NewDecoder(strings.NewReader(`[{"x":1},2]`))
+	token, err := d.Token()
+	if err != nil || token.(json.Delim) != json.Delim('[') || !d.More() {
+		t.Fatal("array start")
+	}
+	var first map[string]int
+	if err := d.Decode(&first); err != nil || first["x"] != 1 {
+		t.Fatal("mixed object decode")
+	}
+	var second int
+	if err := d.Decode(&second); err != nil || second != 2 || d.More() {
+		t.Fatal("mixed second decode")
+	}
+	token, err = d.Token()
+	if err != nil || token.(json.Delim) != json.Delim(']') {
+		t.Fatal("array end")
+	}
+	for _, text := range []string{`[}`, `{"x",1}`, `[1,]`, `{"x":}`} {
+		d = json.NewDecoder(strings.NewReader(text))
+		failed := false
+		for i := 0; i < 10; i++ {
+			_, err = d.Token()
+			if err != nil {
+				failed = err != io.EOF
+				break
+			}
+		}
+		if !failed {
+			t.Fatal("invalid token sequence accepted")
+		}
+	}
+	final := errors.New("read failed after value")
+	d = json.NewDecoder(&chunkReader{text: `{"x":1}`, chunk: 100, final: final})
+	if err := d.Decode(&first); err != nil {
+		t.Fatal("discarded bytes returned with error")
+	}
+	if err := d.Decode(&second); err != final {
+		t.Fatal("lost delayed read error")
+	}
+}
+
+type shortWriter struct {
+	calls int
+}
+
+func (w *shortWriter) Write(p []byte) (int, error) {
+	w.calls++
+	return len(p) - 1, nil
+}
+
+func TestEncoderEscapingCyclesAndFailures(t *testing.T) {
+	var out bytes.Buffer
+	e := json.NewEncoder(&out)
+	e.SetEscapeHTML(false)
+	if err := e.Encode(`\u003c<>&`); err != nil || out.String() != "\"\\\\u003c<>&\"\n" {
+		t.Fatal("literal escape changed")
+	}
+	for _, value := range []any{math.NaN(), math.Inf(1), json.Number("bad")} {
+		if _, err := json.Marshal(value); err == nil {
+			t.Fatal("invalid number accepted")
+		}
+	}
+	m := map[string]any{}
+	m["self"] = m
+	s := make([]any, 1)
+	s[0] = s
+	for _, value := range []any{m, s} {
+		if _, err := json.Marshal(value); err == nil {
+			t.Fatal("cycle accepted")
+		}
+	}
+	shared := map[string]int{"a": 1}
+	if _, err := json.Marshal([]any{shared, shared}); err != nil {
+		t.Fatal("shared acyclic value rejected")
+	}
+	writer := new(shortWriter)
+	e = json.NewEncoder(writer)
+	if err := e.Encode(1); err != io.ErrShortWrite {
+		t.Fatal("short write accepted")
+	}
+	if err := e.Encode(2); err != io.ErrShortWrite || writer.calls != 1 {
+		t.Fatal("write failure not terminal")
+	}
+	out.Reset()
+	out.WriteString("keep")
+	if err := json.Compact(&out, []byte(`{"a":1} trailing`)); err == nil || out.String() != "keep" {
+		t.Fatal("Compact mutated invalid input")
+	}
+	if !reflect.SameReference(reflect.ValueOf(shared), reflect.ValueOf(shared)) {
+		t.Fatal("map identity mismatch")
+	}
+}
+
+type embeddedFields struct {
+	X int
+	Deep int
+}
+
+type zeroInt int
+
+func (z zeroInt) IsZero() bool {
+	return z == 7
+}
+
+type fieldContract struct {
+	embeddedFields
+	X int `json:"X,string"`
+	Zero zeroInt `json:",omitzero"`
+	Empty []int `json:",omitempty"`
+	Dash int `json:"-,"`
+	Hidden int `json:"-"`
+}
+
+func TestStringEncodingAcrossPlainEscapedAndInvalidUTF8Segments(t *testing.T) {
+	prefix := strings.Repeat("plain", 32)
+	value := prefix + "\x00\t\n\"\\<&>汉😀" + string([]byte{255}) + "\u2028\u2029tail"
+	want := `"` + prefix + `\u0000\t\n\"\\\u003c\u0026\u003e汉😀\ufffd\u2028\u2029tail"`
+	data, err := json.Marshal(value)
+	if err != nil || string(data) != want {
+		t.Fatal("mixed string encoding", string(data), err)
+	}
+	var out strings.Builder
+	encoder := json.NewEncoder(&out)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(value); err != nil {
+		t.Fatal(err)
+	}
+	want = `"` + prefix + `\u0000\t\n\"\\<&>汉😀\ufffd\u2028\u2029tail"` + "\n"
+	if out.String() != want {
+		t.Fatal("mixed string encoder options", out.String())
+	}
+}
+
+func TestFieldSelectionAndOptions(t *testing.T) {
+	value := fieldContract{embeddedFields: embeddedFields{X: 1, Deep: 2}, X: 42, Zero: 7, Dash: 3, Hidden: 4}
+	data, err := json.Marshal(value)
+	if err != nil || string(data) != `{"Deep":2,"X":"42","-":3}` {
+		t.Fatal("field encoding contract failed")
+	}
+	var decoded fieldContract
+	if err := json.Unmarshal([]byte(`{"deep":5,"X":"21","-":6}`), &decoded); err != nil || decoded.Deep != 5 || decoded.X != 21 || decoded.Dash != 6 {
+		t.Fatal("field decoding contract failed")
+	}
+	previous := map[string]int{"keep": 1}
+	if err := json.Unmarshal([]byte(`null`), &previous); err != nil || previous != nil {
+		t.Fatal("null map was not cleared")
+	}
+}
+
+func TestNamedMapKeysByteArraysAndUnknownFieldRecovery(t *testing.T) {
+	type key uint8
+	values := map[key]int{}
+	err := json.Unmarshal([]byte(`{"256":1,"2":3}`), &values)
+	mismatch, ok := err.(*json.UnmarshalTypeError)
+	if !ok || mismatch.Value != "number 256" || values[2] != 3 {
+		t.Fatal("map key range or continuation")
+	}
+	var data []byte
+	if err := json.Unmarshal([]byte(`[0,255,1]`), &data); err != nil || len(data) != 3 || data[1] != 255 {
+		t.Fatal("byte array decoding")
+	}
+	value := struct {
+		A int
+	}{}
+	decoder := json.NewDecoder(strings.NewReader(`{"unknown":1,"A":2} true`))
+	decoder.DisallowUnknownFields()
+	err = decoder.Decode(&value)
+	if err == nil || err.Error() != `json: unknown field "unknown"` || value.A != 2 {
+		t.Fatal("unknown field contract")
+	}
+	var next bool
+	if decoder.Decode(&next) != nil || !next {
+		t.Fatal("unknown field poisoned stream")
+	}
+}

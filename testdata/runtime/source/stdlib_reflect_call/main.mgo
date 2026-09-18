@@ -1,0 +1,3 @@
+package main
+import "reflect"
+func Main() int { fn := reflect.ValueOf(func(base int, values ...int) (int, int) { for _, value := range values { base += value }; return base, 2 }); first := fn.Call([]reflect.Value{reflect.ValueOf(20), reflect.ValueOf(20)}); second := fn.CallSlice([]reflect.Value{reflect.ValueOf(20), reflect.ValueOf([]int{20})}); if first[0].Int() != second[0].Int() { return -1 }; return int(first[0].Int()+second[1].Int()) }

@@ -1,0 +1,48 @@
+package syntax_test
+
+import (
+	"regexp/syntax"
+	"testing"
+)
+
+func TestParseSimplifyAndCompile(t *testing.T) {
+	expr, err := syntax.Parse(`^(ab|a)+$`, syntax.Perl)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	program, err := syntax.Compile(expr.Simplify())
+	if err != nil || program.Start == 0 || len(program.Inst) == 0 {
+		t.Fatalf("Compile returned invalid program: %#v, %v", program, err)
+	}
+	if program.StartCond() & syntax.EmptyBeginText == 0 {
+		t.Fatal("StartCond omitted the begin-text assertion")
+	}
+	if _, err := syntax.Parse(`a{1001}`, syntax.Perl); err == nil {
+		t.Fatal("Parse accepted an invalid repetition count")
+	}
+}
+
+func TestEmptyOpAndRuneMatching(t *testing.T) {
+	begin := syntax.EmptyOpContext(-1, 'a')
+	end := syntax.EmptyOpContext('a', -1)
+	if begin & syntax.EmptyBeginText == 0 || begin & syntax.EmptyWordBoundary == 0 {
+		t.Fatalf("begin context = %d", begin)
+	}
+	if end & syntax.EmptyEndText == 0 || end & syntax.EmptyWordBoundary == 0 {
+		t.Fatalf("end context = %d", end)
+	}
+	inst := syntax.Inst{Op: syntax.InstRune, Rune: []rune{'a', 'z'}}
+	if !inst.MatchRune('m') || inst.MatchRune('A') || inst.MatchRunePos('m') != 0 {
+		t.Fatal("Inst rune range matching is incorrect")
+	}
+}
+
+func TestUnicodeAndPOSIXSyntax(t *testing.T) {
+	expr, err := syntax.Parse(`\p{Han}+`, syntax.Perl)
+	if err != nil || expr.MaxCap() != 0 {
+		t.Fatalf("Unicode parse = %#v, %v", expr, err)
+	}
+	if _, err := syntax.Parse(`\d+`, syntax.POSIX); err == nil {
+		t.Fatal("POSIX syntax accepted a Perl character escape")
+	}
+}

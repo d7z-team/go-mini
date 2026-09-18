@@ -1,0 +1,349 @@
+package reflect
+
+import "iter"
+
+// ChanDir represents a channel type's direction.
+type ChanDir int
+
+// A SelectDir describes the direction of a select case.
+type SelectDir int
+
+const (
+	// SelectSend identifies a send case.
+	SelectSend SelectDir = 1
+	// SelectRecv identifies a receive case.
+	SelectRecv SelectDir = 2
+	// SelectDefault identifies a default case.
+	SelectDefault SelectDir = 3
+)
+
+// A Kind represents the specific kind of type that a [Type] represents.
+// The zero Kind is not a valid kind.
+type Kind uint
+
+const (
+	// Invalid is the zero Kind and represents no type.
+	Invalid Kind = iota
+	// Bool represents the bool type.
+	Bool
+	// Int represents the int type.
+	Int
+	// Int8 represents the int8 type.
+	Int8
+	// Int16 represents the int16 type.
+	Int16
+	// Int32 represents the int32 type.
+	Int32
+	// Int64 represents the int64 type.
+	Int64
+	// Uint represents the uint type.
+	Uint
+	// Uint8 represents the uint8 type.
+	Uint8
+	// Uint16 represents the uint16 type.
+	Uint16
+	// Uint32 represents the uint32 type.
+	Uint32
+	// Uint64 represents the uint64 type.
+	Uint64
+	// Uintptr represents the uintptr type.
+	Uintptr
+	// Float32 represents the float32 type.
+	Float32
+	// Float64 represents the float64 type.
+	Float64
+	// Complex64 represents the complex64 type.
+	Complex64
+	// Complex128 represents the complex128 type.
+	Complex128
+	// Array represents an array type.
+	Array
+	// Chan represents a channel type.
+	Chan
+	// Func represents a function type.
+	Func
+	// Interface represents an interface type.
+	Interface
+	// Map represents a map type.
+	Map
+	// Pointer represents a pointer type.
+	Pointer
+	// Slice represents a slice type.
+	Slice
+	// String represents the string type.
+	String
+	// Struct represents a struct type.
+	Struct
+	// UnsafePointer represents the unsafe.Pointer type.
+	UnsafePointer
+
+	// Ptr is the old name for the [Pointer] kind.
+	Ptr = Pointer
+
+	// RecvDir identifies a receive-only channel.
+	RecvDir ChanDir = 1
+
+	// SendDir identifies a send-only channel.
+	SendDir ChanDir = 2
+	// BothDir allows both send and receive operations on a channel.
+	BothDir ChanDir = 3
+)
+
+// String returns the name of kind.
+func (kind Kind) String() string {
+	names := []string{
+		"invalid", "bool", "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
+		"float32", "float64", "complex64", "complex128", "array", "chan",
+		"func", "interface", "map", "ptr", "slice", "string", "struct",
+		"unsafe.Pointer",
+	}
+	if uint(kind) < uint(len(names)) {
+		return names[uint(kind)]
+	}
+	value := uint(kind)
+	digits := []byte{}
+	for {
+		digits = append(digits, byte('0' + value % 10))
+		value /= 10
+		if value == 0 {
+			break
+		}
+	}
+	for left, right := 0, len(digits) - 1; left < right; left, right = left + 1, right - 1 {
+		digits[left], digits[right] = digits[right], digits[left]
+	}
+	return "kind" + string(digits)
+}
+
+// Type is the representation of a Mini-Go type. Its behavior follows Go's
+// reflect.Type while Size and alignment describe the stable Mini-Go VM ABI.
+type Type interface {
+	// Align returns the alignment in bytes of a value of this type.
+	Align() int
+	// AssignableTo reports whether a value of this type is assignable to target.
+	AssignableTo(Type) bool
+	// Bits returns the size in bits of a numeric type.
+	Bits() int
+	// CanSeq reports whether values of this type support Seq.
+	CanSeq() bool
+	// CanSeq2 reports whether values of this type support Seq2.
+	CanSeq2() bool
+	// ChanDir returns a channel type's direction.
+	ChanDir() ChanDir
+	// Comparable reports whether values of this type are comparable.
+	Comparable() bool
+	// ConvertibleTo reports whether values of this type are convertible to target.
+	ConvertibleTo(Type) bool
+	// Elem returns the element type of an array, channel, map, pointer, or slice.
+	Elem() Type
+	// Field returns a struct type's field at index.
+	Field(int) StructField
+	// FieldAlign returns the alignment of this type when used as a struct field.
+	FieldAlign() int
+	// FieldByIndex returns the nested struct field at an index path.
+	FieldByIndex([]int) StructField
+	// FieldByName returns the visible struct field with the given name.
+	FieldByName(string) (StructField, bool)
+	// FieldByNameFunc returns the visible field whose name matches the predicate.
+	FieldByNameFunc(func(string) bool) (StructField, bool)
+	// Fields returns an iterator over a struct type's fields.
+	Fields() iter.Seq[StructField]
+	// Implements reports whether this type implements the target interface.
+	Implements(Type) bool
+	// In returns a function type's input at index.
+	In(int) Type
+	// Ins returns an iterator over a function type's inputs.
+	Ins() iter.Seq[Type]
+	// IsVariadic reports whether a function type is variadic.
+	IsVariadic() bool
+	// Key returns a map type's key type.
+	Key() Type
+	// Kind returns this type's specific kind.
+	Kind() Kind
+	// Len returns an array type's length.
+	Len() int
+	// Method returns a method by lexicographic index.
+	Method(int) Method
+	// MethodByName returns the method with the given name.
+	MethodByName(string) (Method, bool)
+	// Methods returns an iterator over this type's methods.
+	Methods() iter.Seq[Method]
+	// Name returns the defined type's name within its package.
+	Name() string
+	// NumField returns a struct type's field count.
+	NumField() int
+	// NumIn returns a function type's input count.
+	NumIn() int
+	// NumMethod returns this type's accessible method count.
+	NumMethod() int
+	// NumOut returns a function type's result count.
+	NumOut() int
+	// Out returns a function type's result at index.
+	Out(int) Type
+	// Outs returns an iterator over a function type's results.
+	Outs() iter.Seq[Type]
+	// OverflowComplex reports whether value cannot be represented by this complex type.
+	OverflowComplex(complex128) bool
+	// OverflowFloat reports whether value cannot be represented by this float type.
+	OverflowFloat(float64) bool
+	// OverflowInt reports whether value cannot be represented by this signed integer type.
+	OverflowInt(int64) bool
+	// OverflowUint reports whether value cannot be represented by this unsigned integer type.
+	OverflowUint(uint64) bool
+	// PkgPath returns a defined type's import path.
+	PkgPath() string
+	// Size returns the number of Mini-Go VM ABI bytes needed to store this type.
+	Size() uintptr
+	// String returns this type's source-facing representation.
+	String() string
+	reflectType()
+}
+
+// runtimeType is the comparable implementation behind Type. Expanded member
+// metadata is queried lazily so Type values remain small and usable as map keys.
+type runtimeType struct {
+	key string
+}
+
+type runtimeTypeData struct {
+	key string
+	typeName string
+	displayName string
+	variadic bool
+	pkgPath string
+	align int
+	fieldAlign int
+	size uintptr
+	bits int
+	chanDir ChanDir
+	kind Kind
+	elem Type
+	keyType Type
+	length int
+	inputs []Type
+	outputs []Type
+	comparable bool
+	fieldCount int
+	methodCount int
+}
+
+// A StructField describes a single field in a struct.
+type StructField struct {
+	// Name is the field name.
+	Name string
+	// PkgPath is the package path that qualifies a lower case (unexported)
+	// field name. It is empty for upper case (exported) field names.
+	// See https://golang.org/ref/spec#Uniqueness_of_identifiers
+	PkgPath string
+	// field type
+	Type Type
+	// field tag string
+	Tag StructTag
+	// offset within struct, in bytes
+	Offset uintptr
+	// index sequence for Type.FieldByIndex
+	Index []int
+	// is an embedded field
+	Anonymous bool
+}
+
+// A StructTag is the tag string in a struct field.
+//
+// By convention, tag strings are a concatenation of
+// optionally space-separated key:"value" pairs.
+// Each key is a non-empty string consisting of non-control
+// characters other than space (U+0020 ' '), quote (U+0022 '"'),
+// and colon (U+003A ':').  Each value is quoted using U+0022 '"'
+// characters and Go string literal syntax.
+type StructTag string
+
+// Method represents a single method.
+type Method struct {
+	// Name is the method name.
+	Name string
+	// PkgPath is the package path that qualifies a lower case (unexported)
+	// method name. It is empty for upper case (exported) method names.
+	// The combination of PkgPath and Name uniquely identifies a method
+	// in a method set.
+	// See https://golang.org/ref/spec#Uniqueness_of_identifiers
+	PkgPath string
+	// method type
+	Type Type
+	// func with receiver as first argument
+	Func Value
+	// index for Type.Method
+	Index int
+	modulePath string
+	receiverType Type
+	signatureType Type
+	functionID string
+	variadic bool
+	exported bool
+}
+
+// A SelectCase describes a single case in a Select operation.
+type SelectCase struct {
+	// Dir is the direction of the case.
+	Dir SelectDir
+	// Chan is the channel used by a send or receive case.
+	Chan Value
+	// Send is the value sent by a send case.
+	Send Value
+}
+
+// Value is the reflection interface to a Go value.
+//
+// Not all methods apply to all kinds of values. Restrictions,
+// if any, are noted in the documentation for each method.
+// Use the Kind method to find out the kind of value before
+// calling kind-specific methods. Calling a method
+// inappropriate to the kind of type causes a run time panic.
+//
+// The zero Value represents no value.
+// Its [Value.IsValid] method returns false, its Kind method returns [Invalid],
+// its String method returns "<invalid Value>", and all other methods panic.
+// Most functions and methods never return an invalid value.
+// If one does, its documentation states the conditions explicitly.
+//
+// A Value can be used concurrently by multiple goroutines provided that
+// the underlying Go value can be used concurrently for the equivalent
+// direct operations.
+//
+// To compare two Values, compare the results of the Interface method.
+// Using == on two Values does not compare the underlying values
+// they represent.
+type Value struct {
+	valid bool
+	valueType Type
+	data any
+	target any
+	addressable bool
+	settable bool
+	interfaceable bool
+	embeddedReadOnly bool
+	zero bool
+	nilValue bool
+	length int
+	capacity int
+	boolValue bool
+	intValue int64
+	uintValue uint64
+	floatValue float64
+	complexValue complex128
+	stringValue string
+	mapEntries []valueMapEntry
+}
+
+type valueMapEntry struct {
+	Key Value
+	Value Value
+}
+
+// A MapIter is an iterator for ranging over a map.
+// See [Value.MapRange].
+type MapIter struct {
+	entries []valueMapEntry
+	index int
+	valid bool
+}

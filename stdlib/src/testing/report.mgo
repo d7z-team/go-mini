@@ -1,0 +1,58 @@
+// Package testing provides the test state and report types used to execute Mini-Go *_test.mgo functions.
+package testing
+
+import "fmt"
+
+// Result records the outcome of one Mini-Go test function.
+type Result struct {
+	// Name identifies the test function.
+	Name string
+	// Status is pass, fail, or skip.
+	Status string
+	// Message contains the test's failure or skip message.
+	Message string
+	// Logs contains messages recorded by Log and Logf.
+	Logs []string
+}
+
+// Report contains the result of running a Mini-Go test suite.
+type Report struct {
+	// Suite is the package or suite name.
+	Suite string
+	// Passed reports whether every executed test passed or was skipped.
+	Passed bool
+	// Results contains one entry for each executed test.
+	Results []Result
+}
+
+// Main executes tests in order and returns their aggregate report.
+func Main(name string, tests []InternalTest) Report {
+	report := Report{Suite: name, Passed: true}
+	for _, test := range tests {
+		t := new(T)
+		t.name = test.Name
+		panicMessage := ""
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					t.Fail()
+					panicMessage = "panic: " + fmt.Sprint(recovered)
+				}
+			}()
+			test.F(t)
+		}()
+		status := "pass"
+		if t.Skipped() {
+			status = "skip"
+		} else if t.Failed() {
+			status = "fail"
+			report.Passed = false
+		}
+		message := t.message
+		if panicMessage != "" {
+			message = appendMessage(message, panicMessage)
+		}
+		report.Results = append(report.Results, Result{Name: test.Name, Status: status, Message: message, Logs: t.logs})
+	}
+	return report
+}

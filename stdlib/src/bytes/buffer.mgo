@@ -1,0 +1,354 @@
+// Package bytes implements functions for the manipulation of byte slices.
+// It is analogous to the facilities of the [strings] package.
+package bytes
+
+import "io"
+
+// A Buffer is a variable-sized buffer of bytes with [Buffer.Read] and [Buffer.Write] methods.
+// The zero value for Buffer is an empty buffer ready to use.
+type Buffer struct {
+	data []byte
+	readOffset int
+	lastKind int
+	lastSize int
+}
+
+// NewBuffer creates and initializes a new [Buffer] using buf as its
+// initial contents. The new [Buffer] takes ownership of buf, and the
+// caller should not use buf after this call. NewBuffer is intended to
+// prepare a [Buffer] to read existing data. It can also be used to set
+// the initial size of the internal buffer for writing. To do that,
+// buf should have the desired capacity but a length of zero.
+//
+// In most cases, new([Buffer]) (or just declaring a [Buffer] variable) is
+// sufficient to initialize a [Buffer].
+func NewBuffer(data []byte) *Buffer {
+	buffer := new(Buffer)
+	buffer.data = append([]byte{}, data...)
+	return buffer
+}
+
+// NewBufferString creates and initializes a new [Buffer] using string s as its
+// initial contents. It is intended to prepare a buffer to read an existing
+// string.
+//
+// In most cases, new([Buffer]) (or just declaring a [Buffer] variable) is
+// sufficient to initialize a [Buffer].
+func NewBufferString(s string) *Buffer {
+	return NewBuffer([]byte(s))
+}
+
+// Write appends the contents of p to the buffer, growing the buffer as
+// needed. The return value n is the length of p; err is always nil. If the
+// buffer becomes too large, Write will panic with [ErrTooLarge].
+func (b *Buffer) Write(p []byte) (int, error) {
+	if b == nil {
+		return 0, io.EOF
+	}
+	b.data = append(b.data, p...)
+	b.lastKind = 0
+	b.lastSize = 0
+	return len(p), nil
+}
+
+// WriteString appends the contents of s to the buffer, growing the buffer as
+// needed. The return value n is the length of s; err is always nil. If the
+// buffer becomes too large, WriteString will panic with [ErrTooLarge].
+func (b *Buffer) WriteString(s string) (int, error) {
+	return b.Write([]byte(s))
+}
+
+// WriteByte appends the byte c to the buffer, growing the buffer as needed.
+// The returned error is always nil, but is included to match [bufio.Writer]'s
+// WriteByte. If the buffer becomes too large, WriteByte will panic with
+// [ErrTooLarge].
+func (b *Buffer) WriteByte(c byte) error {
+	_, err := b.Write([]byte{c})
+	return err
+}
+
+// WriteRune appends the UTF-8 encoding of Unicode code point r to the
+// buffer, returning its length and an error, which is always nil but is
+// included to match [bufio.Writer]'s WriteRune. The buffer is grown as needed;
+// if it becomes too large, WriteRune will panic with [ErrTooLarge].
+func (b *Buffer) WriteRune(r rune) (int, error) {
+	return b.Write([]byte(string(r)))
+}
+
+// Read reads the next len(p) bytes from the buffer or until the buffer
+// is drained. The return value n is the number of bytes read. If the
+// buffer has no data to return, err is [io.EOF] (unless len(p) is zero);
+// otherwise it is nil.
+func (b *Buffer) Read(p []byte) (int, error) {
+	if b == nil || b.readOffset >= len(b.data) {
+		return 0, io.EOF
+	}
+	n := copy(p, b.data[b.readOffset:])
+	b.readOffset += n
+	b.lastKind = 0
+	b.lastSize = 0
+	return n, nil
+}
+
+// ReadByte reads and returns the next byte from the buffer.
+// If no byte is available, it returns error [io.EOF].
+func (b *Buffer) ReadByte() (byte, error) {
+	if b == nil || b.readOffset >= len(b.data) {
+		return 0, io.EOF
+	}
+	value := b.data[b.readOffset]
+	b.readOffset++
+	b.lastKind = 1
+	b.lastSize = 1
+	return value, nil
+}
+
+// UnreadByte unreads the last byte returned by the most recent successful
+// read operation that read at least one byte. If a write has happened since
+// the last read, if the last read returned an error, or if the read read zero
+// bytes, UnreadByte returns an error.
+func (b *Buffer) UnreadByte() error {
+	if b == nil || b.lastKind != 1 {
+		return errUnreadByte
+	}
+	b.readOffset -= b.lastSize
+	b.lastKind = 0
+	b.lastSize = 0
+	return nil
+}
+
+// ReadRune reads and returns the next UTF-8-encoded
+// Unicode code point from the buffer.
+// If no bytes are available, the error returned is io.EOF.
+// If the bytes are an erroneous UTF-8 encoding, it
+// consumes one byte and returns U+FFFD, 1.
+func (b *Buffer) ReadRune() (rune, int, error) {
+	if b == nil || b.readOffset >= len(b.data) {
+		return 0, 0, io.EOF
+	}
+	text := string(b.data[b.readOffset:])
+	for _, value := range text {
+		size := len(string(value))
+		b.readOffset += size
+		b.lastKind = 2
+		b.lastSize = size
+		return value, size, nil
+	}
+	return 0, 0, io.EOF
+}
+
+// UnreadRune unreads the last rune returned by [Buffer.ReadRune].
+// If the most recent read or write operation on the buffer was
+// not a successful [Buffer.ReadRune], UnreadRune returns an error.  (In this regard
+// it is stricter than [Buffer.UnreadByte], which will unread the last byte
+// from any read operation.)
+func (b *Buffer) UnreadRune() error {
+	if b == nil || b.lastKind != 2 {
+		return errUnreadRune
+	}
+	b.readOffset -= b.lastSize
+	b.lastKind = 0
+	b.lastSize = 0
+	return nil
+}
+
+// ReadFrom reads data from r until EOF and appends it to the buffer, growing
+// the buffer as needed. The return value n is the number of bytes read. Any
+// error except io.EOF encountered during the read is also returned. If the
+// buffer becomes too large, ReadFrom will panic with [ErrTooLarge].
+func (b *Buffer) ReadFrom(r io.Reader) (int64, error) {
+	data, err := io.ReadAll(r)
+	n, writeErr := b.Write(data)
+	if err != nil {
+		return int64(n), err
+	}
+	return int64(n), writeErr
+}
+
+// WriteTo writes data to w until the buffer is drained or an error occurs.
+// The return value n is the number of bytes written; it always fits into an
+// int, but it is int64 to match the [io.WriterTo] interface. Any error
+// encountered during the write is also returned.
+func (b *Buffer) WriteTo(w io.Writer) (int64, error) {
+	if b == nil {
+		return 0, nil
+	}
+	data := b.Bytes()
+	n, err := w.Write(data)
+	if n > 0 {
+		b.readOffset += n
+	}
+	b.lastKind = 0
+	b.lastSize = 0
+	return int64(n), err
+}
+
+// Bytes returns a slice of length b.Len() holding the unread portion of the buffer.
+// The slice is valid for use only until the next buffer modification (that is,
+// only until the next call to a method like [Buffer.Read], [Buffer.Write], [Buffer.Reset], or [Buffer.Truncate]).
+// The slice aliases the buffer content at least until the next buffer modification,
+// so immediate changes to the slice will affect the result of future reads.
+func (b *Buffer) Bytes() []byte {
+	if b == nil {
+		return []byte{}
+	}
+	if b.readOffset >= len(b.data) {
+		return []byte{}
+	}
+	return b.data[b.readOffset:]
+}
+
+// String returns the contents of the unread portion of the buffer
+// as a string. If the [Buffer] is a nil pointer, it returns "<nil>".
+//
+// To build strings more efficiently, see the [strings.Builder] type.
+func (b *Buffer) String() string {
+	if b == nil {
+		return ""
+	}
+	return string(b.Bytes())
+}
+
+// Len returns the number of bytes of the unread portion of the buffer;
+// b.Len() == len(b.Bytes()).
+func (b *Buffer) Len() int {
+	if b == nil {
+		return 0
+	}
+	return len(b.Bytes())
+}
+
+// Cap returns the capacity of the buffer's underlying byte slice, that is, the
+// total space allocated for the buffer's data.
+func (b *Buffer) Cap() int {
+	if b == nil {
+		return 0
+	}
+	return cap(b.data)
+}
+
+// Available returns how many bytes are unused in the buffer.
+func (b *Buffer) Available() int {
+	if b == nil {
+		return 0
+	}
+	return cap(b.data) - len(b.data)
+}
+
+// AvailableBuffer returns an empty buffer with b.Available() capacity.
+// This buffer is intended to be appended to and
+// passed to an immediately succeeding [Buffer.Write] call.
+// The buffer is only valid until the next write operation on b.
+func (b *Buffer) AvailableBuffer() []byte {
+	if b == nil {
+		return []byte{}
+	}
+	return b.data[len(b.data):]
+}
+
+// Grow grows the buffer's capacity, if necessary, to guarantee space for
+// another n bytes. After Grow(n), at least n bytes can be written to the
+// buffer without another allocation.
+// If n is negative, Grow will panic.
+// If the buffer can't grow it will panic with [ErrTooLarge].
+func (b *Buffer) Grow(n int) {
+	if n < 0 {
+		panic("bytes.Buffer.Grow: negative count")
+	}
+	if b == nil || n <= b.Available() {
+		return
+	}
+	unread := b.Bytes()
+	data := make([]byte, len(unread), len(unread) + n)
+	copy(data, unread)
+	b.data = data
+	b.readOffset = 0
+}
+
+// Truncate discards all but the first n unread bytes from the buffer
+// but continues to use the same allocated storage.
+// It panics if n is negative or greater than the length of the buffer.
+func (b *Buffer) Truncate(n int) {
+	if n < 0 || n > b.Len() {
+		panic("bytes.Buffer.Truncate: truncation out of range")
+	}
+	if n == 0 {
+		b.Reset()
+		return
+	}
+	b.data = b.data[:b.readOffset + n]
+	b.lastKind = 0
+	b.lastSize = 0
+}
+
+// Next returns a slice containing the next n bytes from the buffer,
+// advancing the buffer as if the bytes had been returned by [Buffer.Read].
+// If there are fewer than n bytes in the buffer, Next returns the entire buffer.
+// The slice is only valid until the next call to a read or write method.
+func (b *Buffer) Next(n int) []byte {
+	if n < 0 || n > b.Len() {
+		n = b.Len()
+	}
+	data := b.data[b.readOffset:b.readOffset + n]
+	b.readOffset += n
+	b.lastKind = 0
+	b.lastSize = 0
+	return data
+}
+
+// Peek returns the next n bytes without advancing the buffer.
+// If Peek returns fewer than n bytes, it also returns [io.EOF].
+// The slice is only valid until the next call to a read or write method.
+// The slice aliases the buffer content at least until the next buffer modification,
+// so immediate changes to the slice will affect the result of future reads.
+func (b *Buffer) Peek(n int) ([]byte, error) {
+	if n < 0 || n > b.Len() {
+		return b.Bytes(), io.EOF
+	}
+	return b.data[b.readOffset:b.readOffset + n], nil
+}
+
+// ReadBytes reads until the first occurrence of delim in the input,
+// returning a slice containing the data up to and including the delimiter.
+// If ReadBytes encounters an error before finding a delimiter,
+// it returns the data read before the error and the error itself (often [io.EOF]).
+// ReadBytes returns err != nil if and only if the returned data does not end in
+// delim.
+func (b *Buffer) ReadBytes(delim byte) ([]byte, error) {
+	start := b.readOffset
+	for b.readOffset < len(b.data) {
+		value := b.data[b.readOffset]
+		b.readOffset++
+		if value == delim {
+			b.lastKind = 0
+			b.lastSize = 0
+			return b.data[start:b.readOffset], nil
+		}
+	}
+	b.lastKind = 0
+	b.lastSize = 0
+	return b.data[start:b.readOffset], io.EOF
+}
+
+// ReadString reads until the first occurrence of delim in the input,
+// returning a string containing the data up to and including the delimiter.
+// If ReadString encounters an error before finding a delimiter,
+// it returns the data read before the error and the error itself (often [io.EOF]).
+// ReadString returns err != nil if and only if the returned data does not end
+// in delim.
+func (b *Buffer) ReadString(delim byte) (string, error) {
+	data, err := b.ReadBytes(delim)
+	return string(data), err
+}
+
+// Reset resets the buffer to be empty,
+// but it retains the underlying storage for use by future writes.
+// Reset is the same as [Buffer.Truncate](0).
+func (b *Buffer) Reset() {
+	if b != nil {
+		b.data = []byte{}
+		b.readOffset = 0
+		b.lastKind = 0
+		b.lastSize = 0
+	}
+}

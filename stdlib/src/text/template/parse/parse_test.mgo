@@ -1,0 +1,89 @@
+package parse_test
+
+import (
+	"strings"
+	"testing"
+	"text/template/parse"
+)
+
+func TestParseTreeAndCopy(t *testing.T) {
+	trees, err := parse.Parse("root", `hello {{if .OK}}{{.Name}}{{else}}none{{end}}`, "", "")
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	tree := trees["root"]
+	if tree == nil || tree.Root == nil || len(tree.Root.Nodes) != 2 {
+		t.Fatalf("unexpected parse tree")
+	}
+	copy := tree.Copy()
+	if copy == tree || copy.Root == tree.Root || copy.Root.String() != tree.Root.String() {
+		t.Fatalf("Copy did not create an equivalent independent tree")
+	}
+}
+
+func TestParseCustomDelimiters(t *testing.T) {
+	directSet := make(map[string] *parse.Tree)
+	directTree := parse.New("direct")
+	if _, err := directTree.Parse(`before [[.Name]] after`, "[[", "]]", directSet); err != nil {
+		t.Fatalf("Tree.Parse returned error: %v", err)
+	}
+	direct, directOK := directSet["direct"]
+	if !directOK {
+		for name := range directSet {
+			t.Errorf("Tree.Parse added tree %q", name)
+		}
+		t.Fatalf("Tree.Parse did not add its tree")
+		return
+	}
+	if direct == nil || direct.Root == nil {
+		t.Fatalf("Tree.Parse returned an incomplete tree")
+		return
+	}
+	if got := len(direct.Root.Nodes); got != 3 {
+		t.Fatalf("Tree.Parse produced %d nodes", got)
+	}
+	trees, err := parse.Parse("custom", `before [[.Name]] after`, "[[", "]]")
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	tree, treeOK := trees["custom"]
+	if !treeOK {
+		t.Fatalf("Parse did not return its tree")
+		return
+	}
+	if tree == nil || tree.Root == nil {
+		t.Fatalf("custom delimiters produced an incomplete tree")
+		return
+	}
+	if got := len(tree.Root.Nodes); got != 3 {
+		t.Fatalf("custom delimiters produced %d nodes", got)
+	}
+}
+
+func TestParseControlNodesTrimmingAndComments(t *testing.T) {
+	tree := parse.New("control")
+	tree.Mode = parse.ParseComments
+	trees := make(map[string]*parse.Tree)
+	parsed, err := tree.Parse("left {{- /* keep */ -}} {{define \"part\"}}{{range .}}{{if .}}{{continue}}{{else}}{{break}}{{end}}{{end}}{{end}}{{block \"body\" .}}body{{end}}", "", "", trees)
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if parsed.Root == nil || !strings.Contains(parsed.Root.String(), "{{/* keep */}}") || trees["part"] == nil || trees["body"] == nil {
+		t.Fatalf("control parse tree did not preserve definitions and comments")
+	}
+}
+
+func TestParseReportsSourcePosition(t *testing.T) {
+	for _, source := range []string{
+		"line one\n{{if}}",
+		"{{break}}",
+		"{{continue}}",
+		"{{0xZZ}}",
+		"{{define}}",
+	} {
+		_, err := parse.Parse("broken", source, "", "")
+		if err == nil || !strings.Contains(err.Error(), "template: broken:") {
+			t.Fatalf("Parse(%q) error = %v", source, err)
+		}
+	}
+}

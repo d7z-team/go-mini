@@ -1,0 +1,20 @@
+{
+  "module":{"path":"test","package":"main"},
+  "type_table":{"nodes":[{"id":"bytes","kind":5,"elem":{"kind":3,"primitive":9}}]},
+  "constants":[{"id":"length","type":{"kind":3,"primitive":3},"value":32}],
+  "functions":[
+    {"id":"fn.Main","signature":{"results":[{"kind":3,"primitive":3}]},"instructions":[
+      {"op":"tail_call_direct","payload":{"function":"callee","result_count":1}}
+    ]},
+    {"id":"callee","signature":{"results":[{"kind":3,"primitive":3}]},"instructions":[
+      {"op":"const","payload":{"constant":"length"}},
+      {"op":"make_slice","payload":{"type":{"kind":5,"node":"bytes"}}},
+      {"op":"pop"},
+      {"op":"const","payload":{"constant":"length"}},
+      {"op":"make_slice","payload":{"type":{"kind":5,"node":"bytes"}}},
+      {"op":"pop"},
+      {"op":"zero","payload":{"type":{"kind":3,"primitive":3}}},
+      {"op":"return","payload":{"result_count":1}}
+    ]}
+  ]
+}

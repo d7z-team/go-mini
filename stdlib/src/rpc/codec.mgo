@@ -1,0 +1,520 @@
+package rpc
+
+import (
+	"errors"
+	"unicode/utf8"
+)
+
+const (
+	wireNil = iota
+	wireBool
+	wireInt
+	wireUint
+	wireFloat
+	wireComplex
+	wireString
+	wireBytes
+	wireSlice
+	wireMap
+	wireStruct
+	wireOptional
+	wireResource
+)
+
+type encodedMapEntry struct {
+	key []byte
+	value []byte
+}
+
+func appendWireUint(data []byte, value uint64) []byte {
+	for value >= 128 {
+		data = append(data, byte(value) | 128)
+		value >>= 7
+	}
+	return append(data, byte(value))
+}
+
+func appendWireInt(data []byte, value int64) []byte {
+	return appendWireUint(data, uint64(value << 1) ^ uint64(value >> 63))
+}
+
+func appendWireFixed64(data []byte, value uint64) []byte {
+	for shift := 0; shift < 64; shift += 8 {
+		data = append(data, byte(value >> shift))
+	}
+	return data
+}
+
+func appendWireBytes(data []byte, value []byte) []byte {
+	data = appendWireUint(data, uint64(len(value)))
+	return append(data, value...)
+}
+
+func appendWireString(data []byte, value string) []byte {
+	return appendWireBytes(data, []byte(value))
+}
+
+func encodeValues(values []Value) ([]byte, error) {
+	data := appendWireUint(nil, uint64(len(values)))
+	var err error
+	for _, value := range values {
+		data, err = encodeValue(data, value)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return data, nil
+}
+
+func encodeValue(data []byte, value Value) ([]byte, error) {
+	if value.Type == "" {
+		return nil, errors.New("rpc value has no type")
+	}
+	data = appendWireString(data, value.Type)
+	if value.Resource != nil {
+		data = appendWireUint(data, wireResource)
+		data = appendWireUint(data, value.Resource.Epoch)
+		data = appendWireUint(data, value.Resource.ObjectID)
+		return appendWireString(data, value.Resource.TypeHash), nil
+	}
+	switch value.Kind {
+		case "nil":
+			return appendWireUint(data, wireNil), nil
+		case "bool":
+			data = appendWireUint(data, wireBool)
+			if value.Bool {
+				return append(data, 1), nil
+			}
+			return append(data, 0), nil
+		case "int":
+			return appendWireInt(appendWireUint(data, wireInt), value.Signed), nil
+		case "uint":
+			return appendWireUint(appendWireUint(data, wireUint), value.Unsigned), nil
+		case "float":
+			return appendWireFixed64(appendWireUint(data, wireFloat), value.RealBits), nil
+		case "complex":
+			data = appendWireFixed64(appendWireUint(data, wireComplex), value.RealBits)
+			return appendWireFixed64(data, value.ImagBits), nil
+		case "string":
+			return appendWireString(appendWireUint(data, wireString), value.Text), nil
+		case "bytes":
+			return appendWireBytes(appendWireUint(data, wireBytes), value.Bytes), nil
+		case "slice":
+			data = appendWireUint(data, wireSlice)
+			data = appendWireUint(data, uint64(len(value.Values)))
+			var err error
+			for _, item := range value.Values {
+				data, err = encodeValue(data, item)
+				if err != nil {
+					return nil, err
+				}
+			}
+			return data, nil
+		case "map":
+			data = appendWireUint(data, wireMap)
+			data = appendWireUint(data, uint64(len(value.Entries)))
+			encoded := make([]encodedMapEntry, len(value.Entries))
+			for index, entry := range value.Entries {
+				key, err := encodeValue(nil, entry.Key)
+				if err != nil {
+					return nil, err
+				}
+				item, err := encodeValue(nil, entry.Value)
+				if err != nil {
+					return nil, err
+				}
+				encoded[index] = encodedMapEntry{key: key, value: item}
+			}
+			for i := 0; i < len(encoded); i++ {
+				for j := i + 1; j < len(encoded); j++ {
+					if wireBytesLess(encoded[j].key, encoded[i].key) {
+						encoded[i], encoded[j] = encoded[j], encoded[i]
+					}
+				}
+			}
+			for _, entry := range encoded {
+				data = append(data, entry.key...)
+				data = append(data, entry.value...)
+			}
+			return data, nil
+		case "struct":
+			data = appendWireUint(data, wireStruct)
+			data = appendWireUint(data, uint64(len(value.Fields)))
+			fields := append([]Field(nil), value.Fields...)
+			for i := 0; i < len(fields); i++ {
+				for j := i + 1; j < len(fields); j++ {
+					if fields[j].ID < fields[i].ID {
+						fields[i], fields[j] = fields[j], fields[i]
+					}
+				}
+			}
+			var err error
+			for _, field := range fields {
+				data = appendWireUint(data, uint64(field.ID))
+				data, err = encodeValue(data, field.Value)
+				if err != nil {
+					return nil, err
+				}
+			}
+			return data, nil
+		case "optional":
+			if value.Optional == nil {
+				return nil, errors.New("rpc optional value is missing its element")
+			}
+			return encodeValue(appendWireUint(data, wireOptional), *value.Optional)
+	}
+	return nil, errors.New("unknown rpc value kind")
+}
+
+func wireBytesLess(left []byte, right []byte) bool {
+	limit := len(left)
+	if len(right) < limit {
+		limit = len(right)
+	}
+	for index := 0; index < limit; index++ {
+		if left[index] != right[index] {
+			return left[index] < right[index]
+		}
+	}
+	return len(left) < len(right)
+}
+
+func readWireUint(data []byte, offset int) (uint64, int, error) {
+	value := uint64(0)
+	for shift := 0; shift < 70; shift += 7 {
+		if offset >= len(data) {
+			return 0, offset, errors.New("truncated rpc value")
+		}
+		current := data[offset]
+		offset++
+		if shift == 63 && current > 1 {
+			return 0, offset, errors.New("overflowing rpc varint")
+		}
+		value |= uint64(current & 127) << shift
+		if current < 128 {
+			if shift > 0 && current == 0 {
+				return 0, offset, errors.New("non-canonical rpc varint")
+			}
+			return value, offset, nil
+		}
+	}
+	return 0, offset, errors.New("overflowing rpc varint")
+}
+
+func readWireFixed64(data []byte, offset int) (uint64, int, error) {
+	if offset < 0 || len(data) - offset < 8 {
+		return 0, offset, errors.New("truncated rpc value")
+	}
+	value := uint64(0)
+	for shift := 0; shift < 64; shift += 8 {
+		value |= uint64(data[offset]) << shift
+		offset++
+	}
+	return value, offset, nil
+}
+
+func readWireBytes(data []byte, offset int) ([]byte, int, error) {
+	size, next, err := readWireUint(data, offset)
+	if err != nil || size > uint64(len(data) - next) {
+		return nil, next, errors.New("invalid rpc byte length")
+	}
+	end := next + int(size)
+	return append([]byte(nil), data[next:end]...), end, nil
+}
+
+func readWireString(data []byte, offset int) (string, int, error) {
+	value, next, err := readWireBytes(data, offset)
+	if err == nil && !utf8.Valid(value) {
+		err = errors.New("invalid UTF-8 in rpc string")
+	}
+	return string(value), next, err
+}
+
+func decodeValues(data []byte) ([]Value, error) {
+	count, offset, err := readWireUint(data, 0)
+	if err != nil || count > uint64(len(data)) {
+		return nil, errors.New("invalid rpc value count")
+	}
+	values := make([]Value, int(count))
+	for index := range values {
+		values[index], offset, err = decodeValue(data, offset, 0)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if offset != len(data) {
+		return nil, errors.New("rpc value payload has trailing bytes")
+	}
+	return values, nil
+}
+
+func decodeValue(data []byte, offset int, depth int) (Value, int, error) {
+	if depth > 64 {
+		return Value{}, offset, errors.New("rpc value depth limit exceeded")
+	}
+	typeName, offset, err := readWireString(data, offset)
+	if err != nil || typeName == "" {
+		return Value{}, offset, errors.New("invalid rpc value type")
+	}
+	kind, offset, err := readWireUint(data, offset)
+	if err != nil {
+		return Value{}, offset, err
+	}
+	value := Value{Type: typeName}
+	switch int(kind) {
+		case wireNil:
+			value.Kind = "nil"
+		case wireBool:
+			if offset >= len(data) || data[offset] > 1 {
+				return Value{}, offset, errors.New("invalid rpc bool")
+			}
+			value.Kind, value.Bool = "bool", data[offset] == 1
+			offset++
+		case wireInt:
+			var encoded uint64
+			encoded, offset, err = readWireUint(data, offset)
+			value.Kind, value.Signed = "int", int64(encoded >> 1) ^ -int64(encoded & 1)
+		case wireUint:
+			value.Kind = "uint"
+			value.Unsigned, offset, err = readWireUint(data, offset)
+		case wireFloat:
+			value.Kind = "float"
+			value.RealBits, offset, err = readWireFixed64(data, offset)
+		case wireComplex:
+			value.Kind = "complex"
+			value.RealBits, offset, err = readWireFixed64(data, offset)
+			if err == nil {
+				value.ImagBits, offset, err = readWireFixed64(data, offset)
+			}
+		case wireString:
+			value.Kind = "string"
+			value.Text, offset, err = readWireString(data, offset)
+		case wireBytes:
+			value.Kind = "bytes"
+			value.Bytes, offset, err = readWireBytes(data, offset)
+			if err == nil && value.Bytes == nil {
+				value.Bytes = []byte{}
+			}
+		case wireSlice:
+			value.Kind = "slice"
+			value.Values, offset, err = decodeValueSlice(data, offset, depth)
+		case wireMap:
+			value.Kind = "map"
+			value.Entries, offset, err = decodeMapEntries(data, offset, depth)
+		case wireStruct:
+			value.Kind = "struct"
+			value.Fields, offset, err = decodeFields(data, offset, depth)
+		case wireOptional:
+			value.Kind = "optional"
+			var item Value
+			item, offset, err = decodeValue(data, offset, depth + 1)
+			value.Optional = &item
+		case wireResource:
+			value.Kind = "resource"
+			resource := new(Resource)
+			resource.Epoch, offset, err = readWireUint(data, offset)
+			if err == nil {
+				resource.ObjectID, offset, err = readWireUint(data, offset)
+			}
+			if err == nil {
+				resource.TypeHash, offset, err = readWireString(data, offset)
+			}
+			value.Resource = resource
+		default:
+			err = errors.New("unknown rpc value kind")
+	}
+	return value, offset, err
+}
+
+func decodeValueSlice(data []byte, offset int, depth int) ([]Value, int, error) {
+	count, offset, err := readWireUint(data, offset)
+	if err != nil || count > uint64(len(data)) {
+		return nil, offset, errors.New("invalid rpc slice length")
+	}
+	values := make([]Value, int(count))
+	for index := range values {
+		values[index], offset, err = decodeValue(data, offset, depth + 1)
+		if err != nil {
+			return nil, offset, err
+		}
+	}
+	return values, offset, nil
+}
+
+func decodeMapEntries(data []byte, offset int, depth int) ([]MapEntry, int, error) {
+	count, offset, err := readWireUint(data, offset)
+	if err != nil || count > uint64(len(data)) {
+		return nil, offset, errors.New("invalid rpc map length")
+	}
+	entries := make([]MapEntry, int(count))
+	for index := range entries {
+		entries[index].Key, offset, err = decodeValue(data, offset, depth + 1)
+		if err == nil {
+			entries[index].Value, offset, err = decodeValue(data, offset, depth + 1)
+		}
+		if err != nil {
+			return nil, offset, err
+		}
+	}
+	return entries, offset, nil
+}
+
+func decodeFields(data []byte, offset int, depth int) ([]Field, int, error) {
+	count, offset, err := readWireUint(data, offset)
+	if err != nil || count > uint64(len(data)) {
+		return nil, offset, errors.New("invalid rpc field count")
+	}
+	fields := make([]Field, int(count))
+	for index := range fields {
+		var id uint64
+		id, offset, err = readWireUint(data, offset)
+		if err == nil && (id == 0 || id > uint64(^uint32(0))) {
+			err = errors.New("invalid rpc field ID")
+		}
+		fields[index].ID = uint32(id)
+		if err == nil {
+			fields[index].Value, offset, err = decodeValue(data, offset, depth + 1)
+		}
+		if err != nil {
+			return nil, offset, err
+		}
+	}
+	return fields, offset, nil
+}
+
+func encodeFFIRequest(request ffiRequest) ([]byte, error) {
+	data := appendWireString(nil, request.Version)
+	data = appendWireString(data, request.Operation)
+	data = appendWireString(data, request.Target)
+	data = appendWireUint(data, request.Lease)
+	data = appendWireString(data, request.Contract.Protocol)
+	data = appendWireUint(data, uint64(len(request.Contract.Methods)))
+	for _, method := range request.Contract.Methods {
+		data = appendWireMethod(data, method)
+	}
+	data = appendWireString(data, request.Options.AffinityKey)
+	keys := make([]string, 0, len(request.Options.Labels))
+	for key := range request.Options.Labels {
+		keys = append(keys, key)
+	}
+	for i := 0; i < len(keys); i++ {
+		for j := i + 1; j < len(keys); j++ {
+			if keys[j] < keys[i] {
+				keys[i], keys[j] = keys[j], keys[i]
+			}
+		}
+	}
+	data = appendWireUint(data, uint64(len(keys)))
+	for _, key := range keys {
+		data = appendWireString(data, key)
+		data = appendWireString(data, request.Options.Labels[key])
+	}
+	data = appendWireMethod(data, request.Method)
+	data = appendWireResource(data, request.Receiver)
+	data = appendWireBytes(data, request.Payload)
+	data = appendWireResource(data, request.Resource)
+	data = appendWireUint(data, request.RequestID)
+	data = appendWireString(data, request.Code)
+	data = appendWireString(data, request.Message)
+	data = appendWireInt(data, request.TimeoutNanoseconds)
+	return data, nil
+}
+
+func appendWireMethod(data []byte, method Method) []byte {
+	data = appendWireString(data, method.ID)
+	data = appendWireString(data, method.Service)
+	data = appendWireString(data, method.Name)
+	data = appendWireString(data, method.ContractHash)
+	return appendWireString(data, method.ResourceTypeHash)
+}
+
+func appendWireResource(data []byte, resource *Resource) []byte {
+	if resource == nil {
+		return append(data, 0)
+	}
+	data = append(data, 1)
+	data = appendWireUint(data, resource.Epoch)
+	data = appendWireUint(data, resource.ObjectID)
+	return appendWireString(data, resource.TypeHash)
+}
+
+func decodeFFIResponse(data []byte) (ffiResponse, error) {
+	response := ffiResponse{}
+	offset := 0
+	var err error
+	response.Version, offset, err = readWireString(data, offset)
+	if err == nil {
+		response.Operation, offset, err = readWireString(data, offset)
+	}
+	if err == nil {
+		response.Lease, offset, err = readWireUint(data, offset)
+	}
+	if err == nil {
+		response.RequestID, offset, err = readWireUint(data, offset)
+	}
+	if err == nil {
+		response.Method, offset, err = readWireMethod(data, offset)
+	}
+	if err == nil {
+		response.Receiver, offset, err = readWireResource(data, offset)
+	}
+	if err == nil {
+		response.Payload, offset, err = readWireBytes(data, offset)
+	}
+	if err == nil {
+		response.Code, offset, err = readWireString(data, offset)
+	}
+	if err == nil {
+		response.Message, offset, err = readWireString(data, offset)
+	}
+	if err != nil {
+		return ffiResponse{}, err
+	}
+	if offset != len(data) {
+		return ffiResponse{}, errors.New("rpc FFI response has trailing bytes")
+	}
+	return response, nil
+}
+
+func readWireMethod(data []byte, offset int) (Method, int, error) {
+	method := Method{}
+	var err error
+	method.ID, offset, err = readWireString(data, offset)
+	if err == nil {
+		method.Service, offset, err = readWireString(data, offset)
+	}
+	if err == nil {
+		method.Name, offset, err = readWireString(data, offset)
+	}
+	if err == nil {
+		method.ContractHash, offset, err = readWireString(data, offset)
+	}
+	if err == nil {
+		method.ResourceTypeHash, offset, err = readWireString(data, offset)
+	}
+	return method, offset, err
+}
+
+func readWireResource(data []byte, offset int) (*Resource, int, error) {
+	if offset >= len(data) {
+		return nil, offset, errors.New("truncated rpc resource")
+	}
+	present := data[offset]
+	offset++
+	if present == 0 {
+		return nil, offset, nil
+	}
+	if present != 1 {
+		return nil, offset, errors.New("invalid rpc resource marker")
+	}
+	resource := new(Resource)
+	var err error
+	resource.Epoch, offset, err = readWireUint(data, offset)
+	if err == nil {
+		resource.ObjectID, offset, err = readWireUint(data, offset)
+	}
+	if err == nil {
+		resource.TypeHash, offset, err = readWireString(data, offset)
+	}
+	return resource, offset, err
+}

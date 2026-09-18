@@ -1,0 +1,372 @@
+package fs
+
+import (
+	"errors"
+	"io"
+	"path"
+	"sort"
+	"unicode/utf8"
+)
+
+// ValidPath reports whether the given path name
+// is valid for use in a call to Open.
+//
+// Note that paths are slash-separated on all systems, even Windows.
+// Paths containing other characters such as backslash and colon
+// are accepted as valid, but those characters must never be
+// interpreted by an [FS] implementation as path element separators.
+// See the [Path Names] section for more details.
+//
+// [Path Names]: https://pkg.go.dev/io/fs#hdr-Path_Names
+func ValidPath(name string) bool {
+	if name == "." {
+		return true
+	}
+	if name == "" || !utf8.ValidString(name) || name[0] == byte('/') || len(name) > 0 && name[len(name) - 1] == byte('/') {
+		return false
+	}
+	start := 0
+	for i := 0; i <= len(name); i++ {
+		if i != len(name) && name[i] != byte('/') {
+			continue
+		}
+		part := name[start:i]
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+		start = i + 1
+	}
+	return true
+}
+
+// Stat returns a [FileInfo] describing the named file from the file system.
+//
+// If fs implements [StatFS], Stat calls fs.Stat.
+// Otherwise, Stat opens the [File] to stat it.
+func Stat(filesystem FS, name string) (FileInfo, error) {
+	if specialized, ok := filesystem.(StatFS); ok {
+		return specialized.Stat(name)
+	}
+	file, err := filesystem.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return file.Stat()
+}
+
+// Lstat returns a [FileInfo] describing the named file.
+// If the file is a symbolic link, the returned [FileInfo] describes the symbolic link.
+// Lstat makes no attempt to follow the link.
+//
+// If fsys does not implement [ReadLinkFS], then Lstat is identical to [Stat].
+func Lstat(filesystem FS, name string) (FileInfo, error) {
+	if specialized, ok := filesystem.(ReadLinkFS); ok {
+		return specialized.Lstat(name)
+	}
+	return Stat(filesystem, name)
+}
+
+// ReadLink returns the destination of the named symbolic link.
+//
+// If fsys does not implement [ReadLinkFS], then ReadLink returns an error.
+func ReadLink(filesystem FS, name string) (string, error) {
+	if specialized, ok := filesystem.(ReadLinkFS); ok {
+		return specialized.ReadLink(name)
+	}
+	return "", &PathError{Op: "readlink", Path: name, Err: ErrInvalid}
+}
+
+// ReadFile reads the named file from the file system fs and returns its contents.
+// A successful call returns a nil error, not [io.EOF].
+// (Because ReadFile reads the whole file, the expected EOF
+// from the final Read is not treated as an error to be reported.)
+//
+// If fs implements [ReadFileFS], ReadFile calls fs.ReadFile.
+// Otherwise ReadFile calls fs.Open and uses Read and Close
+// on the returned [File].
+func ReadFile(filesystem FS, name string) ([]byte, error) {
+	if specialized, ok := filesystem.(ReadFileFS); ok {
+		return specialized.ReadFile(name)
+	}
+	file, err := filesystem.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	data := []byte{}
+	buffer := make([]byte, 4096)
+	for {
+		n, readErr := file.Read(buffer)
+		if n > 0 {
+			data = append(data, buffer[:n]...)
+		}
+		if readErr == io.EOF {
+			return data, nil
+		}
+		if readErr != nil {
+			return data, readErr
+		}
+		if n == 0 {
+			return data, io.ErrNoProgress
+		}
+	}
+}
+
+// ReadDir reads the named directory
+// and returns a list of directory entries sorted by filename.
+//
+// If fs implements [ReadDirFS], ReadDir calls fs.ReadDir.
+// Otherwise ReadDir calls fs.Open and uses ReadDir and Close
+// on the returned file.
+func ReadDir(filesystem FS, name string) ([]DirEntry, error) {
+	if specialized, ok := filesystem.(ReadDirFS); ok {
+		entries, err := specialized.ReadDir(name)
+		sort.Slice(entries, func(i int, j int) bool {
+			return entries[i].Name() < entries[j].Name()
+		})
+		return entries, err
+	}
+	file, err := filesystem.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	directory, ok := file.(ReadDirFile)
+	if !ok {
+		return nil, &PathError{Op: "readdir", Path: name, Err: ErrInvalid}
+	}
+	entries, err := directory.ReadDir(-1)
+	sort.Slice(entries, func(i int, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
+	return entries, err
+}
+
+type subFS struct {
+	filesystem FS
+	dir string
+}
+
+func (s *subFS) full(op string, name string) (string, error) {
+	if !ValidPath(name) {
+		return "", &PathError{Op: op, Path: name, Err: ErrInvalid}
+	}
+	return path.Join(s.dir, name), nil
+}
+
+func (s *subFS) shorten(name string) (string, bool) {
+	if name == s.dir {
+		return ".", true
+	}
+	if len(name) >= len(s.dir) + 2 && name[len(s.dir)] == byte('/') && name[:len(s.dir)] == s.dir {
+		return name[len(s.dir) + 1:], true
+	}
+	return "", false
+}
+
+func (s *subFS) fixError(err error) error {
+	pathError, ok := err.(*PathError)
+	if ok {
+		shortened, valid := s.shorten(pathError.Path)
+		if valid {
+			pathError.Path = shortened
+		}
+	}
+	return err
+}
+
+func (s *subFS) Open(name string) (File, error) {
+	full, err := s.full("open", name)
+	if err != nil {
+		return nil, err
+	}
+	file, err := s.filesystem.Open(full)
+	return file, s.fixError(err)
+}
+
+func (s *subFS) ReadDir(name string) ([]DirEntry, error) {
+	full, err := s.full("read", name)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := ReadDir(s.filesystem, full)
+	return entries, s.fixError(err)
+}
+
+func (s *subFS) ReadFile(name string) ([]byte, error) {
+	full, err := s.full("read", name)
+	if err != nil {
+		return nil, err
+	}
+	data, err := ReadFile(s.filesystem, full)
+	return data, s.fixError(err)
+}
+
+func (s *subFS) Stat(name string) (FileInfo, error) {
+	full, err := s.full("stat", name)
+	if err != nil {
+		return nil, err
+	}
+	info, err := Stat(s.filesystem, full)
+	return info, s.fixError(err)
+}
+
+func (s *subFS) ReadLink(name string) (string, error) {
+	full, err := s.full("readlink", name)
+	if err != nil {
+		return "", err
+	}
+	target, err := ReadLink(s.filesystem, full)
+	return target, s.fixError(err)
+}
+
+func (s *subFS) Lstat(name string) (FileInfo, error) {
+	full, err := s.full("lstat", name)
+	if err != nil {
+		return nil, err
+	}
+	info, err := Lstat(s.filesystem, full)
+	return info, s.fixError(err)
+}
+
+func (s *subFS) Glob(pattern string) ([]string, error) {
+	if _, err := path.Match(pattern, ""); err != nil {
+		return nil, err
+	}
+	if pattern == "." {
+		return []string{"."}, nil
+	}
+	list, err := Glob(s.filesystem, s.dir + "/" + pattern)
+	for i, name := range list {
+		shortened, ok := s.shorten(name)
+		if !ok {
+			return nil, errors.New("invalid result from inner filesystem Glob")
+		}
+		list[i] = shortened
+	}
+	return list, s.fixError(err)
+}
+
+func (s *subFS) Sub(dir string) (FS, error) {
+	if dir == "." {
+		return s, nil
+	}
+	full, err := s.full("sub", dir)
+	if err != nil {
+		return nil, err
+	}
+	return &subFS{filesystem: s.filesystem, dir: full}, nil
+}
+
+// Sub returns an [FS] corresponding to the subtree rooted at fsys's dir.
+//
+// If dir is ".", Sub returns fsys unchanged.
+// Otherwise, if fs implements [SubFS], Sub returns fsys.Sub(dir).
+// Otherwise, Sub returns a new [FS] implementation sub that,
+// in effect, implements sub.Open(name) as fsys.Open(path.Join(dir, name)).
+// The implementation also translates calls to ReadDir, ReadFile,
+// ReadLink, Lstat, and Glob appropriately.
+//
+// Note that Sub(os.DirFS("/"), "prefix") is equivalent to os.DirFS("/prefix")
+// and that neither of them guarantees to avoid operating system
+// accesses outside "/prefix", because the implementation of [os.DirFS]
+// does not check for symbolic links inside "/prefix" that point to
+// other directories. That is, [os.DirFS] is not a general substitute for a
+// chroot-style security mechanism, and Sub does not change that fact.
+func Sub(filesystem FS, dir string) (FS, error) {
+	if !ValidPath(dir) {
+		return nil, &PathError{Op: "sub", Path: dir, Err: ErrInvalid}
+	}
+	if dir == "." {
+		return filesystem, nil
+	}
+	if specialized, ok := filesystem.(SubFS); ok {
+		return specialized.Sub(dir)
+	}
+	return &subFS{filesystem: filesystem, dir: dir}, nil
+}
+
+// Glob returns the names of all files matching pattern or nil
+// if there is no matching file. The syntax of patterns is the same
+// as in [path.Match]. The pattern may describe hierarchical names such as
+// usr/*/bin/ed.
+//
+// Glob ignores file system errors such as I/O errors reading directories.
+// The only possible returned error is [path.ErrBadPattern], reporting that
+// the pattern is malformed.
+//
+// If fs implements [GlobFS], Glob calls fs.Glob.
+// Otherwise, Glob uses [ReadDir] to traverse the directory tree
+// and look for matches for the pattern.
+func Glob(filesystem FS, pattern string) ([]string, error) {
+	return globWithDepth(filesystem, pattern, 0)
+}
+
+func globWithDepth(filesystem FS, pattern string, depth int) ([]string, error) {
+	if depth > 10000 {
+		return nil, path.ErrBadPattern
+	}
+	if specialized, ok := filesystem.(GlobFS); ok {
+		return specialized.Glob(pattern)
+	}
+	if _, err := path.Match(pattern, ""); err != nil {
+		return nil, err
+	}
+	if !globHasMeta(pattern) {
+		if _, err := Stat(filesystem, pattern); err != nil {
+			return nil, nil
+		}
+		return []string{pattern}, nil
+	}
+	dir, file := path.Split(pattern)
+	if dir == "" {
+		dir = "."
+	} else {
+		dir = dir[:len(dir) - 1]
+	}
+	if !globHasMeta(dir) {
+		return globDir(filesystem, dir, file, nil)
+	}
+	if dir == pattern {
+		return nil, path.ErrBadPattern
+	}
+	directories, err := globWithDepth(filesystem, dir, depth + 1)
+	if err != nil {
+		return nil, err
+	}
+	matches := []string{}
+	for _, directory := range directories {
+		matches, err = globDir(filesystem, directory, file, matches)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return matches, nil
+}
+
+func globDir(filesystem FS, dir string, pattern string, matches []string) ([]string, error) {
+	entries, err := ReadDir(filesystem, dir)
+	if err != nil {
+		return matches, nil
+	}
+	for _, entry := range entries {
+		matched, matchErr := path.Match(pattern, entry.Name())
+		if matchErr != nil {
+			return matches, matchErr
+		}
+		if matched {
+			matches = append(matches, path.Join(dir, entry.Name()))
+		}
+	}
+	return matches, nil
+}
+
+func globHasMeta(name string) bool {
+	for i := 0; i < len(name); i++ {
+		if name[i] == byte('*') || name[i] == byte('?') || name[i] == byte('[') || name[i] == byte('\\') {
+			return true
+		}
+	}
+	return false
+}

@@ -1,0 +1,230 @@
+// Copyright 2024 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license
+// that can be found in the LICENSE file.
+
+package reflect
+
+import "iter"
+
+// Fields returns an iterator over the fields of a struct type.
+func (typ runtimeType) Fields() iter.Seq[StructField] {
+	if typ.Kind() != Struct {
+		panic("reflect: Fields of non-struct type " + typ.String())
+	}
+	return func(yield func(StructField) bool) {
+		for index := 0; index < typ.NumField(); index++ {
+			if !yield(typ.Field(index)) {
+				return
+			}
+		}
+	}
+}
+
+// Methods returns an iterator over the methods of typ.
+func (typ runtimeType) Methods() iter.Seq[Method] {
+	return func(yield func(Method) bool) {
+		for index := 0; index < typ.NumMethod(); index++ {
+			if !yield(typ.Method(index)) {
+				return
+			}
+		}
+	}
+}
+
+// Ins returns an iterator over the input parameters of a function type.
+func (typ runtimeType) Ins() iter.Seq[Type] {
+	if typ.Kind() != Func {
+		panic("reflect: Ins of non-func type " + typ.String())
+	}
+	return func(yield func(Type) bool) {
+		for index := 0; index < typ.NumIn(); index++ {
+			if !yield(typ.In(index)) {
+				return
+			}
+		}
+	}
+}
+
+// Outs returns an iterator over the output parameters of a function type.
+func (typ runtimeType) Outs() iter.Seq[Type] {
+	if typ.Kind() != Func {
+		panic("reflect: Outs of non-func type " + typ.String())
+	}
+	return func(yield func(Type) bool) {
+		for index := 0; index < typ.NumOut(); index++ {
+			if !yield(typ.Out(index)) {
+				return
+			}
+		}
+	}
+}
+
+// Fields returns an iterator over the fields of a struct Value and their
+// metadata.
+func (value Value) Fields() iter.Seq2[StructField, Value] {
+	if value.Kind() != Struct {
+		panic("reflect: Fields of non-struct Value")
+	}
+	return func(yield func(StructField, Value) bool) {
+		typ := value.Type()
+		for index := 0; index < value.NumField(); index++ {
+			if !yield(typ.Field(index), value.Field(index)) {
+				return
+			}
+		}
+	}
+}
+
+// Methods returns an iterator over the methods of a Value and their metadata.
+func (value Value) Methods() iter.Seq2[Method, Value] {
+	return func(yield func(Method, Value) bool) {
+		typ := value.Type()
+		for index := 0; index < value.NumMethod(); index++ {
+			if !yield(typ.Method(index), value.Method(index)) {
+				return
+			}
+		}
+	}
+}
+
+// Seq returns an iter.Seq[Value] that loops over the elements of v.
+// Function values must have the range-over-function form func(func(T) bool).
+func (value Value) Seq() iter.Seq[Value] {
+	if value.Kind() == Func && value.Type().CanSeq() {
+		return func(yield func(Value) bool) {
+			callback := MakeFunc(value.Type().In(0), func(in []Value) []Value {
+				return []Value{ValueOf(yield(in[0]))}
+			})
+			value.Call([]Value{callback})
+		}
+	}
+	switch value.Kind() {
+		case Int, Int8, Int16, Int32, Int64:
+			return func(yield func(Value) bool) {
+				limit := value.Int()
+				for index := int64(0); index < limit; index++ {
+					item := ValueOf(index)
+					if item.Type() != value.Type() {
+						item = item.Convert(value.Type())
+					}
+					if !yield(item) {
+						return
+					}
+				}
+			}
+		case Uint, Uint8, Uint16, Uint32, Uint64, Uintptr:
+			return func(yield func(Value) bool) {
+				limit := value.Uint()
+				for index := uint64(0); index < limit; index++ {
+					item := ValueOf(index)
+					if item.Type() != value.Type() {
+						item = item.Convert(value.Type())
+					}
+					if !yield(item) {
+						return
+					}
+				}
+			}
+		case Pointer:
+			if value.Elem().Kind() != Array {
+				break
+			}
+			return func(yield func(Value) bool) {
+				array := value.Elem()
+				for index := 0; index < array.Len(); index++ {
+					if !yield(ValueOf(index)) {
+						return
+					}
+				}
+			}
+		case Array, Slice:
+			return func(yield func(Value) bool) {
+				length := value.Len()
+				for index := 0; index < length; index++ {
+					if !yield(ValueOf(index)) {
+						return
+					}
+				}
+			}
+		case String:
+			return func(yield func(Value) bool) {
+				for index := range value.String() {
+					if !yield(ValueOf(index)) {
+						return
+					}
+				}
+			}
+		case Map:
+			return func(yield func(Value) bool) {
+				iterator := value.MapRange()
+				for iterator.Next() {
+					if !yield(iterator.Key()) {
+						return
+					}
+				}
+			}
+		case Chan:
+			return func(yield func(Value) bool) {
+				for item, ok := value.Recv(); ok; item, ok = value.Recv() {
+					if !yield(item) {
+						return
+					}
+				}
+			}
+	}
+	panic("reflect: " + value.Type().String() + " cannot produce iter.Seq[Value]")
+}
+
+// Seq2 returns an iter.Seq2[Value, Value] that loops over the elements of v.
+// Function values must have the range-over-function form func(func(K, V) bool).
+func (value Value) Seq2() iter.Seq2[Value, Value] {
+	if value.Kind() == Func && value.Type().CanSeq2() {
+		return func(yield func(Value, Value) bool) {
+			callback := MakeFunc(value.Type().In(0), func(in []Value) []Value {
+				return []Value{ValueOf(yield(in[0], in[1]))}
+			})
+			value.Call([]Value{callback})
+		}
+	}
+	switch value.Kind() {
+		case Pointer:
+			if value.Elem().Kind() != Array {
+				break
+			}
+			return func(yield func(Value, Value) bool) {
+				array := value.Elem()
+				for index := 0; index < array.Len(); index++ {
+					if !yield(ValueOf(index), array.Index(index)) {
+						return
+					}
+				}
+			}
+		case Array, Slice:
+			return func(yield func(Value, Value) bool) {
+				length := value.Len()
+				for index := 0; index < length; index++ {
+					if !yield(ValueOf(index), value.Index(index)) {
+						return
+					}
+				}
+			}
+		case String:
+			return func(yield func(Value, Value) bool) {
+				for index, item := range value.String() {
+					if !yield(ValueOf(index), ValueOf(item)) {
+						return
+					}
+				}
+			}
+		case Map:
+			return func(yield func(Value, Value) bool) {
+				iterator := value.MapRange()
+				for iterator.Next() {
+					if !yield(iterator.Key(), iterator.Value()) {
+						return
+					}
+				}
+			}
+	}
+	panic("reflect: " + value.Type().String() + " cannot produce iter.Seq2[Value, Value]")
+}

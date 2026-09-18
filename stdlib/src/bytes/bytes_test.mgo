@@ -1,0 +1,134 @@
+package bytes_test
+
+import (
+	"bytes"
+	"io"
+	"testing"
+)
+
+func TestBytesCompareSearchTrim(t *testing.T) {
+	if !bytes.Equal([]byte("go"), []byte("go")) {
+		t.Fatalf("Equal should match equal slices")
+	}
+	if bytes.Compare([]byte("a"), []byte("b")) >= 0 {
+		t.Fatalf("Compare should order byte slices")
+	}
+	if !bytes.Contains([]byte("mini-go"), []byte("mini")) {
+		t.Fatalf("Contains should find byte slice")
+	}
+	if string(bytes.TrimSpace([]byte(" mini-go\n"))) != "mini-go" {
+		t.Fatalf("TrimSpace returned wrong value")
+	}
+}
+
+func TestBytesBufferWriter(t *testing.T) {
+	var buffer bytes.Buffer
+	var writer interface {
+		Write([]byte) (int, error)
+	} = &buffer
+	n, err := writer.Write([]byte("mi"))
+	if err != nil {
+		t.Fatalf("Buffer.Write returned error: %v", err)
+	}
+	if n != 2 || buffer.String() != "mi" || string(buffer.Bytes()) != "mi" || buffer.Len() != 2 {
+		t.Fatalf("Buffer.Write wrote wrong state")
+	}
+	n, err = buffer.WriteString("ni-go")
+	if err != nil || n != 5 {
+		t.Fatalf("Buffer.WriteString returned wrong result")
+	}
+	if err := buffer.WriteByte(byte('!')); err != nil {
+		t.Fatalf("Buffer.WriteByte returned error: %v", err)
+	}
+	runeN, runeErr := buffer.WriteRune('世')
+	if runeErr != nil || runeN != len([]byte("世")) {
+		t.Fatalf("Buffer.WriteRune returned wrong result")
+	}
+	if buffer.String() != "mini-go!世" {
+		t.Fatalf("Buffer.String returned wrong value: %s", buffer.String())
+	}
+	if buffer.Cap() < buffer.Len() || buffer.Available() != buffer.Cap() - buffer.Len() {
+		t.Fatalf("Buffer capacity accounting is inconsistent")
+	}
+	peeked, peekErr := buffer.Peek(2)
+	if peekErr != nil || string(peeked) != "mi" || string(buffer.Next(3)) != "min" {
+		t.Fatalf("Buffer Peek/Next returned wrong data")
+	}
+	line, lineErr := buffer.ReadString(byte('!'))
+	if lineErr != nil || line != "i-go!" {
+		t.Fatalf("Buffer ReadString returned wrong data")
+	}
+	buffer.Reset()
+	if buffer.Len() != 0 || buffer.String() != "" {
+		t.Fatalf("Buffer.Reset did not clear the buffer")
+	}
+}
+
+func TestBytesReaderAndBufferInterfaces(t *testing.T) {
+	reader := bytes.NewReader([]byte("go世"))
+	var readerAt io.ReaderAt = reader
+	part := make([]byte, 3)
+	n, err := readerAt.ReadAt(part, 2)
+	if n != 3 || err != nil || string(part) != "世" {
+		t.Fatalf("ReaderAt returned wrong result: %d, %s, %v", n, string(part), err)
+	}
+	value, size, err := reader.ReadRune()
+	if value != 'g' || size != 1 || err != nil {
+		t.Fatalf("ReadRune returned wrong result: %d, %d, %v", value, size, err)
+	}
+	if err := reader.UnreadRune(); err != nil {
+		t.Fatalf("UnreadRune returned error: %v", err)
+	}
+	byteValue, byteErr := reader.ReadByte()
+	if byteValue != byte('g') || byteErr != nil {
+		t.Fatalf("ReadByte returned wrong result: %d, %v", byteValue, byteErr)
+	}
+	if err := reader.UnreadByte(); err != nil {
+		t.Fatalf("UnreadByte returned error: %v", err)
+	}
+	var seeker io.Seeker = reader
+	position, err := seeker.Seek(2, io.SeekStart)
+	if position != 2 || err != nil {
+		t.Fatalf("Seek returned wrong result: %d, %v", position, err)
+	}
+	value, size, err = reader.ReadRune()
+	if value != '世' || size != len([]byte("世")) || err != nil {
+		t.Fatalf("UTF-8 ReadRune returned wrong result: %d, %d, %v", value, size, err)
+	}
+	buffer := &bytes.Buffer{}
+	var readWriter io.ReadWriter = buffer
+	if n, err := readWriter.Write([]byte("go世")); n != len([]byte("go世")) || err != nil {
+		t.Fatalf("Buffer Write returned wrong result: %d, %v", n, err)
+	}
+	value, size, err = buffer.ReadRune()
+	if value != 'g' || size != 1 || err != nil {
+		t.Fatalf("Buffer ReadRune returned wrong result: %d, %d, %v", value, size, err)
+	}
+	if err := buffer.UnreadRune(); err != nil {
+		t.Fatalf("Buffer UnreadRune returned error: %v", err)
+	}
+	byteValue, byteErr = buffer.ReadByte()
+	if byteValue != byte('g') || byteErr != nil {
+		t.Fatalf("Buffer ReadByte returned wrong result: %d, %v", byteValue, byteErr)
+	}
+	if err := buffer.UnreadByte(); err != nil {
+		t.Fatalf("Buffer UnreadByte returned error: %v", err)
+	}
+	from := &bytes.Buffer{}
+	var readerFrom io.ReaderFrom = from
+	count, err := readerFrom.ReadFrom(bytes.NewReader([]byte("reader-from")))
+	if count != 11 || err != nil || from.String() != "reader-from" {
+		t.Fatalf("ReaderFrom returned wrong result: %d, %q, %v", count, from.String(), err)
+	}
+	to := &bytes.Buffer{}
+	var writerTo io.WriterTo = bytes.NewReader([]byte("writer-to"))
+	count, err = writerTo.WriteTo(to)
+	if count != 9 || err != nil || to.String() != "writer-to" {
+		t.Fatalf("WriterTo returned wrong result: %d, %q, %v", count, to.String(), err)
+	}
+	optimized := &bytes.Buffer{}
+	count, err = io.Copy(optimized, bytes.NewReader([]byte("copy")))
+	if count != 4 || err != nil || optimized.String() != "copy" {
+		t.Fatalf("io.Copy returned wrong result: %d, %q, %v", count, optimized.String(), err)
+	}
+}

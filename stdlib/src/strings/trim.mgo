@@ -1,0 +1,163 @@
+package strings
+
+import (
+	"unicode"
+	"unicode/utf8"
+)
+
+func trimLeftSpace(s string) string {
+	if s == "" {
+		return s
+	}
+	for i, value := range s {
+		if !unicode.IsSpace(value) {
+			return s[i:]
+		}
+	}
+	return ""
+}
+
+func trimRightSpace(s string) string {
+	end := len(s)
+	for end > 0 {
+		value, size := utf8.DecodeLastRuneInString(s[:end])
+		if !unicode.IsSpace(value) {
+			break
+		}
+		end -= size
+	}
+	return s[:end]
+}
+
+func containsCutsetRune(cutset string, value rune) bool {
+	if value >= 0 && value < utf8.RuneSelf {
+		asciiOnly := true
+		for i := 0; i < len(cutset); i++ {
+			if cutset[i] >= utf8.RuneSelf {
+				asciiOnly = false
+				break
+			}
+			if rune(cutset[i]) == value {
+				return true
+			}
+		}
+		if asciiOnly {
+			return false
+		}
+	}
+	for _, candidate := range cutset {
+		if candidate == value {
+			return true
+		}
+	}
+	return false
+}
+
+// Trim returns a slice of the string s with all leading and
+// trailing Unicode code points contained in cutset removed.
+func Trim(s string, cutset string) string {
+	return TrimRight(TrimLeft(s, cutset), cutset)
+}
+
+// TrimLeft returns a slice of the string s with all leading
+// Unicode code points contained in cutset removed.
+//
+// To remove a prefix, use [TrimPrefix] instead.
+func TrimLeft(s string, cutset string) string {
+	if s == "" || cutset == "" {
+		return s
+	}
+	for i, value := range s {
+		if !containsCutsetRune(cutset, value) {
+			return s[i:]
+		}
+	}
+	return ""
+}
+
+// TrimRight returns a slice of the string s, with all trailing
+// Unicode code points contained in cutset removed.
+//
+// To remove a suffix, use [TrimSuffix] instead.
+func TrimRight(s string, cutset string) string {
+	end := len(s)
+	for end > 0 && cutset != "" {
+		value, size := utf8.DecodeLastRuneInString(s[:end])
+		if !containsCutsetRune(cutset, value) {
+			break
+		}
+		end -= size
+	}
+	return s[:end]
+}
+
+// TrimFunc returns a slice of the string s with all leading
+// and trailing Unicode code points c satisfying f(c) removed.
+func TrimFunc(s string, f func(rune) bool) string {
+	return TrimRightFunc(TrimLeftFunc(s, f), f)
+}
+
+// TrimLeftFunc returns a slice of the string s with all leading
+// Unicode code points c satisfying f(c) removed.
+func TrimLeftFunc(s string, f func(rune) bool) string {
+	if s == "" {
+		return s
+	}
+	for i, value := range s {
+		if !f(value) {
+			return s[i:]
+		}
+	}
+	return ""
+}
+
+// TrimRightFunc returns a slice of the string s with all trailing
+// Unicode code points c satisfying f(c) removed.
+func TrimRightFunc(s string, f func(rune) bool) string {
+	end := len(s)
+	for end > 0 {
+		value, size := utf8.DecodeLastRuneInString(s[:end])
+		if !f(value) {
+			break
+		}
+		end -= size
+	}
+	return s[:end]
+}
+
+// TrimSpace returns a slice (substring) of the string s,
+// with all leading and trailing white space removed,
+// as defined by Unicode.
+func TrimSpace(s string) string {
+	if s == "" {
+		return s
+	}
+	first := s[0]
+	last := s[len(s) - 1]
+	if first > 32 && first < 128 && last > 32 && last < 128 {
+		return s
+	}
+	return trimRightSpace(trimLeftSpace(s))
+}
+
+// TrimPrefix returns s without the provided leading prefix string.
+// If s doesn't start with prefix, s is returned unchanged.
+func TrimPrefix(s string, prefix string) string {
+	if HasPrefix(s, prefix) {
+		out := ""
+		out = s[len(prefix):]
+		return out
+	}
+	return s
+}
+
+// TrimSuffix returns s without the provided trailing suffix string.
+// If s doesn't end with suffix, s is returned unchanged.
+func TrimSuffix(s string, suffix string) string {
+	if HasSuffix(s, suffix) {
+		out := ""
+		out = s[:len(s) - len(suffix)]
+		return out
+	}
+	return s
+}

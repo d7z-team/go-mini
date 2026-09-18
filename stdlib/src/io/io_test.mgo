@@ -1,0 +1,226 @@
+package io_test
+
+import (
+	"io"
+	"testing"
+)
+
+type memoryReader struct {
+	data []byte
+	offset int
+}
+
+func (r *memoryReader) Read(p []byte) (n int, err error) {
+	if r.offset >= len(r.data) {
+		return 0, io.EOF
+	}
+	n = len(p)
+	if len(r.data) - r.offset < n {
+		n = len(r.data) - r.offset
+	}
+	copy(p[:n], r.data[r.offset:r.offset + n])
+	r.offset += n
+	return n, nil
+}
+
+type memoryWriter struct {
+	data []byte
+}
+
+func (w *memoryWriter) Write(p []byte) (n int, err error) {
+	w.data = append(w.data, p...)
+	return len(p), nil
+}
+
+type textWriter struct {
+	text string
+}
+
+func (w *textWriter) Write(p []byte) (n int, err error) {
+	w.text += string(p)
+	return len(p), nil
+}
+
+func (w *textWriter) WriteString(text string) (n int, err error) {
+	w.text += text
+	return len(text), nil
+}
+
+type shortWriter struct{}
+
+func (w shortWriter) Write(p []byte) (n int, err error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	return len(p) - 1, nil
+}
+
+type memoryReaderAt struct {
+	data []byte
+}
+
+func (r *memoryReaderAt) ReadAt(p []byte, offset int64) (n int, err error) {
+	if offset < 0 || offset >= int64(len(r.data)) {
+		return 0, io.EOF
+	}
+	n = len(p)
+	if int64(n) > int64(len(r.data)) - offset {
+		n = int(int64(len(r.data)) - offset)
+	}
+	start := int(offset)
+	copy(p[:n], r.data[start:start + n])
+	if n < len(p) {
+		return n, io.EOF
+	}
+	return n, nil
+}
+
+type writerToReader struct {
+	data []byte
+}
+
+func (r *writerToReader) Read(p []byte) (n int, err error) {
+	return 0, io.EOF
+}
+
+func (r *writerToReader) WriteTo(w io.Writer) (n int64, err error) {
+	written, err := w.Write(r.data)
+	return int64(written), err
+}
+
+type readerFromWriter struct {
+	data []byte
+}
+
+func (w *readerFromWriter) Write(p []byte) (n int, err error) {
+	w.data = append(w.data, p...)
+	return len(p), nil
+}
+
+func (w *readerFromWriter) ReadFrom(r io.Reader) (n int64, err error) {
+	data, err := io.ReadAll(r)
+	w.data = append(w.data, data...)
+	return int64(len(data)), err
+}
+
+func TestIOTransferHelpers(t *testing.T) {
+	data, err := io.ReadAll(&memoryReader{data: []byte("mini-go")})
+	if err != nil || string(data) != "mini-go" {
+		t.Fatalf("ReadAll returned wrong result: %q, %v", string(data), err)
+	}
+	writer := &memoryWriter{}
+	written, err := io.Copy(writer, &memoryReader{data: []byte("artifact")})
+	if err != nil || written != 8 || string(writer.data) != "artifact" {
+		t.Fatalf("Copy returned wrong result: %d, %q, %v", written, string(writer.data), err)
+	}
+	writer = &memoryWriter{}
+	written, err = io.CopyN(writer, &memoryReader{data: []byte("abcdef")}, 3)
+	if err != nil || written != 3 || string(writer.data) != "abc" {
+		t.Fatalf("CopyN returned wrong result: %d, %q, %v", written, string(writer.data), err)
+	}
+	writer = &memoryWriter{}
+	written, err = io.CopyN(writer, &memoryReader{data: []byte("ab")}, 3)
+	if written != 2 || err != io.ErrUnexpectedEOF || string(writer.data) != "ab" {
+		t.Fatalf("CopyN short source returned wrong result: %d, %q, %v", written, string(writer.data), err)
+	}
+	limited, err := io.ReadAll(io.LimitReader(&memoryReader{data: []byte("abcdef")}, 3))
+	if err != nil || string(limited) != "abc" {
+		t.Fatalf("LimitReader returned wrong result: %q, %v", string(limited), err)
+	}
+}
+
+func TestIOReadersAndWriters(t *testing.T) {
+	first := &memoryReader{data: []byte("mini")}
+	second := &memoryReader{data: []byte("-go")}
+	combined, err := io.ReadAll(io.MultiReader(first, second))
+	if err != nil || string(combined) != "mini-go" {
+		t.Fatalf("MultiReader returned wrong result: %q, %v", string(combined), err)
+	}
+	sink := &memoryWriter{}
+	teeData, err := io.ReadAll(io.TeeReader(&memoryReader{data: []byte("tee")}, sink))
+	if err != nil || string(teeData) != "tee" || string(sink.data) != "tee" {
+		t.Fatalf("TeeReader returned wrong result: %q, %q, %v", string(teeData), string(sink.data), err)
+	}
+	left := &memoryWriter{}
+	right := &memoryWriter{}
+	multi := io.MultiWriter(left, right)
+	if n, err := multi.Write([]byte("both")); n != 4 || err != nil || string(left.data) != "both" || string(right.data) != "both" {
+		t.Fatalf("MultiWriter returned wrong result: %d, %q, %q, %v", n, string(left.data), string(right.data), err)
+	}
+	if n, err := io.MultiWriter(shortWriter{}).Write([]byte("short")); n != 4 || err != io.ErrShortWrite {
+		t.Fatalf("MultiWriter short write returned wrong result: %d, %v", n, err)
+	}
+	if n, err := io.WriteString(&textWriter{}, "text"); n != 4 || err != nil {
+		t.Fatalf("WriteString returned wrong result: %d, %v", n, err)
+	}
+	if n, err := io.Discard.Write([]byte("discard")); n != 7 || err != nil {
+		t.Fatalf("Discard returned wrong result: %d, %v", n, err)
+	}
+}
+
+func TestIOReadFullAndNopCloser(t *testing.T) {
+	buffer := make([]byte, 4)
+	n, err := io.ReadFull(&memoryReader{data: []byte("full")}, buffer)
+	if n != 4 || err != nil || string(buffer) != "full" {
+		t.Fatalf("ReadFull returned wrong result: %d, %q, %v", n, string(buffer), err)
+	}
+	buffer = make([]byte, 3)
+	n, err = io.ReadFull(&memoryReader{data: []byte("x")}, buffer)
+	if n != 1 || err != io.ErrUnexpectedEOF || string(buffer[:1]) != "x" {
+		t.Fatalf("ReadFull short source returned wrong result: %d, %q, %v", n, string(buffer[:1]), err)
+	}
+	if _, err = io.ReadAtLeast(&memoryReader{data: []byte("x")}, make([]byte, 1), 2); err != io.ErrShortBuffer {
+		t.Fatalf("ReadAtLeast short buffer returned wrong error: %v", err)
+	}
+	var reader io.Reader = &memoryReader{data: []byte("close")}
+	closer := io.NopCloser(reader)
+	if _, ok := closer.(io.ReadCloser); !ok {
+		t.Fatalf("NopCloser did not return ReadCloser")
+	}
+	data, err := io.ReadAll(closer)
+	if err != nil || string(data) != "close" || closer.Close() != nil {
+		t.Fatalf("NopCloser returned wrong result: %q, %v", string(data), err)
+	}
+	if io.SeekStart != 0 || io.SeekCurrent != 1 || io.SeekEnd != 2 {
+		t.Fatalf("seek constants are incorrect")
+	}
+}
+
+func TestIOReaderOptimizationsAndSection(t *testing.T) {
+	optimizedWriter := &memoryWriter{}
+	writerToSource := &writerToReader{data: []byte("writer-to")}
+	var reader io.Reader = writerToSource
+	if _, ok := reader.(io.WriterTo); !ok {
+		t.Fatalf("Reader did not assert to WriterTo")
+	}
+	written, err := io.Copy(optimizedWriter, reader)
+	if err != nil || written != 9 || string(optimizedWriter.data) != "writer-to" {
+		t.Fatalf("WriterTo optimization returned wrong result: %d, %q, %v", written, string(optimizedWriter.data), err)
+	}
+	optimizedReader := &readerFromWriter{}
+	readerFromSource := &memoryReader{data: []byte("reader-from")}
+	written, err = io.Copy(optimizedReader, readerFromSource)
+	if err != nil || written != 11 || string(optimizedReader.data) != "reader-from" {
+		t.Fatalf("ReaderFrom optimization returned wrong result: %d, %q, %v", written, string(optimizedReader.data), err)
+	}
+	section := io.NewSectionReader(&memoryReaderAt{data: []byte("0123456789")}, 2, 5)
+	if section.Size() != 5 {
+		t.Fatalf("SectionReader reported wrong size: %d", section.Size())
+	}
+	part := make([]byte, 2)
+	n, err := section.ReadAt(part, 1)
+	if n != 2 || err != nil || string(part) != "34" {
+		t.Fatalf("SectionReader ReadAt returned wrong result: %d, %q, %v", n, string(part), err)
+	}
+	position, err := section.Seek(-2, io.SeekEnd)
+	if position != 3 || err != nil {
+		t.Fatalf("SectionReader Seek returned wrong result: %d, %v", position, err)
+	}
+	n, err = section.Read(part)
+	if n != 2 || err != nil || string(part) != "56" {
+		t.Fatalf("SectionReader Read returned wrong result: %d, %q, %v", n, string(part), err)
+	}
+	if _, err = section.Seek(-1, io.SeekStart); err == nil {
+		t.Fatalf("SectionReader accepted negative position")
+	}
+}

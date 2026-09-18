@@ -1,0 +1,21 @@
+package main
+
+import . "example/lib"
+import . "example/initializer"
+
+func Imported() int {
+	value := Identity(Box[int]{Value: Plus(2)})
+	fn := Identity[int]
+	values := []Box[int]{{Value: fn(value.Value)}}
+	rows := Wrap([]int{values[0].Value})
+	return Keep(Identity(rows[0])[0])
+}
+
+func Local[T any](v T) int {
+	return Value()
+}
+
+func Shadowed() int {
+	Value := func() int { return 7 }
+	return Value()
+}

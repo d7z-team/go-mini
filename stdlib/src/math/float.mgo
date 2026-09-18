@@ -1,0 +1,70 @@
+package math
+
+const (
+	uvnan = 0x7ff8000000000001
+	uvinf = 0x7ff0000000000000
+	uvneginf = 0xfff0000000000000
+	uvone = 0x3ff0000000000000
+	mask = 0x7ff
+	shift = 64 - 11 - 1
+	bias = 1023
+	signMask = 1 << 63
+	fracMask = 1 << shift - 1
+)
+
+// Inf returns positive infinity if sign is non-negative and negative infinity otherwise.
+func Inf(sign int) float64 {
+	if sign < 0 {
+		return Float64frombits(uvneginf)
+	}
+	return Float64frombits(uvinf)
+}
+
+// NaN returns an IEEE 754 not-a-number value.
+func NaN() float64 {
+	return Float64frombits(uvnan)
+}
+
+// IsNaN reports whether f is an IEEE 754 “not-a-number” value.
+func IsNaN(f float64) bool {
+	return f != f
+}
+
+// IsInf reports whether f is an infinity, according to sign.
+// If sign > 0, IsInf reports whether f is positive infinity.
+// If sign < 0, IsInf reports whether f is negative infinity.
+// If sign == 0, IsInf reports whether f is either infinity.
+func IsInf(f float64, sign int) bool {
+	if IsNaN(f) {
+		return false
+	}
+	if sign > 0 {
+		return f > 0 && f == f / 2
+	}
+	if sign < 0 {
+		return f < 0 && f == f / 2
+	}
+	return IsInf(f, 1) || IsInf(f, -1)
+}
+
+// Trunc returns the integer value of x.
+//
+// Special cases are:
+//
+// 	Trunc(±0) = ±0
+// 	Trunc(±Inf) = ±Inf
+// 	Trunc(NaN) = NaN
+func Trunc(f float64) float64 {
+	if IsNaN(f) || IsInf(f, 0) || f == 0 {
+		return f
+	}
+	return float64(int64(f))
+}
+
+func normalize(value float64) (float64, int) {
+	const smallestNormal = 2.2250738585072014e-308
+	if Abs(value) < smallestNormal {
+		return value * (1 << 52), -52
+	}
+	return value, 0
+}

@@ -1,0 +1,121 @@
+package fnv
+
+import (
+	"encoding/binary"
+	"errors"
+	"hash"
+)
+
+func stateMagic(size int, alternate bool) string {
+	if size == 4 {
+		if alternate {
+			return "fnv\x02"
+		}
+		return "fnv\x01"
+	}
+	if size == 8 {
+		if alternate {
+			return "fnv\x04"
+		}
+		return "fnv\x03"
+	}
+	if alternate {
+		return "fnv\x06"
+	}
+	return "fnv\x05"
+}
+
+// AppendBinary appends the encoded hash state to buffer and returns the extended buffer.
+func (s *sum32) AppendBinary(buffer []byte) ([]byte, error) {
+	buffer = append(buffer, []byte(stateMagic(4, s.alternate))...)
+	return binary.BigEndian.AppendUint32(buffer, s.value), nil
+}
+
+// MarshalBinary returns the encoded hash state.
+func (s *sum32) MarshalBinary() ([]byte, error) {
+	return s.AppendBinary([]byte{})
+}
+
+// UnmarshalBinary restores a hash state encoded by the same FNV variant.
+func (s *sum32) UnmarshalBinary(data []byte) error {
+	magic := stateMagic(4, s.alternate)
+	if len(data) < len(magic) || string(data[:len(magic)]) != magic {
+		return errors.New("hash/fnv: invalid hash state identifier")
+	}
+	if len(data) != len(magic) + 4 {
+		return errors.New("hash/fnv: invalid hash state size")
+	}
+	value := binary.BigEndian.Uint32(data[len(magic):])
+	s.value = value
+	return nil
+}
+
+// Clone returns an independent copy of the hash state.
+func (s *sum32) Clone() (hash.Cloner, error) {
+	clone := *s
+	return &clone, nil
+}
+
+// AppendBinary appends the encoded hash state to buffer and returns the extended buffer.
+func (s *sum64) AppendBinary(buffer []byte) ([]byte, error) {
+	buffer = append(buffer, []byte(stateMagic(8, s.alternate))...)
+	return binary.BigEndian.AppendUint64(buffer, s.value), nil
+}
+
+// MarshalBinary returns the encoded hash state.
+func (s *sum64) MarshalBinary() ([]byte, error) {
+	return s.AppendBinary([]byte{})
+}
+
+// UnmarshalBinary restores a hash state encoded by the same FNV variant.
+func (s *sum64) UnmarshalBinary(data []byte) error {
+	magic := stateMagic(8, s.alternate)
+	if len(data) < len(magic) || string(data[:len(magic)]) != magic {
+		return errors.New("hash/fnv: invalid hash state identifier")
+	}
+	if len(data) != len(magic) + 8 {
+		return errors.New("hash/fnv: invalid hash state size")
+	}
+	value := binary.BigEndian.Uint64(data[len(magic):])
+	s.value = value
+	return nil
+}
+
+// Clone returns an independent copy of the hash state.
+func (s *sum64) Clone() (hash.Cloner, error) {
+	clone := *s
+	return &clone, nil
+}
+
+// AppendBinary appends the encoded hash state to buffer and returns the extended buffer.
+func (s *sum128) AppendBinary(buffer []byte) ([]byte, error) {
+	buffer = append(buffer, []byte(stateMagic(16, s.alternate))...)
+	buffer = binary.BigEndian.AppendUint64(buffer, s.high)
+	return binary.BigEndian.AppendUint64(buffer, s.low), nil
+}
+
+// MarshalBinary returns the encoded hash state.
+func (s *sum128) MarshalBinary() ([]byte, error) {
+	return s.AppendBinary([]byte{})
+}
+
+// UnmarshalBinary restores a hash state encoded by the same FNV variant.
+func (s *sum128) UnmarshalBinary(data []byte) error {
+	magic := stateMagic(16, s.alternate)
+	if len(data) < len(magic) || string(data[:len(magic)]) != magic {
+		return errors.New("hash/fnv: invalid hash state identifier")
+	}
+	if len(data) != len(magic) + 16 {
+		return errors.New("hash/fnv: invalid hash state size")
+	}
+	high := binary.BigEndian.Uint64(data[len(magic):])
+	low := binary.BigEndian.Uint64(data[len(magic) + 8:])
+	s.high, s.low = high, low
+	return nil
+}
+
+// Clone returns an independent copy of the hash state.
+func (s *sum128) Clone() (hash.Cloner, error) {
+	clone := *s
+	return &clone, nil
+}

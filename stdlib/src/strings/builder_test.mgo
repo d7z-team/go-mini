@@ -1,0 +1,68 @@
+package strings_test
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestStringBuilder(t *testing.T) {
+	var builder strings.Builder
+	if builder.Len() != 0 || builder.Cap() != 0 || builder.String() != "" {
+		t.Fatalf("zero Builder has incorrect state")
+	}
+	if n, err := builder.WriteString("go"); n != 2 || err != nil {
+		t.Fatalf("WriteString returned wrong result")
+	}
+	if err := builder.WriteByte(' '); err != nil {
+		t.Fatalf("WriteByte returned an error")
+	}
+	if n, err := builder.WriteRune('中'); n != 3 || err != nil {
+		t.Fatalf("WriteRune returned wrong UTF-8 result")
+	}
+	if builder.String() != "go 中" || builder.Len() != 6 {
+		t.Fatalf("Builder returned wrong UTF-8 content")
+	}
+	oldCapacity := builder.Cap()
+	builder.Grow(32)
+	if builder.Cap() < builder.Len() + 32 || builder.Cap() < oldCapacity {
+		t.Fatalf("Grow did not reserve the requested capacity")
+	}
+	if n, err := builder.Write([]byte(" mini")); n != 5 || err != nil {
+		t.Fatalf("Write returned wrong result")
+	}
+	if builder.String() != "go 中 mini" {
+		t.Fatalf("Write changed Builder content incorrectly")
+	}
+	long := strings.Repeat("compiler", 512)
+	if n, err := builder.WriteString(long); n != len(long) || err != nil {
+		t.Fatalf("WriteString returned wrong result for a long string")
+	}
+	if !strings.HasSuffix(builder.String(), long) {
+		t.Fatalf("WriteString lost long string content")
+	}
+	if n, err := builder.WriteString(""); n != 0 || err != nil {
+		t.Fatalf("WriteString returned wrong result for an empty string")
+	}
+	builder.Reset()
+	if builder.Len() != 0 || builder.String() != "" || builder.Cap() < oldCapacity {
+		t.Fatalf("Reset did not preserve the Builder capacity")
+	}
+	expectPanic(t, func() {
+		(&builder).Grow(-1)
+	})
+}
+
+func expectPanic(t *testing.T, fn func()) {
+	didPanic := false
+	func() {
+		defer func() {
+			if recover() != nil {
+				didPanic = true
+			}
+		}()
+		fn()
+	}()
+	if !didPanic {
+		t.Fatalf("expected panic")
+	}
+}

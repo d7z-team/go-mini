@@ -1,0 +1,3 @@
+package main
+import "reflect"
+func Main() int { typ := reflect.TypeOf(int(0)); p := reflect.New(typ); p.Elem().SetInt(40); s := reflect.MakeSlice(reflect.SliceOf(typ), 1, 4); s.SetLen(2); s.SetCap(3); if reflect.PointerTo(typ) != p.Type() { return -1 }; return int(p.Elem().Int()) + s.Len() }

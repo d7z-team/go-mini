@@ -1,0 +1,35 @@
+package os
+
+import (
+	"rpc"
+	"sync"
+)
+
+var environment *environmentClient
+
+var environmentMu sync.Mutex
+
+func hostEnvironment() *environmentClient {
+	environmentMu.Lock()
+	defer environmentMu.Unlock()
+	if environment == nil {
+		environment = newEnvironmentClient(rpc.ClientOptions{})
+	}
+	return environment
+}
+
+// LookupEnv retrieves the value of the environment variable named by key.
+// An unavailable host or failed lookup is reported as a missing variable.
+func LookupEnv(key string) (string, bool) {
+	value, found, err := hostEnvironment().Lookup(key)
+	if err != nil {
+		return "", false
+	}
+	return value, found
+}
+
+// Getenv retrieves the value of the environment variable named by key.
+func Getenv(key string) string {
+	value, _ := LookupEnv(key)
+	return value
+}

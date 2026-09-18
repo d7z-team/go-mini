@@ -1,0 +1,34 @@
+[
+  {
+    "module":{"path":"test","package":"main"},
+    "requirements":[{"kind":"source","module_path":"first","exports":["Value"]},{"kind":"source","module_path":"second","exports":["Value"]}],
+    "functions":[{"id":"fn.Main","signature":{"results":[{"kind":3,"primitive":3}]},"instructions":[
+      {"op":"load_export","payload":{"module_path":"first","export":"Value"}},
+      {"op":"pop"},
+      {"op":"address_of","payload":{"kind":"export","module_path":"second","export":"Value"}},
+      {"op":"load_indirect"},
+      {"op":"return","payload":{"result_count":1}}
+    ]}]
+  },
+  {
+    "module":{"path":"first","package":"first"},
+    "globals":[{"id":"value","type":{"kind":3,"primitive":3}}],
+    "exports":[{"name":"Value","kind":"global","id":"value","type":{"kind":3,"primitive":3}}],
+    "functions":[{"id":"fn.init","instructions":[
+      {"op":"zero","payload":{"type":{"kind":3,"primitive":3}}},
+      {"op":"store_global","payload":{"global":"value"}},
+      {"op":"return","payload":{}}
+    ]}]
+  },
+  {
+    "module":{"path":"second","package":"second"},
+    "constants":[{"id":"answer","type":{"kind":3,"primitive":3},"value":42}],
+    "globals":[{"id":"value","type":{"kind":3,"primitive":3}}],
+    "exports":[{"name":"Value","kind":"global","id":"value","type":{"kind":3,"primitive":3}}],
+    "functions":[{"id":"fn.init","instructions":[
+      {"op":"const","payload":{"constant":"answer"}},
+      {"op":"store_global","payload":{"global":"value"}},
+      {"op":"return","payload":{}}
+    ]}]
+  }
+]

@@ -1,0 +1,42 @@
+package hex_test
+
+import (
+	"bytes"
+	"encoding/hex"
+	"testing"
+)
+
+func TestHexCodec(t *testing.T) {
+	if hex.EncodeToString([]byte{0, 15, 255}) != "000fff" {
+		t.Fatal("EncodeToString returned the wrong text")
+	}
+	decoded, err := hex.DecodeString("48656c6c6f")
+	if err != nil || string(decoded) != "Hello" {
+		t.Fatalf("DecodeString returned %q, %v", string(decoded), err)
+	}
+	if _, err = hex.DecodeString("abc"); err == nil {
+		t.Fatal("DecodeString accepted odd input")
+	}
+	dst := hex.AppendEncode([]byte("prefix:"), []byte{1, 2, 254})
+	if string(dst) != "prefix:0102fe" {
+		t.Fatalf("AppendEncode returned %q", string(dst))
+	}
+}
+
+func TestHexDump(t *testing.T) {
+	const want = "00000000  4d 69 6e 69 2d 47 6f                              |Mini-Go|\n"
+	if got := hex.Dump([]byte("Mini-Go")); got != want {
+		t.Fatalf("Dump = %q", got)
+	}
+	var output bytes.Buffer
+	dumper := hex.Dumper(&output)
+	if _, err := dumper.Write([]byte("Mini-")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dumper.Write([]byte("Go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := dumper.Close(); err != nil || output.String() != want {
+		t.Fatalf("Dumper = %q, %v", output.String(), err)
+	}
+}

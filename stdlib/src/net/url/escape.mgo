@@ -1,0 +1,126 @@
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license.
+// Adapted for the Mini-Go runtime-neutral standard library.
+
+// Package url parses URLs and implements query escaping.
+//
+// See RFC 3986. This package generally follows RFC 3986, except where
+// it deviates for compatibility reasons.
+// RFC 6874 followed for IPv6 zone literals.
+package url
+
+// EscapeError reports an invalid URL escape sequence.
+type EscapeError string
+
+// Error returns a description of the invalid URL escape sequence.
+func (e EscapeError) Error() string {
+	return "invalid URL escape " + string(e)
+}
+
+// InvalidHostError reports an invalid character in a URL host name.
+type InvalidHostError string
+
+// Error returns a description of the invalid host name.
+func (e InvalidHostError) Error() string {
+	return "invalid character " + string(e) + " in host name"
+}
+
+const upperhex = "0123456789ABCDEF"
+
+func shouldEscape(value byte, query bool) bool {
+	if value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value >= '0' && value <= '9' {
+		return false
+	}
+	switch value {
+		case '-', '_', '.', '~':
+			return false
+		case '/', ':', '@':
+			return query
+	}
+	return true
+}
+
+func escape(value string, component bool, spaceAsPlus bool) string {
+	out := []byte{}
+	for i := 0; i < len(value); i++ {
+		current := value[i]
+		if spaceAsPlus && current == ' ' {
+			out = append(out, '+')
+		} else if shouldEscape(current, component) {
+			out = append(out, '%', upperhex[current >> 4], upperhex[current & 15])
+		} else {
+			out = append(out, current)
+		}
+	}
+	return string(out)
+}
+
+func fromHex(value byte) (byte, bool) {
+	if value >= '0' && value <= '9' {
+		return value - '0', true
+	}
+	if value >= 'a' && value <= 'f' {
+		return value - 'a' + 10, true
+	}
+	if value >= 'A' && value <= 'F' {
+		return value - 'A' + 10, true
+	}
+	return 0, false
+}
+
+func unescape(value string, query bool) (string, error) {
+	out := []byte{}
+	for i := 0; i < len(value); i++ {
+		if query && value[i] == '+' {
+			out = append(out, ' ')
+			continue
+		}
+		if value[i] != '%' {
+			out = append(out, value[i])
+			continue
+		}
+		if i + 2 >= len(value) {
+			return "", EscapeError(value[i:])
+		}
+		high, highOK := fromHex(value[i + 1])
+		low, lowOK := fromHex(value[i + 2])
+		if !highOK || !lowOK {
+			return "", EscapeError(value[i:i + 3])
+		}
+		out = append(out, high << 4 | low)
+		i += 2
+	}
+	return string(out), nil
+}
+
+// QueryEscape escapes the string so it can be safely placed
+// inside a [URL] query.
+func QueryEscape(value string) string {
+	return escape(value, true, true)
+}
+
+// QueryUnescape does the inverse transformation of [QueryEscape],
+// converting each 3-byte encoded substring of the form "%AB" into the
+// hex-decoded byte 0xAB.
+// It returns an error if any % is not followed by two hexadecimal
+// digits.
+func QueryUnescape(value string) (string, error) {
+	return unescape(value, true)
+}
+
+// PathEscape escapes the string so it can be safely placed inside a [URL] path segment,
+// replacing special characters (including /) with %XX sequences as needed.
+func PathEscape(value string) string {
+	return escape(value, true, false)
+}
+
+// PathUnescape does the inverse transformation of [PathEscape],
+// converting each 3-byte encoded substring of the form "%AB" into the
+// hex-decoded byte 0xAB. It returns an error if any % is not followed
+// by two hexadecimal digits.
+//
+// PathUnescape is identical to [QueryUnescape] except that it does not
+// unescape '+' to ' ' (space).
+func PathUnescape(value string) (string, error) {
+	return unescape(value, false)
+}

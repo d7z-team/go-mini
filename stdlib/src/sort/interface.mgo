@@ -1,0 +1,131 @@
+package sort
+
+// Sort sorts data in ascending order as determined by Less.
+func Sort(data Interface) {
+	for i := 1; i < data.Len(); i++ {
+		for j := i; j > 0 && data.Less(j, j - 1); j-- {
+			data.Swap(j, j - 1)
+		}
+	}
+}
+
+// Stable sorts data while preserving the original order of equal elements.
+func Stable(data Interface) {
+	Sort(data)
+}
+
+// IsSorted reports whether data is sorted in ascending order.
+func IsSorted(data Interface) bool {
+	for i := data.Len() - 1; i > 0; i-- {
+		if data.Less(i, i - 1) {
+			return false
+		}
+	}
+	return true
+}
+
+type reverse struct {
+	data Interface
+}
+
+func (r *reverse) Len() int {
+	return r.data.Len()
+}
+
+func (r *reverse) Less(i int, j int) bool {
+	return r.data.Less(j, i)
+}
+
+func (r *reverse) Swap(i int, j int) {
+	r.data.Swap(i, j)
+}
+
+// Reverse returns the reverse order for data.
+func Reverse(data Interface) Interface {
+	return &reverse{data: data}
+}
+
+// IntSlice attaches Interface methods to []int.
+type IntSlice []int
+
+// Len returns the number of elements in x.
+func (x IntSlice) Len() int {
+	return len(x)
+}
+
+// Less reports whether x[i] should sort before x[j].
+func (x IntSlice) Less(i, j int) bool {
+	return x[i] < x[j]
+}
+
+// Swap exchanges x[i] and x[j].
+func (x IntSlice) Swap(i, j int) {
+	x[i], x[j] = x[j], x[i]
+}
+
+// Sort sorts x in increasing order.
+func (x IntSlice) Sort() {
+	Sort(x)
+}
+
+// Search returns the result of SearchInts(x, target).
+func (x IntSlice) Search(target int) int {
+	return SearchInts(x, target)
+}
+
+// StringSlice attaches Interface methods to []string.
+type StringSlice []string
+
+// Len returns the number of elements in x.
+func (x StringSlice) Len() int {
+	return len(x)
+}
+
+// Less reports whether x[i] should sort before x[j].
+func (x StringSlice) Less(i, j int) bool {
+	return x[i] < x[j]
+}
+
+// Swap exchanges x[i] and x[j].
+func (x StringSlice) Swap(i, j int) {
+	x[i], x[j] = x[j], x[i]
+}
+
+// Sort sorts x in increasing order.
+func (x StringSlice) Sort() {
+	Sort(x)
+}
+
+// Search returns the result of SearchStrings(x, target).
+func (x StringSlice) Search(target string) int {
+	return SearchStrings(x, target)
+}
+
+// Float64Slice attaches Interface methods to []float64. NaN values sort before
+// all other values.
+type Float64Slice []float64
+
+// Len returns the number of elements in x.
+func (x Float64Slice) Len() int {
+	return len(x)
+}
+
+// Less reports whether x[i] should sort before x[j], with NaN values first.
+func (x Float64Slice) Less(i, j int) bool {
+	return x[i] < x[j] || x[i] != x[i] && x[j] == x[j]
+}
+
+// Swap exchanges x[i] and x[j].
+func (x Float64Slice) Swap(i, j int) {
+	x[i], x[j] = x[j], x[i]
+}
+
+// Sort sorts x in increasing order with NaN values first.
+func (x Float64Slice) Sort() {
+	Sort(x)
+}
+
+// Search returns the result of SearchFloat64s(x, target).
+func (x Float64Slice) Search(target float64) int {
+	return SearchFloat64s(x, target)
+}

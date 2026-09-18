@@ -1,0 +1,97 @@
+package utf8_test
+
+import (
+	"testing"
+	"unicode/utf8"
+)
+
+func TestDecodeAndFullRune(t *testing.T) {
+	r, size := utf8.DecodeRune([]byte("A"))
+	if r != 'A' || size != 1 {
+		t.Fatalf("DecodeRune ASCII failed")
+	}
+	r, size = utf8.DecodeRune([]byte("é"))
+	if r != 'é' || size != 2 {
+		t.Fatalf("DecodeRune two-byte failed")
+	}
+	r, size = utf8.DecodeRune([]byte("界"))
+	if r != '界' || size != 3 {
+		t.Fatalf("DecodeRune three-byte failed")
+	}
+	r, size = utf8.DecodeRune([]byte("😀"))
+	if r != rune(128512) || size != 4 {
+		t.Fatalf("DecodeRune four-byte failed")
+	}
+	r, size = utf8.DecodeRune([]byte{})
+	if r != utf8.RuneError || size != 0 {
+		t.Fatalf("DecodeRune empty failed")
+	}
+	r, size = utf8.DecodeRune([]byte{byte(255)})
+	if r != utf8.RuneError || size != 1 {
+		t.Fatalf("DecodeRune invalid leading byte failed")
+	}
+	r, size = utf8.DecodeRune([]byte{byte(226), byte(130)})
+	if r != utf8.RuneError || size != 1 {
+		t.Fatalf("DecodeRune truncated sequence failed")
+	}
+	r, size = utf8.DecodeRuneInString("界")
+	if r != '界' || size != 3 {
+		t.Fatalf("DecodeRuneInString failed")
+	}
+	if !utf8.FullRune([]byte("é")) || utf8.FullRune([]byte{byte(195)}) || !utf8.FullRune([]byte{byte(255)}) {
+		t.Fatalf("FullRune returned wrong result")
+	}
+	if !utf8.FullRuneInString("界") || utf8.FullRuneInString("") {
+		t.Fatalf("FullRuneInString returned wrong result")
+	}
+}
+
+func TestEncodeAndAppendRune(t *testing.T) {
+	buf := []byte{0, 0, 0, 0}
+	size := utf8.EncodeRune(buf, '界')
+	if size != 3 || string(buf[:size]) != "界" {
+		t.Fatalf("EncodeRune three-byte failed")
+	}
+	buf = []byte{0, 0, 0, 0}
+	size = utf8.EncodeRune(buf, rune(128512))
+	if size != 4 || string(buf[:size]) != "😀" {
+		t.Fatalf("EncodeRune four-byte failed")
+	}
+	out := utf8.AppendRune([]byte("go"), '界')
+	out = utf8.AppendRune(out, rune(128512))
+	if string(out) != "go界😀" {
+		t.Fatalf("AppendRune failed")
+	}
+	if utf8.RuneLen('A') != 1 || utf8.RuneLen('é') != 2 || utf8.RuneLen('界') != 3 || utf8.RuneLen(rune(128512)) != 4 {
+		t.Fatalf("RuneLen valid matrix failed")
+	}
+	if utf8.RuneLen(rune(55296)) != -1 || utf8.RuneLen(rune(1114112)) != -1 {
+		t.Fatalf("RuneLen invalid matrix failed")
+	}
+}
+
+func TestCountAndValid(t *testing.T) {
+	runes := []rune("A界😀")
+	if len(runes) != 3 || runes[0] != 'A' || runes[1] != '界' || runes[2] != rune(128512) {
+		t.Fatalf("string to rune slice conversion failed")
+	}
+	bytes := []byte("界")
+	if len(bytes) != 3 || bytes[0] != byte(231) || bytes[1] != byte(149) || bytes[2] != byte(140) {
+		t.Fatalf("string to byte slice conversion = %v", bytes)
+	}
+	if utf8.RuneCount([]byte("go界😀")) != 4 || utf8.RuneCountInString("go界😀") != 4 {
+		t.Fatalf("RuneCount failed")
+	}
+	if !utf8.Valid([]byte("go界😀")) || !utf8.ValidString("go界😀") {
+		t.Fatalf("Valid accepted valid UTF-8 as invalid")
+	}
+	if !utf8.Valid([]byte{byte(239), byte(191), byte(189)}) {
+		t.Fatalf("Valid should accept encoded RuneError")
+	}
+	if utf8.Valid([]byte{byte(192), byte(128)}) || utf8.Valid([]byte{byte(237), byte(160), byte(128)}) || utf8.Valid([]byte{byte(244), byte(144), byte(128), byte(128)}) {
+		t.Fatalf("Valid accepted invalid UTF-8")
+	}
+	if !utf8.ValidRune('界') || !utf8.ValidRune(rune(128512)) || utf8.ValidRune(rune(55296)) || utf8.ValidRune(rune(1114112)) {
+		t.Fatalf("ValidRune failed")
+	}
+}

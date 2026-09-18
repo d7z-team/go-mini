@@ -1,0 +1,127 @@
+package rpc
+
+type resourceKey struct {
+	epoch uint64
+	object uint64
+	typeHash string
+}
+
+// CallResult owns resources in a completed call until Accept or Discard.
+type CallResult struct {
+	// Values contains the wire values pending acceptance by typed decoding.
+	Values []Value
+	client *Client
+	lease uint64
+	requestID uint64
+	finished bool
+	owned []*Resource
+}
+
+// CallOwned leaves returned resources pending until typed decoding succeeds.
+func (c *Client) CallOwned(method Method, receiver *Resource, arguments []Value) (*CallResult, error) {
+	lease, err := c.ensureLease()
+	if err != nil {
+		return nil, err
+	}
+	payload, err := encodeValues(arguments)
+	if err != nil {
+		return nil, err
+	}
+	response, err := callFFI(ffiRequest{Operation: "call_owned", Lease: lease, Method: method, Receiver: receiver, Payload: payload}, c.timeoutNanoseconds)
+	if err != nil {
+		return nil, err
+	}
+	result := &CallResult{client: c, lease: lease, requestID: response.RequestID}
+	values, err := decodeValues(response.Payload)
+	if err != nil {
+		result.Discard()
+		return nil, err
+	}
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		result.Discard()
+		return nil, NewError("not_found", "client closed while call was pending")
+	}
+	if c.resources == nil {
+		c.resources = make(map[resourceKey]*Resource)
+	}
+	result.Values = values
+	for i := range values {
+		resource := values[i].Resource
+		if resource != nil {
+			key := resourceKey{resource.Epoch, resource.ObjectID, resource.TypeHash}
+			if shared := c.resources[key]; shared != nil {
+				values[i].Resource = shared
+			} else {
+				resource.client = c
+				c.resources[key] = resource
+				result.owned = append(result.owned, resource)
+			}
+		}
+	}
+	c.mu.Unlock()
+	return result, nil
+}
+
+// Accept transfers the decoded resources to the caller.
+func (r *CallResult) Accept() error {
+	if r == nil || r.finished {
+		return NewError("protocol", "call result is already finished")
+	}
+	_, err := callFFI(ffiRequest{Operation: "accept_result", Lease: r.lease, RequestID: r.requestID}, r.client.timeoutNanoseconds)
+	if err != nil {
+		r.Discard()
+		return err
+	}
+	r.finished = true
+	r.owned = nil
+	return nil
+}
+
+// Discard releases unaccepted resources. Repeated calls are harmless.
+func (r *CallResult) Discard() error {
+	if r == nil || r.finished {
+		return nil
+	}
+	r.finished = true
+	_, err := callFFI(ffiRequest{Operation: "discard_result", Lease: r.lease, RequestID: r.requestID}, 0)
+	r.client.mu.Lock()
+	for _, resource := range r.owned {
+		key := resourceKey{resource.Epoch, resource.ObjectID, resource.TypeHash}
+		delete(r.client.resources, key)
+		resource.ObjectID = 0
+	}
+	r.client.mu.Unlock()
+	r.owned = nil
+	r.Values = nil
+	return err
+}
+
+// Reference checks that a generated handle belongs to this live client.
+func (c *Client) Reference(resource *Resource, typeHash string) (Value, error) {
+	if c == nil || resource == nil {
+		return Value{}, NewError("invalid_argument", "nil resource or client")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if resource.ObjectID == 0 || resource.client != c || resource.TypeHash != typeHash {
+		return Value{}, NewError("invalid_argument", "resource is closed or belongs to another binding")
+	}
+	if c.closed {
+		return Value{}, NewError("not_found", "client is closed")
+	}
+	ref := *resource
+	return Value{Type: typeHash, Kind: "resource", Resource: &ref}, nil
+}
+
+// DecodeResource validates a pending resource returned to this client.
+func (c *Client) DecodeResource(value Value, typeHash string) (*Resource, error) {
+	if value.Type != typeHash || value.Kind != "resource" || value.Resource == nil || value.Resource.Epoch == 0 {
+		return nil, NewError("protocol", "invalid resource value")
+	}
+	if _, err := c.Reference(value.Resource, typeHash); err != nil {
+		return nil, err
+	}
+	return value.Resource, nil
+}

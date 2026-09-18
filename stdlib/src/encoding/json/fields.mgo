@@ -1,0 +1,129 @@
+package json
+
+import (
+	"reflect"
+	"strings"
+	"unicode"
+)
+
+type fieldSearch struct {
+	typ reflect.Type
+	index []int
+	ancestors []reflect.Type
+}
+
+func jsonVisibleFields(typ reflect.Type) []jsonStructField {
+	queue := []fieldSearch{{typ: typ}}
+	var fields []jsonStructField
+	counts := map[string]int{}
+	indexes := map[string]int{}
+	for head := 0; head < len(queue); head++ {
+		current := queue[head]
+		cycle := false
+		for _, ancestor := range current.ancestors {
+			if ancestor == current.typ {
+				cycle = true
+			}
+		}
+		if cycle {
+			continue
+		}
+		ancestors := append(append([]reflect.Type{}, current.ancestors...), current.typ)
+		for i := 0; i < current.typ.NumField(); i++ {
+			field := current.typ.Field(i)
+			tag := field.Tag.Get("json")
+			if tag == "-" {
+				continue
+			}
+			name := tagName(tag)
+			for _, r := range name {
+				if !unicode.IsLetter(r) && !unicode.IsDigit(r) && !strings.ContainsRune("!#$%&()*+-./:;<=>?@[]^_{|}~ ", r) {
+					name = ""
+					break
+				}
+			}
+			index := append(append([]int{}, current.index...), i)
+			underlying := field.Type
+			if underlying.Kind() == reflect.Pointer {
+				underlying = underlying.Elem()
+			}
+			if field.Anonymous && name == "" && underlying.Kind() == reflect.Struct {
+				queue = append(queue, fieldSearch{typ: underlying, index: index, ancestors: ancestors})
+				continue
+			}
+			if !isExportedName(field.Name) {
+				continue
+			}
+			tagged := name != ""
+			if name == "" {
+				name = field.Name
+			}
+			field.Index = index
+			candidate := jsonStructField{Field: field, Name: name, Tagged: tagged, OmitEmpty: tagHasOption(tag, "omitempty"), OmitZero: tagHasOption(tag, "omitzero"), Quoted: tagHasOption(tag, "string")}
+			previous, exists := indexes[name]
+			if !exists {
+				indexes[name] = len(fields)
+				fields = append(fields, candidate)
+				counts[name] = 1
+				continue
+			}
+			old := fields[previous]
+			if len(old.Field.Index) < len(index) {
+				continue
+			}
+			if old.Tagged && !tagged {
+				continue
+			}
+			if tagged && !old.Tagged {
+				fields[previous] = candidate
+				counts[name] = 1
+				continue
+			}
+			counts[name]++
+		}
+	}
+	var result []jsonStructField
+	for _, field := range fields {
+		if counts[field.Name] == 1 {
+			result = append(result, field)
+		}
+	}
+	// Declaration index order, including fields reached through embeddings.
+	for i := 1; i < len(result); i++ {
+		for j := i; j > 0; j-- {
+			left, right := result[j - 1].Field.Index, result[j].Field.Index
+			before := false
+			for k := 0; k < len(left) && k < len(right); k++ {
+				if left[k] != right[k] {
+					before = right[k] < left[k]
+					break
+				}
+			}
+			if !before {
+				break
+			}
+			result[j - 1], result[j] = result[j], result[j - 1]
+		}
+	}
+	return result
+}
+
+func jsonFieldValue(value reflect.Value, index []int, allocate bool) reflect.Value {
+	for _, i := range index {
+		if value.Kind() == reflect.Pointer {
+			if value.IsNil() {
+				if !allocate || !value.CanSet() {
+					return reflect.Value{}
+				}
+				value.Set(reflect.New(value.Type().Elem()))
+			}
+			value = value.Elem()
+		}
+		value = value.Field(i)
+	}
+	return value
+}
+
+func jsonQuotedKind(kind reflect.Kind) bool {
+	return kind == reflect.Bool || kind == reflect.String || kind >= reflect.Int && kind <= reflect.Float64
+}

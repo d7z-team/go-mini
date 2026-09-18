@@ -1,0 +1,757 @@
+// Package fmt implements Go-compatible string formatting and wrapped-error construction for Mini-Go values.
+package fmt
+
+import (
+	"reflect"
+	"strconv"
+	"strings"
+	"unicode/utf8"
+)
+
+// State represents the printer state passed to a custom Formatter.
+type State interface {
+	// Write appends formatted output.
+	Write([]byte) (int, error)
+	// Width returns the requested field width and whether it was specified.
+	Width() (int, bool)
+	// Precision returns the requested precision and whether it was specified.
+	Precision() (int, bool)
+	// Flag reports whether the specified formatting flag was provided.
+	Flag(int) bool
+}
+
+// Formatter is implemented by values with a custom format operation.
+type Formatter interface {
+	// Format writes the custom representation of the receiver.
+	Format(State, rune)
+}
+
+type printerState struct {
+	output strings.Builder
+	width int
+	precision int
+	flags string
+}
+
+func (p *printerState) Write(data []byte) (int, error) {
+	return p.output.Write(data)
+}
+
+func (p *printerState) Width() (int, bool) {
+	if p.width < 0 {
+		return 0, false
+	}
+	return p.width, true
+}
+
+func (p *printerState) Precision() (int, bool) {
+	if p.precision < 0 {
+		return 0, false
+	}
+	return p.precision, true
+}
+
+func (p *printerState) Flag(flag int) bool {
+	return strings.ContainsRune(p.flags, rune(flag))
+}
+
+// Stringer is implemented by values with a String method.
+type Stringer interface {
+	// String returns the string representation of the receiver.
+	String() string
+}
+
+// GoStringer is implemented by values with a GoString method.
+type GoStringer interface {
+	// GoString returns the Go-syntax representation of the receiver.
+	GoString() string
+}
+
+type errorString struct {
+	text string
+}
+
+func (e *errorString) Error() string {
+	return e.text
+}
+
+type wrapError struct {
+	text string
+	err error
+}
+
+type wrapErrors struct {
+	text string
+	errs []error
+}
+
+func (e *wrapErrors) Error() string {
+	return e.text
+}
+
+func (e *wrapErrors) Unwrap() []error {
+	return e.errs
+}
+
+func (e *wrapError) Error() string {
+	return e.text
+}
+
+func (e *wrapError) Unwrap() error {
+	return e.err
+}
+
+// Sprint formats using the default formats for its operands and returns the resulting string.
+// Spaces are added between operands when neither is a string.
+func Sprint(args ...any) string {
+	out := ""
+	for i := 0; i < len(args); i++ {
+		if i > 0 && sprintNeedsSpace(args[i - 1], args[i]) {
+			out += " "
+		}
+		out += formatValue(args[i])
+	}
+	return out
+}
+
+// Sprintf formats according to a format specifier and returns the resulting string.
+func Sprintf(format string, args ...any) string {
+	out, _ := formatf(format, args, false)
+	return out
+}
+
+// Errorf formats according to a format specifier and returns the string as a
+// value that satisfies error.
+//
+// If the format specifier includes one or more %w verbs with error operands,
+// the returned error unwraps to those operands in argument order.
+// It is invalid to supply the %w verb with an operand that does not implement
+// the error interface. The %w verb is otherwise a synonym for %v.
+func Errorf(format string, args ...any) error {
+	text, wrapped := formatf(format, args, true)
+	if len(wrapped) == 1 {
+		e := new(wrapError)
+		e.text = text
+		e.err = wrapped[0]
+		return e
+	}
+	if len(wrapped) > 1 {
+		e := new(wrapErrors)
+		e.text = text
+		e.errs = wrapped
+		return e
+	}
+	e := new(errorString)
+	e.text = text
+	return e
+}
+
+func formatf(format string, args []any, wrap bool) (string, []error) {
+	out := ""
+	argIndex := 0
+	reordered := false
+	wrapped := []error{}
+	wrappedArguments := map[int]error{}
+	for i := 0; i < len(format); i++ {
+		ch := format[i:i + 1]
+		if ch != "%" {
+			out += ch
+			continue
+		}
+		if i + 1 >= len(format) {
+			out += "%!(NOVERB)"
+			continue
+		}
+		i++
+		badIndex := false
+		flags := ""
+		for i < len(format) && strings.Contains("#+- 0", format[i:i + 1]) {
+			flags += format[i:i + 1]
+			i++
+		}
+		if i < len(format) && format[i:i + 1] == "[" {
+			index, next, ok := parseArgumentIndex(format, i)
+			reordered = true
+			i = next
+			if ok && index < len(args) {
+				argIndex = index
+			} else {
+				badIndex = true
+			}
+		}
+		width := -1
+		if i < len(format) && format[i:i + 1] == "*" {
+			if argIndex < len(args) && validIntegerArgument(args[argIndex]) {
+				width = integerArgument(args[argIndex])
+				if width < 0 {
+					width = -width
+					flags += "-"
+				}
+				argIndex++
+			} else {
+				out += "%!(BADWIDTH)"
+				if argIndex < len(args) {
+					argIndex++
+				}
+			}
+			i++
+		} else {
+			width, i = parseDecimal(format, i)
+		}
+		precision := -1
+		if i < len(format) && format[i:i + 1] == "." {
+			i++
+			precision = 0
+			if i < len(format) && format[i] == '[' {
+				index, next, ok := parseArgumentIndex(format, i)
+				reordered = true
+				i = next
+				if ok && index < len(args) {
+					argIndex = index
+				} else {
+					badIndex = true
+				}
+			}
+			if i < len(format) && format[i:i + 1] == "*" {
+				if argIndex < len(args) && validIntegerArgument(args[argIndex]) {
+					precision = integerArgument(args[argIndex])
+					argIndex++
+					if precision < 0 {
+						precision = -1
+						out += "%!(BADPREC)"
+					}
+				} else {
+					precision = -1
+					out += "%!(BADPREC)"
+					if argIndex < len(args) {
+						argIndex++
+					}
+				}
+				i++
+			} else {
+				precision, i = parseDecimal(format, i)
+				if precision < 0 {
+					precision = 0
+				}
+			}
+		}
+		if i < len(format) && format[i] == '[' {
+			index, next, ok := parseArgumentIndex(format, i)
+			reordered = true
+			i = next
+			if ok && index < len(args) {
+				argIndex = index
+			} else {
+				badIndex = true
+			}
+		}
+		if i >= len(format) {
+			out += "%!(NOVERB)"
+			break
+		}
+		verb := format[i:i + 1]
+		if verb == "%" {
+			out += "%"
+			continue
+		}
+		if badIndex {
+			out += "%!" + verb + "(BADINDEX)"
+			continue
+		}
+		if argIndex >= len(args) {
+			out += "%!" + verb + "(MISSING)"
+			continue
+		}
+		value := args[argIndex]
+		if verb == "w" {
+			if err, ok := value.(error); wrap && value != nil && ok {
+				wrappedArguments[argIndex] = err
+				verb = "v"
+			} else {
+				out += "%!w(" + formatOperand(value, "T", "", -1) + "=" + formatValue(value) + ")"
+				argIndex++
+				continue
+			}
+		}
+		argIndex++
+		if width < -1 {
+			width = -width
+			flags += "-"
+		}
+		out += printOperand(value, verb, flags, width, precision)
+	}
+	if !reordered && argIndex < len(args) {
+		out += "%!(EXTRA "
+		for i := argIndex; i < len(args); i++ {
+			if i > argIndex {
+				out += ", "
+			}
+			if args[i] == nil {
+				out += "<nil>"
+			} else {
+				out += reflect.TypeOf(args[i]).String() + "=" + formatValue(args[i])
+			}
+		}
+		out += ")"
+	}
+	for i := range args {
+		if err, ok := wrappedArguments[i]; ok {
+			wrapped = append(wrapped, err)
+		}
+	}
+	return out, wrapped
+}
+
+func parseArgumentIndex(format string, start int) (int, int, bool) {
+	value := 0
+	i := start + 1
+	for i < len(format) && format[i] >= '0' && format[i] <= '9' {
+		if value <= 1000000 {
+			value = value * 10 + int(format[i] - '0')
+		}
+		i++
+	}
+	if i >= len(format) || format[i:i + 1] != "]" || value <= 0 {
+		if i < len(format) && format[i] == ']' {
+			i++
+		}
+		return 0, i, false
+	}
+	return value - 1, i + 1, true
+}
+
+func parseDecimal(format string, start int) (int, int) {
+	if start >= len(format) || format[start] < '0' || format[start] > '9' {
+		return -1, start
+	}
+	value := 0
+	for start < len(format) && format[start] >= '0' && format[start] <= '9' {
+		if value <= 1000000 {
+			value = value * 10 + int(format[start] - '0')
+		}
+		start++
+	}
+	if value > 1000000 {
+		return -1, start
+	}
+	return value, start
+}
+
+func validIntegerArgument(value any) bool {
+	v := reflect.ValueOf(value)
+	if v.Kind() < reflect.Int || v.Kind() > reflect.Uintptr {
+		return false
+	}
+	if v.Kind() <= reflect.Int64 {
+		return v.Int() >= -1000000 && v.Int() <= 1000000
+	}
+	return v.Uint() <= 1000000
+}
+
+func printOperand(value any, verb string, flags string, width int, precision int) (text string) {
+	method := "String"
+	defer func() {
+		if failure := recover(); failure != nil {
+			v := reflect.ValueOf(value)
+			if v.Kind() == reflect.Pointer && v.IsNil() {
+				text = "<nil>"
+				return
+			}
+			text = "%!" + verb + "(PANIC=" + method + " method: " + formatReflect(reflect.ValueOf(failure), false) + ")"
+		}
+	}()
+	if value != nil && verb != "T" && verb != "p" {
+		if formatter, ok := value.(Formatter); ok {
+			method = "Format"
+			state := &printerState{width: width, precision: precision, flags: flags}
+			formatter.Format(state, rune(verb[0]))
+			return state.output.String()
+		}
+	}
+	if verb == "v" && strings.Contains(flags, "#") {
+		method = "GoString"
+		if goStringer, ok := value.(GoStringer); ok {
+			value = goStringer.GoString()
+		}
+	} else if strings.Contains("vsqxX", verb) {
+		if err, ok := value.(error); ok {
+			method = "Error"
+			value = err.Error()
+		} else if stringer, ok := value.(Stringer); ok {
+			value = stringer.String()
+		}
+	}
+	kind := reflect.ValueOf(value).Kind()
+	if kind >= reflect.Int && kind <= reflect.Uintptr && precision < 0 && width >= 0 && strings.Contains(flags, "0") && !strings.Contains(flags, "-") && strings.Contains("dboxXO", verb) {
+		precision = width
+		if strings.HasPrefix(formatInteger(value, 10), "-") || strings.ContainsAny(flags, "+ ") {
+			precision--
+		}
+	}
+	text = formatOperand(value, verb, flags, precision)
+	if precision >= 0 && kind >= reflect.Int && kind <= reflect.Uintptr {
+		flags = strings.ReplaceAll(flags, "0", "")
+	}
+	return applyWidth(text, width, flags)
+}
+
+func integerArgument(value any) int {
+	v := reflect.ValueOf(value)
+	if v.Kind() >= reflect.Int && v.Kind() <= reflect.Int64 {
+		return int(v.Int())
+	}
+	if v.Kind() >= reflect.Uint && v.Kind() <= reflect.Uintptr {
+		return int(v.Uint())
+	}
+	return -1
+}
+
+func formatOperand(value any, verb string, flags string, precision int) string {
+	if verb == "T" {
+		if value == nil {
+			return "<nil>"
+		}
+		return reflect.TypeOf(value).String()
+	}
+	reflected := reflect.ValueOf(value)
+	kind := reflected.Kind()
+	if (kind == reflect.Float32 || kind == reflect.Float64 || kind == reflect.Complex64 || kind == reflect.Complex128) && strings.Contains("beEfFgGxX", verb) {
+		if verb == "F" {
+			verb = "f"
+		}
+		if precision < 0 && strings.Contains("eEf", verb) {
+			precision = 6
+		}
+		bits := reflected.Type().Bits()
+		if kind == reflect.Complex64 || kind == reflect.Complex128 {
+			return "(" + formatFloatPart(real(reflected.Complex()), verb[0], flags, precision, bits / 2) + formatFloatPart(imag(reflected.Complex()), verb[0], flags + "+", precision, bits / 2) + "i)"
+		}
+		return formatFloatPart(reflected.Float(), verb[0], flags, precision, bits)
+	}
+	if kind == reflect.String {
+		value = reflected.String()
+	}
+	if (kind == reflect.Slice || kind == reflect.Array) && reflected.Type().Elem().Kind() == reflect.Uint8 && strings.Contains("sqxX", verb) {
+		data := make([]byte, reflected.Len())
+		for i := range data {
+			data[i] = byte(reflected.Index(i).Uint())
+		}
+		value = string(data)
+		kind = reflect.String
+	}
+	integer := kind >= reflect.Int && kind <= reflect.Uintptr
+	validVerb := verb == "v"
+	switch kind {
+		case reflect.String:
+			validVerb = validVerb || strings.Contains("sqxX", verb)
+		case reflect.Bool:
+			validVerb = validVerb || verb == "t"
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+			validVerb = validVerb || strings.Contains("dboxXOqcU", verb)
+	}
+	if !validVerb {
+		return "%!" + verb + "(" + formatOperand(value, "T", "", -1) + "=" + formatReflect(reflect.ValueOf(value), false) + ")"
+	}
+	switch verb {
+		case "v":
+			if kind == reflect.String {
+				return formatOperand(value, "s", flags, precision)
+			}
+			return formatReflect(reflect.ValueOf(value), strings.Contains(flags, "+"))
+		case "s":
+			text := reflect.ValueOf(value).String()
+			if precision >= 0 && precision < utf8.RuneCountInString(text) {
+				return string([]rune(text)[:precision])
+			}
+			return text
+		case "q":
+			if integer {
+				character := rune(integerArgument(value))
+				if strings.Contains(flags, "+") {
+					return strconv.QuoteRuneToASCII(character)
+				}
+				return strconv.QuoteRune(character)
+			}
+			text := value.(string)
+			if precision >= 0 && precision < utf8.RuneCountInString(text) {
+				text = string([]rune(text)[:precision])
+			}
+			if strings.Contains(flags, "+") {
+				return strconv.QuoteToASCII(text)
+			}
+			if strings.Contains(flags, "#") && strconv.CanBackquote(text) {
+				return "`" + text + "`"
+			}
+			return strconv.Quote(text)
+		case "d", "b", "o", "O", "x", "X":
+			if verb == "x" || verb == "X" {
+				if text, ok := value.(string); ok {
+					if precision >= 0 && precision < len(text) {
+						text = text[:precision]
+					}
+					out := ""
+					for i := 0; i < len(text); i++ {
+						if i > 0 && strings.Contains(flags, " ") {
+							out += " "
+						}
+						if strings.Contains(flags, "#") && (i == 0 || strings.Contains(flags, " ")) {
+							out += "0x"
+						}
+						out += leftPad(strconv.FormatUint(uint64(text[i]), 16), 2, "0")
+					}
+					if verb == "X" {
+						out = strings.ToUpper(out)
+					}
+					return out
+				}
+			}
+			base := 10
+			if verb == "b" {
+				base = 2
+			}
+			if verb == "o" || verb == "O" {
+				base = 8
+			}
+			if verb == "x" || verb == "X" {
+				base = 16
+			}
+			text := formatInteger(value, base)
+			sign := ""
+			if strings.HasPrefix(text, "-") {
+				sign = "-"
+				text = text[1:]
+			} else if strings.Contains(flags, "+") {
+				sign = "+"
+			} else if strings.Contains(flags, " ") {
+				sign = " "
+			}
+			if precision == 0 && text == "0" {
+				return ""
+			}
+			if precision > 0 {
+				text = leftPad(text, precision, "0")
+			}
+			if strings.Contains(flags, "#") {
+				if base == 16 {
+					text = "0x" + text
+				}
+				if base == 2 {
+					text = "0b" + text
+				}
+				if base == 8 && !strings.HasPrefix(text, "0") {
+					text = "0" + text
+				}
+			}
+			if verb == "X" {
+				text = strings.ToUpper(text)
+			}
+			if verb == "O" {
+				text = "0o" + text
+			}
+			return sign + text
+		case "c":
+			return string(rune(integerArgument(value)))
+		case "U":
+			if precision < 4 {
+				precision = 4
+			}
+			text := "U+" + strings.ToUpper(leftPad(formatInteger(value, 16), precision, "0"))
+			character := rune(integerArgument(value))
+			if strings.Contains(flags, "#") && strconv.IsPrint(character) {
+				text += " " + strconv.QuoteRune(character)
+			}
+			return text
+		case "t":
+			return strconv.FormatBool(reflect.ValueOf(value).Bool())
+	}
+	return "%!" + verb + "(" + formatValue(value) + ")"
+}
+
+func applyWidth(text string, width int, flags string) string {
+	length := utf8.RuneCountInString(text)
+	if width < 0 || length >= width {
+		return text
+	}
+	padding := strings.Repeat(" ", width - length)
+	if strings.Contains(flags, "-") {
+		return text + padding
+	}
+	if strings.Contains(flags, "0") {
+		padding = strings.Repeat("0", width - length)
+		if len(text) > 0 && strings.Contains("+- ", text[:1]) {
+			return text[:1] + padding + text[1:]
+		}
+	}
+	return padding + text
+}
+
+func formatFloatPart(value float64, verb byte, flags string, precision int, bits int) string {
+	text := strconv.FormatFloat(value, verb, precision, bits)
+	if strings.Contains(flags, "#") && verb != 'b' && !strings.Contains(text, "Inf") && text != "NaN" {
+		exponent := ""
+		if at := strings.IndexAny(text, "eEpP"); at >= 0 {
+			exponent = text[at:]
+			text = text[:at]
+		}
+		if !strings.Contains(text, ".") {
+			text += "."
+		}
+		if verb == 'g' || verb == 'G' {
+			if precision < 0 {
+				precision = 6
+			}
+			if precision == 0 {
+				precision = 1
+			}
+			digits := 0
+			started := false
+			for _, ch := range text {
+				if ch >= '1' && ch <= '9' {
+					started = true
+				}
+				if ch >= '0' && ch <= '9' && started {
+					digits++
+				}
+			}
+			if !started {
+				digits = 1
+			}
+			if digits < precision {
+				text += strings.Repeat("0", precision - digits)
+			}
+		}
+		text += exponent
+	}
+	if !strings.HasPrefix(text, "-") {
+		if strings.Contains(flags, "+") && !strings.HasPrefix(text, "+") {
+			text = "+" + text
+		} else if strings.Contains(flags, " ") {
+			text = " " + strings.TrimPrefix(text, "+")
+		}
+	}
+	return text
+}
+
+func leftPad(text string, width int, padding string) string {
+	for len(text) < width {
+		text = padding + text
+	}
+	return text
+}
+
+func formatValue(v any) string {
+	return printOperand(v, "v", "", -1, -1)
+}
+
+func formatInteger(value any, base int) string {
+	v := reflect.ValueOf(value)
+	if v.Kind() >= reflect.Int && v.Kind() <= reflect.Int64 {
+		return strconv.FormatInt(v.Int(), base)
+	}
+	if v.Kind() >= reflect.Uint && v.Kind() <= reflect.Uintptr {
+		return strconv.FormatUint(v.Uint(), base)
+	}
+	return formatValue(value)
+}
+
+func formatReflect(value reflect.Value, fieldNames bool) string {
+	if !value.IsValid() {
+		return "<nil>"
+	}
+	kind := value.Kind()
+	if kind == reflect.Interface || kind == reflect.Pointer {
+		if value.IsNil() {
+			return "<nil>"
+		}
+		prefix := ""
+		if kind == reflect.Pointer {
+			prefix = "&"
+		}
+		return prefix + formatChild(value.Elem(), fieldNames)
+	}
+	if kind == reflect.Slice || kind == reflect.Array {
+		out := "["
+		for i := 0; i < value.Len(); i++ {
+			if i > 0 {
+				out += " "
+			}
+			out += formatChild(value.Index(i), fieldNames)
+		}
+		return out + "]"
+	}
+	if kind == reflect.Struct {
+		out := "{"
+		for i := 0; i < value.NumField(); i++ {
+			if i > 0 {
+				out += " "
+			}
+			if fieldNames {
+				out += value.Type().Field(i).Name + ":"
+			}
+			out += formatChild(value.Field(i), fieldNames)
+		}
+		return out + "}"
+	}
+	if kind == reflect.Map {
+		out := "map["
+		iter := value.MapRange()
+		first := true
+		for iter.Next() {
+			if !first {
+				out += " "
+			}
+			out += formatChild(iter.Key(), fieldNames) + ":" + formatChild(iter.Value(), fieldNames)
+			first = false
+		}
+		return out + "]"
+	}
+	if kind == reflect.String {
+		return value.String()
+	}
+	if kind == reflect.Bool {
+		return strconv.FormatBool(value.Bool())
+	}
+	if kind == reflect.Int || kind == reflect.Int8 || kind == reflect.Int16 || kind == reflect.Int32 || kind == reflect.Int64 {
+		return strconv.FormatInt(value.Int(), 10)
+	}
+	if kind == reflect.Uint || kind == reflect.Uint8 || kind == reflect.Uint16 || kind == reflect.Uint32 || kind == reflect.Uint64 || kind == reflect.Uintptr {
+		return strconv.FormatUint(value.Uint(), 10)
+	}
+	if kind == reflect.Float32 || kind == reflect.Float64 {
+		return strconv.FormatFloat(value.Float(), byte('g'), -1, value.Type().Bits())
+	}
+	if kind == reflect.Complex64 || kind == reflect.Complex128 {
+		return strconv.FormatComplex(value.Complex(), byte('g'), -1, value.Type().Bits())
+	}
+	return "<" + value.Type().String() + " Value>"
+}
+
+func formatChild(value reflect.Value, fieldNames bool) string {
+	if value.CanInterface() {
+		flags := ""
+		if fieldNames {
+			flags = "+"
+		}
+		return printOperand(value.Interface(), "v", flags, -1, -1)
+	}
+	return formatReflect(value, fieldNames)
+}
+
+func sprintNeedsSpace(left any, right any) bool {
+	if isString(left) {
+		return false
+	}
+	if isString(right) {
+		return false
+	}
+	return true
+}
+
+func isString(v any) bool {
+	switch v.(type) {
+		case string:
+			return true
+		default:
+			return false
+	}
+}

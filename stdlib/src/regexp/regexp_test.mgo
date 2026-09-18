@@ -1,0 +1,61 @@
+package regexp_test
+
+import (
+	"regexp"
+	"testing"
+)
+
+func TestCompileAndMatch(t *testing.T) {
+	re, err := regexp.Compile(`^[[:alpha:]][[:alnum:]_]*$`)
+	if err != nil {
+		t.Fatalf("Compile returned error: %v", err)
+	}
+	if !re.MatchString("mini_42") || re.MatchString("42mini") {
+		t.Fatal("MatchString returned the wrong result")
+	}
+	if !regexp.MustCompile(`\p{Greek}+`).MatchString("αβ") {
+		t.Fatal("Unicode character class did not match")
+	}
+	if regexp.MustCompile(`a$`).MatchString("a\n") {
+		t.Fatal("end-of-text anchor matched before a final newline")
+	}
+	if !regexp.MustCompile(`(?m)^a$`).MatchString("x\na\ny") {
+		t.Fatal("line anchors did not match")
+	}
+	if _, err := regexp.Compile(`([`); err == nil {
+		t.Fatal("Compile accepted malformed syntax")
+	}
+}
+
+func TestFindSubmatchAndReplace(t *testing.T) {
+	re := regexp.MustCompile(`(?P<key>[a-z]+)=(?P<value>[0-9]+)`)
+	match := re.FindStringSubmatch("x=42")
+	if len(match) != 3 || match[0] != "x=42" || match[1] != "x" || match[2] != "42" {
+		t.Fatalf("FindStringSubmatch = %#v", match)
+	}
+	if re.SubexpIndex("key") != 1 || re.SubexpIndex("value") != 2 || re.SubexpIndex("missing") != -1 {
+		t.Fatal("SubexpIndex returned the wrong indexes")
+	}
+	if got := re.ReplaceAllString("x=42 y=7", "${key}:[${value}]"); got != "x:[42] y:[7]" {
+		t.Fatalf("ReplaceAllString = %q", got)
+	}
+	indices := re.FindAllStringIndex("x=42 y=7", -1)
+	if len(indices) != 2 || indices[0][0] != 0 || indices[0][1] != 4 || indices[1][0] != 5 || indices[1][1] != 8 {
+		t.Fatalf("FindAllStringIndex = %#v", indices)
+	}
+}
+
+func TestBytesSplitAndQuote(t *testing.T) {
+	re := regexp.MustCompile(`[,;]\s*`)
+	parts := re.Split("a, b; c", -1)
+	if len(parts) != 3 || parts[0] != "a" || parts[1] != "b" || parts[2] != "c" {
+		t.Fatalf("Split = %#v", parts)
+	}
+	quoted := regexp.QuoteMeta(`a+b?(c)`)
+	if quoted != `a\+b\?\(c\)` || !regexp.MustCompile(quoted).MatchString(`a+b?(c)`) {
+		t.Fatalf("QuoteMeta = %q", quoted)
+	}
+	if got := string(regexp.MustCompile(`[0-9]+`).ReplaceAll([]byte("a12b3"), []byte("#"))); got != "a#b#" {
+		t.Fatalf("ReplaceAll = %q", got)
+	}
+}

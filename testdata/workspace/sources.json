@@ -1,0 +1,108 @@
+{
+  "Trees": [
+    {
+      "ModulePath": "app",
+      "Files": [
+        {
+          "Path": "main.mgo",
+          "Data": "cGFja2FnZSBtYWluCmltcG9ydCAiY29tcGFueS9ydWxlcyIKZnVuYyBtYWluKCkgeyBfID0gcnVsZXMuVmFsdWUoKSB9Cg==",
+          "URI": "file:///scripts/main.mgo"
+        }
+      ]
+    },
+    {
+      "ModulePath": "company/rules",
+      "Editable": false,
+      "Files": [
+        {
+          "Path": "value.mgo",
+          "Data": "cGFja2FnZSBydWxlcwpmdW5jIFZhbHVlKCkgaW50IHsgcmV0dXJuIDQyIH0K"
+        },
+        {
+          "Path": "assets/data.bin",
+          "Data": "AP8B"
+        },
+        {
+          "Path": "vendor/helper/value.mgo",
+          "Data": "cGFja2FnZSBoZWxwZXIKZnVuYyBWYWx1ZSgpIGludCB7IHJldHVybiA3IH0K"
+        },
+        {
+          "Path": "assets/empty.bin",
+          "Data": ""
+        }
+      ]
+    }
+  ],
+  "Paths": [
+    "app",
+    "company/rules",
+    "company/rules/vendor/helper"
+  ],
+  "Failures": [
+    {
+      "Name": "duplicate owner",
+      "Trees": [
+        {
+          "ModulePath": "app",
+          "Files": [
+            {
+              "Path": "main.mgo",
+              "Data": "cGFja2FnZSBtYWluCmltcG9ydCAiY29tcGFueS9ydWxlcyIKZnVuYyBtYWluKCkgeyBfID0gcnVsZXMuVmFsdWUoKSB9Cg==",
+              "URI": "file:///scripts/main.mgo"
+            }
+          ]
+        },
+        {
+          "ModulePath": "app",
+          "Files": [
+            {
+              "Path": "main.mgo",
+              "Data": "cGFja2FnZSBtYWluCmltcG9ydCAiY29tcGFueS9ydWxlcyIKZnVuYyBtYWluKCkgeyBfID0gcnVsZXMuVmFsdWUoKSB9Cg==",
+              "URI": "file:///scripts/main.mgo"
+            }
+          ]
+        }
+      ],
+      "Error": "duplicate source module"
+    },
+    {
+      "Name": "invalid file path",
+      "Trees": [
+        {
+          "ModulePath": "app",
+          "Files": [
+            {
+              "Path": "../value.mgo",
+              "Data": "cGFja2FnZSBhcHAK"
+            }
+          ]
+        }
+      ],
+      "Error": "invalid source path"
+    },
+    {
+      "Name": "package ownership",
+      "Trees": [
+        {
+          "ModulePath": "app",
+          "Files": [
+            {
+              "Path": "child/value.mgo",
+              "Data": "cGFja2FnZSBjaGlsZAo="
+            }
+          ]
+        },
+        {
+          "ModulePath": "app/child",
+          "Files": [
+            {
+              "Path": "value.mgo",
+              "Data": "cGFja2FnZSBjaGlsZAo="
+            }
+          ]
+        }
+      ],
+      "Error": "multiple source sets"
+    }
+  ]
+}

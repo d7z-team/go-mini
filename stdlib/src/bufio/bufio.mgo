@@ -1,0 +1,51 @@
+// Copyright 2009 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license.
+// Adapted for the Mini-Go runtime-neutral standard library.
+
+// Package bufio implements buffered I/O. It wraps an io.Reader or io.Writer
+// object, creating another object (Reader or Writer) that also implements
+// the interface but provides buffering and some help for textual I/O.
+package bufio
+
+import "errors"
+
+const defaultBufSize = 4096
+
+const maxConsecutiveEmptyReads = 100
+
+// MaxScanTokenSize is the maximum size used to buffer a token
+// unless the user provides an explicit buffer with [Scanner.Buffer].
+// The actual maximum token size may be smaller as the buffer
+// may need to include, for instance, a newline.
+const MaxScanTokenSize = 64 * 1024
+
+// Errors returned by Scanner.
+var (
+	// ErrInvalidUnreadByte is returned when UnreadByte cannot undo the preceding operation.
+	ErrInvalidUnreadByte = errors.New("bufio: invalid use of UnreadByte")
+	// ErrInvalidUnreadRune is returned when UnreadRune cannot undo the preceding operation.
+	ErrInvalidUnreadRune = errors.New("bufio: invalid use of UnreadRune")
+	// ErrBufferFull is returned when a requested operation needs more data than the configured buffer can hold.
+	ErrBufferFull = errors.New("bufio: buffer full")
+	// ErrNegativeCount is returned when an operation receives a negative count.
+	ErrNegativeCount = errors.New("bufio: negative count")
+
+	ErrNegativeAdvance = errors.New("bufio.Scanner: SplitFunc returns negative advance count")
+
+	ErrAdvanceTooFar = errors.New("bufio.Scanner: SplitFunc returns advance count beyond input")
+
+	ErrBadReadCount = errors.New("bufio.Scanner: Read returned impossible count")
+
+	ErrTooLong = errors.New("bufio.Scanner: token too long")
+	// ErrFinalToken is a special sentinel error value. It is intended to be
+	// returned by a Split function to indicate that the scanning should stop
+	// with no error. If the token being delivered with this error is not nil,
+	// the token is the last token.
+	//
+	// The value is useful to stop processing early or when it is necessary to
+	// deliver a final empty token (which is different from a nil token).
+	// One could achieve the same behavior with a custom error value but
+	// providing one here is tidier.
+	// See the emptyFinalToken example for a use of this value.
+	ErrFinalToken = errors.New("final token")
+)

@@ -1,0 +1,71 @@
+syntax = "mrpc/v2";
+namespace minigo.gateway.control.v1;
+option go_package = "gateway";
+option go_prefix = "MiniGoGatewayControl";
+message contractReference {
+	ImportPath string = 1;
+	Hash string = 2;
+}
+message contractFile {
+	Path string = 1;
+	Text string = 2;
+	Hash string = 3;
+}
+message contractBundle {
+	ImportPath string = 1;
+	Hash string = 2;
+	Files[] contractFile = 3;
+}
+message method {
+	ID string = 1;
+	Service string = 2;
+	Name string = 3;
+	ContractHash string = 4;
+	ResourceTypeHash string = 5;
+}
+message contract {
+	Protocol string = 1;
+	Methods[] method = 2;
+}
+message routeLabel {
+	Name string = 1;
+	Value string = 2;
+}
+message registrationOptions {
+	Name string = 1;
+	Priority int64 = 2;
+	Weight int64 = 3;
+	MaxLeases int64 = 4;
+	Labels[] routeLabel = 5;
+}
+message catalogSnapshot {
+	Protocol string = 1;
+	ID string = 2;
+	GatewayID string = 3;
+	RouteEpoch uint64 = 4;
+	References[] contractReference = 5;
+}
+message publishedProvider {
+	ID string = 1;
+	Contract contract = 2;
+	Options registrationOptions = 3;
+	References[] contractReference = 4;
+}
+message publicationSnapshot {
+	Protocol string = 1;
+	ProcessID string = 2;
+	Generation uint64 = 3;
+	ID string = 4;
+	Providers[] publishedProvider = 5;
+}
+service catalog {
+	Snapshot() returns(snapshot catalogSnapshot = 1);
+	Watch(gatewayID string = 1, routeEpoch uint64 = 2) returns(snapshot catalogSnapshot = 1);
+	Resolve(importPath string = 1, hash string = 2) returns(bundle contractBundle = 1);
+}
+service publication {
+	Snapshot() returns(snapshot publicationSnapshot = 1);
+	Resolve(importPath string = 1, hash string = 2) returns(bundle contractBundle = 1);
+	Ready(snapshotID string = 1) returns();
+	Published(snapshotID string = 1) returns();
+}

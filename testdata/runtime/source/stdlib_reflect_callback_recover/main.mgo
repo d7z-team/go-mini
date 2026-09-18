@@ -1,0 +1,3 @@
+package main
+import "reflect"
+func Main() (result int) { defer func() { if recover() != nil { result = 42 } }(); typ := reflect.TypeOf(func() int { return 0 }); fn := reflect.MakeFunc(typ, func([]reflect.Value) []reflect.Value { return []reflect.Value{reflect.ValueOf("bad result")} }).Interface().(func() int); return fn() }

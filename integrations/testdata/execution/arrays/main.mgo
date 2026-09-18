@@ -1,0 +1,12 @@
+package main
+
+type holder struct { values [4]byte }
+
+func main() {}
+func StorageMutation() uint64 {
+	value := new(holder)
+	copy(value.values[:], []byte{1, 2, 3, 4})
+	var words [2]uint32
+	words[0] = uint32(value.values[0])<<24 | uint32(value.values[1])<<16
+	return uint64(words[0]) + uint64(value.values[3])
+}

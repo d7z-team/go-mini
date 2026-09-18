@@ -1,0 +1,62 @@
+package strings
+
+import (
+	"io"
+	"unicode/utf8"
+)
+
+// Replacer replaces a list of strings with replacements. It is safe for
+// concurrent use after construction.
+type Replacer struct {
+	pairs []string
+}
+
+// NewReplacer returns a new Replacer from alternating old, new string pairs.
+// NewReplacer panics when oldnew has odd length.
+func NewReplacer(oldnew ...string) *Replacer {
+	if len(oldnew) % 2 != 0 {
+		panic("strings.NewReplacer: odd argument count")
+	}
+	pairs := make([]string, len(oldnew))
+	copy(pairs, oldnew)
+	return &Replacer{pairs: pairs}
+}
+
+// Replace returns a copy of s with all replacements performed. Matches at the
+// same position use the first pair passed to NewReplacer.
+func (r *Replacer) Replace(s string) string {
+	out := ""
+	position := 0
+	for position <= len(s) {
+		match := -1
+		pair := -1
+		for i := 0; i < len(r.pairs); i += 2 {
+			index := Index(s[position:], r.pairs[i])
+			if index >= 0 && (match < 0 || index < match) {
+				match = index
+				pair = i
+			}
+		}
+		if pair < 0 {
+			return out + s[position:]
+		}
+		match += position
+		out += s[position:match] + r.pairs[pair + 1]
+		old := r.pairs[pair]
+		position = match + len(old)
+		if old == "" {
+			if position == len(s) {
+				return out
+			}
+			_, size := utf8.DecodeRuneInString(s[position:])
+			out += s[position:position + size]
+			position += size
+		}
+	}
+	return out
+}
+
+// WriteString writes the replaced form of s to w.
+func (r *Replacer) WriteString(w io.Writer, s string) (int, error) {
+	return io.WriteString(w, r.Replace(s))
+}

@@ -1,0 +1,1178 @@
+package reflect
+
+type fieldByIndexError string
+
+func (err fieldByIndexError) Error() string {
+	return string(err)
+}
+
+// A ValueError occurs when a Value method is invoked on a Value of an
+// unsupported kind. It mirrors the public error shape used by Go reflect.
+type ValueError struct {
+	// Method is the name of the method that rejected the Value.
+	Method string
+	// Kind is the receiver kind on which Method was invoked.
+	Kind Kind
+}
+
+// Error returns the failed method and receiver kind.
+func (err *ValueError) Error() string {
+	if err.Kind == Invalid {
+		return "reflect: call of " + err.Method + " on zero Value"
+	}
+	return "reflect: call of " + err.Method + " on " + err.Kind.String() + " Value"
+}
+
+// ValueOf returns a new Value initialized to the concrete value
+// stored in the interface i. ValueOf(nil) returns the zero Value.
+func ValueOf(value any) Value {
+	return runtimeValueOf(value)
+}
+
+// TypeOf returns the reflection [Type] that represents the dynamic type of i.
+// If i is a nil interface value, TypeOf returns nil.
+func TypeOf(value any) Type {
+	return runtimeTypeOf(value)
+}
+
+// TypeFor returns the [Type] that represents the type argument T.
+func TypeFor[T any]() Type {
+	return TypeOf((*T)(nil)).Elem()
+}
+
+// TypeAssert returns the value represented by v as T and reports whether the
+// represented value has that dynamic type.
+func TypeAssert[T any](value Value) (T, bool) {
+	var zero T
+	if !value.IsValid() || !value.CanInterface() {
+		return zero, false
+	}
+	result, ok := value.Interface().(T)
+	return result, ok
+}
+
+// DeepEqual reports whether x and y are deeply equal.
+func DeepEqual(x any, y any) bool {
+	return runtimeDeepEqual(x, y)
+}
+
+// SameReference reports whether two pointer, map, or slice Values refer to the
+// same storage. Their types must match. Slices must also have the same start
+// and length. Unsupported kinds and invalid Values return false.
+// This Mini-Go extension does not expose an address or retain either Value.
+func SameReference(a Value, b Value) bool {
+	if !a.IsValid() || !b.IsValid() || a.Type() != b.Type() {
+		return false
+	}
+	kind := a.Kind()
+	if kind != Pointer && kind != Map && kind != Slice {
+		return false
+	}
+	if a.IsNil() || b.IsNil() {
+		return a.IsNil() && b.IsNil()
+	}
+	return runtimeSameReference(a, b)
+}
+
+// Select executes a select operation described by cases.
+func Select(cases []SelectCase) (chosen int, recv Value, recvOK bool) {
+	chosen, recv, recvOK, message, ok := runtimeSelect(cases)
+	if ok {
+		return chosen, recv, recvOK
+	}
+	panic(message)
+}
+
+// New returns a Value representing a pointer to a new zero value
+// for the specified type. That is, the returned Value's Type is [PointerTo](typ).
+func New(typ Type) Value {
+	value, message, ok := runtimeNew(typ)
+	if ok {
+		return value
+	}
+	panic(message)
+}
+
+// MakeSlice creates a new zero-initialized slice value
+// for the specified slice type, length, and capacity.
+func MakeSlice(typ Type, length int, capacity int) Value {
+	value, message, ok := runtimeMakeSlice(typ, length, capacity)
+	if ok {
+		return value
+	}
+	panic(message)
+}
+
+// MakeMap creates a new map with the specified type.
+func MakeMap(typ Type) Value {
+	value, message, ok := runtimeMakeMap(typ)
+	if ok {
+		return value
+	}
+	panic(message)
+}
+
+// MakeMapWithSize creates a new map with the specified type and initial space
+// for approximately n elements.
+func MakeMapWithSize(typ Type, n int) Value {
+	if n < 0 {
+		panic("reflect.MakeMapWithSize: negative size")
+	}
+	return MakeMap(typ)
+}
+
+// MakeChan creates a new channel with the specified type and buffer size.
+func MakeChan(typ Type, buffer int) Value {
+	value, message, ok := runtimeMakeChan(typ, buffer)
+	if ok {
+		return value
+	}
+	panic(message)
+}
+
+// Zero returns a Value representing the zero value for the specified type.
+// The result is different from the zero value of the Value struct,
+// which represents no value at all.
+// For example, Zero(TypeOf(42)) returns a Value with Kind [Int] and value 0.
+// The returned value is neither addressable nor settable.
+func Zero(typ Type) Value {
+	value, message, ok := runtimeZero(typ)
+	if ok {
+		return value
+	}
+	panic(message)
+}
+
+// Indirect returns the value that v points to.
+// If v is a nil pointer, Indirect returns a zero Value.
+// If v is not a pointer, Indirect returns v.
+func Indirect(value Value) Value {
+	if value.Kind() != Pointer {
+		return value
+	}
+	if value.IsNil() {
+		return Value{}
+	}
+	return value.Elem()
+}
+
+// Append appends the values x to a slice s and returns the resulting slice.
+// As in Go, each x's value must be assignable to the slice's element type.
+func Append(value Value, values ...Value) Value {
+	out, message, ok := runtimeValueAppend(value, values)
+	if ok {
+		return out
+	}
+	panic(message)
+}
+
+// AppendSlice appends a slice t to a slice s and returns the resulting slice.
+// The slices s and t must have the same element type.
+func AppendSlice(value Value, other Value) Value {
+	out, message, ok := runtimeValueAppendSlice(value, other)
+	if ok {
+		return out
+	}
+	panic(message)
+}
+
+// Copy copies the contents of src into dst until either
+// dst has been filled or src has been exhausted.
+// It returns the number of elements copied.
+// Dst and src each must have kind [Slice] or [Array], and
+// dst and src must have the same element type.
+// It dst is an [Array], it panics if [Value.CanSet] returns false.
+//
+// As a special case, src can have kind [String] if the element type of dst is kind [Uint8].
+func Copy(dst Value, src Value) int {
+	count, message, ok := runtimeValueCopy(dst, src)
+	if ok {
+		return count
+	}
+	panic(message)
+}
+
+// Swapper returns a function that swaps the elements in the provided
+// slice.
+//
+// Swapper panics if the provided interface is not a slice.
+func Swapper(slice any) func(int, int) {
+	value := ValueOf(slice)
+	if value.Kind() != Slice {
+		panic("reflect: Swapper of non-slice Value")
+	}
+	return func(i int, j int) {
+		value.swap(i, j)
+	}
+}
+
+// MakeFunc returns a new function of the given [Type] that wraps the function fn.
+// When called, that new function does the following:
+//
+//   - converts its arguments to a slice of Values.
+//   - runs results := fn(args).
+//   - returns the results as a slice of Values, one per formal result.
+//
+// The implementation fn can assume that the argument Value slice has the number
+// and type of arguments given by typ. If typ describes a variadic function, the
+// final Value is itself a slice representing the variadic arguments, as in the
+// body of a variadic function. The result Value slice returned by fn must have
+// the number and type of results given by typ.
+func MakeFunc(typ Type, fn func(args []Value) (results []Value)) Value {
+	if typ.Kind() != Func {
+		panic("reflect: call of MakeFunc with non-Func type")
+	}
+	value, message, ok := runtimeMakeFunc(typ, fn)
+	if ok {
+		return value
+	}
+	panic(message)
+}
+
+func (value Value) current() Value {
+	if value.valid && value.target != nil {
+		current, message, ok := runtimeValueCurrent(value)
+		if ok {
+			return current
+		}
+		panic(message)
+	}
+	return value
+}
+
+// IsValid reports whether v represents a value.
+// It returns false if v is the zero Value.
+// If [Value.IsValid] returns false, all other methods except String panic.
+// Most functions and methods never return an invalid Value.
+// If one does, its documentation states the conditions explicitly.
+func (value Value) IsValid() bool {
+	return value.valid
+}
+
+// Type returns v's type.
+func (value Value) Type() Type {
+	requireValue(value, "Type")
+	return value.valueType
+}
+
+// Kind returns v's Kind.
+// If v is the zero Value ([Value.IsValid] returns false), Kind returns Invalid.
+func (value Value) Kind() Kind {
+	if !value.valid {
+		return Invalid
+	}
+	return value.valueType.Kind()
+}
+
+// Interface returns v's current value as an interface{}.
+// It is equivalent to:
+//
+//	var i interface{} = (v's underlying value)
+//
+// It panics if the Value was obtained by accessing
+// unexported struct fields.
+func (value Value) Interface() any {
+	current := value.current()
+	requireValue(current, "Interface")
+	if !current.interfaceable {
+		panic("reflect: Interface of value obtained from unexported field")
+	}
+	return current.data
+}
+
+// IsZero reports whether v is the zero value for its type.
+// It panics if the argument is invalid.
+func (value Value) IsZero() bool {
+	current := value.current()
+	requireValue(current, "IsZero")
+	return current.zero
+}
+
+// IsNil reports whether its argument v is nil. The argument must be
+// a chan, func, interface, map, pointer, or slice value; if it is
+// not, IsNil panics. Note that IsNil is not always equivalent to a
+// regular comparison with nil in Go. For example, if v was created
+// by calling [ValueOf] with an uninitialized interface variable i,
+// i==nil will be true but v.IsNil will panic as v will be the zero
+// Value.
+func (value Value) IsNil() bool {
+	current := value.current()
+	requireValue(current, "IsNil")
+	if !isNilCapableValue(current) {
+		panicValueError("IsNil", current)
+	}
+	return current.nilValue
+}
+
+// CanInterface reports whether [Value.Interface] can be used without panicking.
+func (value Value) CanInterface() bool {
+	return value.valid && value.interfaceable
+}
+
+// CanAddr reports whether the value's address can be obtained with [Value.Addr].
+// Such values are called addressable. A value is addressable if it is
+// an element of a slice, an element of an addressable array,
+// a field of an addressable struct, or the result of dereferencing a pointer.
+// If CanAddr returns false, calling [Value.Addr] will panic.
+func (value Value) CanAddr() bool {
+	return value.addressable
+}
+
+// CanSet reports whether the value of v can be changed.
+// A [Value] can be changed only if it is addressable and was not
+// obtained by the use of unexported struct fields.
+// If CanSet returns false, calling [Value.Set] or any type-specific
+// setter (e.g., [Value.SetBool], [Value.SetInt]) will panic.
+func (value Value) CanSet() bool {
+	return value.settable
+}
+
+// CanConvert reports whether the value v can be converted to type t.
+// If v.CanConvert(t) returns true then v.Convert(t) will not panic.
+func (value Value) CanConvert(target Type) bool {
+	if !value.valid {
+		return false
+	}
+	source := value.Type()
+	if !source.ConvertibleTo(target) {
+		return false
+	}
+	if source.Kind() == Slice && target.Kind() == Array {
+		return target.Len() <= value.Len()
+	}
+	if source.Kind() == Slice && target.Kind() == Pointer && target.Elem().Kind() == Array {
+		return target.Elem().Len() <= value.Len()
+	}
+	return true
+}
+
+// CanInt reports whether Int can be used without panicking.
+func (value Value) CanInt() bool {
+	switch value.Kind() {
+		case Int, Int8, Int16, Int32, Int64:
+			return true
+	}
+	return false
+}
+
+// CanUint reports whether Uint can be used without panicking.
+func (value Value) CanUint() bool {
+	switch value.Kind() {
+		case Uint, Uint8, Uint16, Uint32, Uint64, Uintptr:
+			return true
+	}
+	return false
+}
+
+// CanFloat reports whether Float can be used without panicking.
+func (value Value) CanFloat() bool {
+	return value.Kind() == Float32 || value.Kind() == Float64
+}
+
+// CanComplex reports whether Complex can be used without panicking.
+func (value Value) CanComplex() bool {
+	return value.Kind() == Complex64 || value.Kind() == Complex128
+}
+
+// Comparable reports whether Interface would return a comparable value.
+func (value Value) Comparable() bool {
+	if !value.IsValid() {
+		return false
+	}
+	switch value.Kind() {
+		case Array:
+			for index := 0; index < value.Len(); index++ {
+				if !value.Index(index).Comparable() {
+					return false
+				}
+			}
+			return true
+		case Interface:
+			return value.IsNil() || value.Elem().Comparable()
+		case Struct:
+			for _, field := range value.Fields() {
+				if !field.Comparable() {
+					return false
+				}
+			}
+			return true
+	}
+	return value.Type().Comparable()
+}
+
+// OverflowInt reports whether x cannot be represented by v's type.
+func (value Value) OverflowInt(x int64) bool {
+	return value.Type().OverflowInt(x)
+}
+
+// OverflowUint reports whether x cannot be represented by v's type.
+func (value Value) OverflowUint(x uint64) bool {
+	return value.Type().OverflowUint(x)
+}
+
+// OverflowFloat reports whether x cannot be represented by v's type.
+func (value Value) OverflowFloat(x float64) bool {
+	return value.Type().OverflowFloat(x)
+}
+
+// OverflowComplex reports whether x cannot be represented by v's type.
+func (value Value) OverflowComplex(x complex128) bool {
+	return value.Type().OverflowComplex(x)
+}
+
+// Convert returns the value v converted to type t.
+// If the usual Go conversion rules do not allow conversion
+// of the value v to type t, or if converting v to type t panics, Convert panics.
+func (value Value) Convert(target Type) Value {
+	converted, message, ok := runtimeValueConvert(value, target)
+	if ok {
+		return converted
+	}
+	panic(message)
+}
+
+// Len returns v's length.
+// It panics if v's Kind is not [Array], [Chan], [Map], [Slice], [String], or pointer to [Array].
+func (value Value) Len() int {
+	current := value.current()
+	requireValue(current, "Len")
+	if !isLenCapableValue(current) {
+		panicValueError("Len", current)
+	}
+	return current.length
+}
+
+// Cap returns v's capacity.
+// It panics if v's Kind is not [Array], [Chan], [Slice] or pointer to [Array].
+func (value Value) Cap() int {
+	current := value.current()
+	requireValue(current, "Cap")
+	if isCapCapableValue(current) {
+		return current.capacity
+	}
+	panicValueError("Cap", current)
+	return 0
+}
+
+// Bool returns v's underlying value.
+// It panics if v's kind is not [Bool].
+func (value Value) Bool() bool {
+	current := value.current()
+	if !isBoolValue(current) {
+		panicValueError("Bool", current)
+	}
+	return current.boolValue
+}
+
+// Int returns v's underlying value, as an int64.
+// It panics if v's Kind is not [Int], [Int8], [Int16], [Int32], or [Int64].
+func (value Value) Int() int64 {
+	current := value.current()
+	if !isIntValue(current) {
+		panicValueError("Int", current)
+	}
+	return current.intValue
+}
+
+// Uint returns v's underlying value, as a uint64.
+// It panics if v's Kind is not [Uint], [Uintptr], [Uint8], [Uint16], [Uint32], or [Uint64].
+func (value Value) Uint() uint64 {
+	current := value.current()
+	if !isUintValue(current) {
+		panicValueError("Uint", current)
+	}
+	return current.uintValue
+}
+
+// Float returns v's underlying value, as a float64.
+// It panics if v's Kind is not [Float32] or [Float64]
+func (value Value) Float() float64 {
+	current := value.current()
+	if !isFloatValue(current) {
+		panicValueError("Float", current)
+	}
+	return current.floatValue
+}
+
+// Complex returns v's underlying value, as a complex128.
+// It panics if v's Kind is not [Complex64] or [Complex128]
+func (value Value) Complex() complex128 {
+	current := value.current()
+	if !isComplexValue(current) {
+		panicValueError("Complex", current)
+	}
+	return current.complexValue
+}
+
+// String returns the string v's underlying value, as a string.
+// String is a special case because of Go's String method convention.
+// Unlike the other getters, it does not panic if v's Kind is not [String].
+// Instead, it returns a string of the form "<T value>" where T is v's type.
+// The fmt package treats Values specially. It does not call their String
+// method implicitly but instead prints the concrete values they hold.
+func (value Value) String() string {
+	if !value.IsValid() {
+		return "<invalid Value>"
+	}
+	current := value.current()
+	if isStringValue(current) {
+		return current.stringValue
+	}
+	return "<" + current.Type().String() + " Value>"
+}
+
+// Field returns the i'th field of the struct v.
+// It panics if v's Kind is not [Struct] or i is out of range.
+func (value Value) Field(index int) Value {
+	if value.Kind() != Struct {
+		panicValueError("Field", value)
+	}
+	field, message, ok := runtimeValueFieldByIndex(value, []int{index})
+	if ok {
+		return field
+	}
+	panic(message)
+}
+
+// NumField returns the number of fields in the struct v.
+// It panics if v's Kind is not [Struct].
+func (value Value) NumField() int {
+	requireValue(value, "NumField")
+	if value.Kind() != Struct {
+		panicValueError("NumField", value)
+	}
+	return value.Type().NumField()
+}
+
+// FieldByIndex returns the nested field corresponding to index.
+// It panics if evaluation requires stepping through a nil
+// pointer or a field that is not a struct.
+func (value Value) FieldByIndex(index []int) Value {
+	if value.Kind() != Struct {
+		panicValueError("FieldByIndex", value)
+	}
+	if len(index) == 0 {
+		return value
+	}
+	field, message, ok := runtimeValueFieldByIndex(value, index)
+	if ok {
+		return field
+	}
+	panic(message)
+}
+
+// FieldByIndexErr returns the nested field corresponding to index.
+// It returns an error if evaluation requires stepping through a nil
+// pointer, but panics if it must step through a field that is not a struct.
+func (value Value) FieldByIndexErr(index []int) (Value, error) {
+	if len(index) == 1 {
+		return value.Field(index[0]), nil
+	}
+	if value.Kind() != Struct {
+		panicValueError("FieldByIndexErr", value)
+	}
+	for position, field := range index {
+		if position > 0 && value.Kind() == Pointer && value.Type().Elem().Kind() == Struct {
+			if value.IsNil() {
+				typ := value.Type().Elem()
+				name := typ.Name()
+				if name == "" {
+					name = typ.String()
+				}
+				return Value{}, fieldByIndexError("reflect: indirection through nil pointer to embedded struct field " + name)
+			}
+			value = value.Elem()
+		}
+		value = value.Field(field)
+	}
+	return value, nil
+}
+
+// FieldByName returns the struct field with the given name.
+// It returns the zero Value if no field was found.
+// It panics if v's Kind is not [Struct].
+func (value Value) FieldByName(name string) Value {
+	if value.Kind() != Struct {
+		panicValueError("FieldByName", value)
+	}
+	field, ok := value.Type().FieldByName(name)
+	if !ok {
+		return Value{}
+	}
+	return value.FieldByIndex(field.Index)
+}
+
+// FieldByNameFunc returns the struct field whose name satisfies match.
+func (value Value) FieldByNameFunc(match func(string) bool) Value {
+	if value.Kind() != Struct {
+		panicValueError("FieldByNameFunc", value)
+	}
+	field, ok := value.Type().FieldByNameFunc(match)
+	if !ok {
+		return Value{}
+	}
+	return value.FieldByIndex(field.Index)
+}
+
+// Index returns v's i'th element.
+// It panics if v's Kind is not [Array], [Slice], or [String] or i is out of range.
+func (value Value) Index(index int) Value {
+	item, message, ok := runtimeValueIndex(value, index)
+	if ok {
+		return item
+	}
+	panic(message)
+}
+
+// Elem returns the value that the interface v contains
+// or that the pointer v points to.
+// It panics if v's Kind is not [Interface] or [Pointer].
+// It returns the zero Value if v is nil.
+func (value Value) Elem() Value {
+	elem, message, ok := runtimeValueElem(value)
+	if ok {
+		if value.Kind() == Interface {
+			return elem
+		}
+		elemType := value.Type().Elem()
+		if !isZeroType(elemType) && isZeroType(elem.valueType) {
+			elem.valueType = elemType
+		}
+		return elem
+	}
+	panic(message)
+}
+
+// Addr returns a pointer value representing the address of v.
+// It panics if [Value.CanAddr] returns false.
+// Addr is typically used to obtain a pointer to a struct field
+// or slice element in order to call a method that requires a
+// pointer receiver.
+func (value Value) Addr() Value {
+	out, message, ok := runtimeValueAddr(value)
+	if ok {
+		return out
+	}
+	panic(message)
+}
+
+// Slice returns v[i:j].
+// It panics if v's Kind is not [Array], [Slice] or [String], or if v is an unaddressable array,
+// or if the indexes are out of bounds.
+func (value Value) Slice(start int, end int) Value {
+	out, message, ok := runtimeValueSlice(value, start, end)
+	if ok {
+		return out
+	}
+	panic(message)
+}
+
+// Slice3 is the 3-index form of the slice operation: it returns v[i:j:k].
+// It panics if v's Kind is not [Array] or [Slice], or if v is an unaddressable array,
+// or if the indexes are out of bounds.
+func (value Value) Slice3(start int, end int, max int) Value {
+	out, message, ok := runtimeValueSlice3(value, start, end, max)
+	if ok {
+		return out
+	}
+	panic(message)
+}
+
+// Recv receives and returns a value from the channel v.
+// It blocks until a value is ready. The boolean value ok is true if the value x
+// corresponds to a send on the channel, false if it is a zero value received
+// because the channel is closed. Recv panics if v's Kind is not [Chan] or if the
+// channel is send-only.
+func (value Value) Recv() (x Value, ok bool) {
+	x, ok, message, valid := runtimeValueRecv(value)
+	if valid {
+		return x, ok
+	}
+	panic(message)
+}
+
+// Send sends x on the channel v and blocks until the value is accepted.
+func (value Value) Send(x Value) {
+	message, ok := runtimeValueSend(value, x)
+	if !ok {
+		panic(message)
+	}
+}
+
+// TryRecv attempts to receive from v without blocking.
+func (value Value) TryRecv() (x Value, ok bool) {
+	x, ok, message, valid := runtimeValueTryRecv(value)
+	if valid {
+		return x, ok
+	}
+	panic(message)
+}
+
+// TrySend attempts to send x on v without blocking.
+func (value Value) TrySend(x Value) bool {
+	selected, message, ok := runtimeValueTrySend(value, x)
+	if ok {
+		return selected
+	}
+	panic(message)
+}
+
+// Close closes the channel v.
+func (value Value) Close() {
+	message, ok := runtimeValueClose(value)
+	if !ok {
+		panic(message)
+	}
+}
+
+// MapKeys returns a slice containing all the keys present in the map,
+// in unspecified order.
+// It panics if v's Kind is not [Map].
+// It returns an empty slice if v represents a nil map.
+func (value Value) MapKeys() []Value {
+	current := value.current()
+	requireValue(current, "MapKeys")
+	if current.Kind() != Map {
+		panicValueError("MapKeys", current)
+	}
+	keys := []Value{}
+	for i := 0; i < len(current.mapEntries); i++ {
+		keys = append(keys, current.mapEntries[i].Key)
+	}
+	return keys
+}
+
+// MapIndex returns the value associated with key in the map v.
+// It panics if v's Kind is not [Map].
+// It returns the zero Value if key is not found in the map or if v represents a nil map.
+// As in Go, the key's value must be assignable to the map's key type.
+func (value Value) MapIndex(key Value) Value {
+	current := value.current()
+	requireValue(current, "MapIndex")
+	if current.Kind() != Map {
+		panicValueError("MapIndex", current)
+	}
+	keyValue := key
+	mapKeyType := current.valueType.Key()
+	if !isZeroType(mapKeyType) && keyValue.Type().ConvertibleTo(mapKeyType) {
+		keyValue = keyValue.Convert(mapKeyType)
+	}
+	for i := 0; i < len(current.mapEntries); i++ {
+		entry := current.mapEntries[i]
+		if reflectMapKeyEqual(entry.Key, keyValue) {
+			return entry.Value
+		}
+	}
+	return Value{}
+}
+
+func reflectMapKeyEqual(left Value, right Value) bool {
+	if left.Equal(right) {
+		return true
+	}
+	if isIntValue(left) && isIntValue(right) {
+		return left.Int() == right.Int()
+	}
+	if isUintValue(left) && isUintValue(right) {
+		return left.Uint() == right.Uint()
+	}
+	return false
+}
+
+// SetMapIndex sets the element associated with key in the map v to elem.
+// It panics if v's Kind is not [Map].
+// If elem is the zero Value, SetMapIndex deletes the key from the map.
+// Otherwise if v holds a nil map, SetMapIndex will panic.
+// As in Go, key's elem must be assignable to the map's key type,
+// and elem's value must be assignable to the map's elem type.
+func (value Value) SetMapIndex(key Value, elem Value) {
+	if value.Kind() != Map {
+		panicValueError("SetMapIndex", value)
+	}
+	message, ok := runtimeValueSetMapIndex(value, key, elem)
+	if !ok {
+		panic(message)
+	}
+}
+
+// MapRange returns a range iterator for a map.
+// It panics if v's Kind is not [Map].
+//
+// Call [MapIter.Next] to advance the iterator, and [MapIter.Key]/[MapIter.Value] to access each entry.
+// [MapIter.Next] returns false when the iterator is exhausted.
+// MapRange follows the same iteration semantics as a range statement.
+//
+// Example:
+//
+//	iter := reflect.ValueOf(m).MapRange()
+//	for iter.Next() {
+//		k := iter.Key()
+//		v := iter.Value()
+//		...
+//	}
+func (value Value) MapRange() *MapIter {
+	current := value.current()
+	requireValue(current, "MapRange")
+	if current.Kind() != Map {
+		panicValueError("MapRange", current)
+	}
+	iter := new(MapIter)
+	iter.entries = current.mapEntries
+	iter.index = -1
+	iter.valid = false
+	return iter
+}
+
+// Next advances the map iterator and reports whether there is another
+// entry. It returns false when iter is exhausted; subsequent
+// calls to [MapIter.Key], [MapIter.Value], or [MapIter.Next] will panic.
+func (iter *MapIter) Next() bool {
+	next := iter.index + 1
+	if next >= len(iter.entries) {
+		iter.valid = false
+		return false
+	}
+	iter.index = next
+	iter.valid = true
+	return true
+}
+
+// Key returns the key of iter's current map entry.
+func (iter *MapIter) Key() Value {
+	if !iter.valid {
+		panic("reflect: MapIter.Key before Next")
+	}
+	return iter.entries[iter.index].Key
+}
+
+// Value returns the value of iter's current map entry.
+func (iter *MapIter) Value() Value {
+	if !iter.valid {
+		panic("reflect: MapIter.Value before Next")
+	}
+	return iter.entries[iter.index].Value
+}
+
+// Reset modifies iter to iterate over v.
+// It panics if v's Kind is not [Map] and v is not the zero Value.
+// Reset(Value{}) causes iter to not to refer to any map,
+// which may allow the previously iterated-over map to be garbage collected.
+func (iter *MapIter) Reset(value Value) {
+	if !value.IsValid() {
+		iter.entries = nil
+		iter.index = -1
+		iter.valid = false
+		return
+	}
+	current := value.current()
+	if current.Kind() != Map {
+		panic("reflect: MapIter.Reset of non-map Value")
+	}
+	iter.entries = current.mapEntries
+	iter.index = -1
+	iter.valid = false
+}
+
+// Equal reports true if v is equal to u.
+// For two invalid values, Equal will report true.
+// For an interface value, Equal will compare the value within the interface.
+// Otherwise, If the values have different types, Equal will report false.
+// Otherwise, for arrays and structs Equal will compare each element in order,
+// and report false if it finds non-equal elements.
+// During all comparisons, if values of the same type are compared,
+// and the type is not comparable, Equal will panic.
+func (value Value) Equal(other Value) bool {
+	equal, message, ok := runtimeValueEqual(value, other)
+	if ok {
+		return equal
+	}
+	panic(message)
+}
+
+// NumMethod returns the number of methods in the value's method set.
+//
+// For a non-interface type, it returns the number of exported methods.
+//
+// For an interface type, it returns the number of exported and unexported methods.
+func (value Value) NumMethod() int {
+	return value.Type().NumMethod()
+}
+
+// Method returns a function value corresponding to v's i'th method.
+// The arguments to a Call on the returned function should not include
+// a receiver; the returned function will always use v as the receiver.
+// Method panics if i is out of range or if v is a nil interface value.
+//
+// Calling this method will force the linker to retain all exported methods in all packages.
+// This may make the executable binary larger but will not affect execution time.
+func (value Value) Method(index int) Value {
+	return value.methodValue(value.Type().Method(index))
+}
+
+// MethodByName returns a function value corresponding to the method
+// of v with the given name.
+// The arguments to a Call on the returned function should not include
+// a receiver; the returned function will always use v as the receiver.
+// It returns the zero Value if no method was found.
+//
+// Calling this method will cause the linker to retain all methods with this name in all packages.
+// If the linker can't determine the name, it will retain all exported methods.
+// This may make the executable binary larger but will not affect execution time.
+func (value Value) MethodByName(name string) Value {
+	method, ok := value.Type().MethodByName(name)
+	if !ok {
+		return Value{}
+	}
+	return value.methodValue(method)
+}
+
+func (value Value) methodValue(method Method) Value {
+	out, message, ok := runtimeValueMethod(value, method)
+	if ok {
+		return out
+	}
+	panic(message)
+}
+
+// Call calls the function v with the input arguments in.
+// For example, if len(in) == 3, v.Call(in) represents the Go call v(in[0], in[1], in[2]).
+// Call panics if v's Kind is not [Func].
+// It returns the output results as Values.
+// As in Go, each input argument must be assignable to the
+// type of the function's corresponding input parameter.
+// If v is a variadic function, Call creates the variadic slice parameter
+// itself, copying in the corresponding values.
+// It panics if the Value was obtained by accessing unexported struct fields.
+func (value Value) Call(args []Value) []Value {
+	out, message, ok := runtimeValueCall(value, args, false)
+	if ok {
+		return out
+	}
+	panic(message)
+}
+
+// CallSlice calls the variadic function v with the input arguments in,
+// assigning the slice in[len(in)-1] to v's final variadic argument.
+// For example, if len(in) == 3, v.CallSlice(in) represents the Go call v(in[0], in[1], in[2]...).
+// CallSlice panics if v's Kind is not [Func] or if v is not variadic.
+// It returns the output results as Values.
+// As in Go, each input argument must be assignable to the
+// type of the function's corresponding input parameter.
+// It panics if the Value was obtained by accessing unexported struct fields.
+func (value Value) CallSlice(args []Value) []Value {
+	out, message, ok := runtimeValueCall(value, args, true)
+	if ok {
+		return out
+	}
+	panic(message)
+}
+
+// Set assigns x to the value v.
+// It panics if [Value.CanSet] returns false.
+// As in Go, x's value must be assignable to v's type and
+// must not be derived from an unexported field.
+func (value Value) Set(other Value) {
+	message, ok := runtimeValueSet(value, other)
+	if !ok {
+		panic(message)
+	}
+}
+
+// SetZero sets v to be the zero value of v's type.
+// It panics if [Value.CanSet] returns false.
+func (value Value) SetZero() {
+	value.Set(New(value.Type()).Elem())
+}
+
+// SetLen sets v's length to n.
+// It panics if v's Kind is not [Slice], or if n is negative or
+// greater than the capacity of the slice,
+// or if [Value.CanSet] returns false.
+func (value Value) SetLen(length int) {
+	message, ok := runtimeValueSetLen(value, length)
+	if !ok {
+		panic(message)
+	}
+}
+
+// SetCap sets v's capacity to n.
+// It panics if v's Kind is not [Slice], or if n is smaller than the length or
+// greater than the capacity of the slice,
+// or if [Value.CanSet] returns false.
+func (value Value) SetCap(capacity int) {
+	message, ok := runtimeValueSetCap(value, capacity)
+	if !ok {
+		panic(message)
+	}
+}
+
+// Grow increases v's capacity, if necessary, to guarantee space for another n
+// elements. After Grow(n), at least n elements can be appended without another
+// allocation.
+func (value Value) Grow(n int) {
+	message, ok := runtimeValueGrow(value, n)
+	if !ok {
+		panic(message)
+	}
+}
+
+// Clear clears the contents of a map or zeroes the contents of a slice.
+func (value Value) Clear() {
+	switch value.Kind() {
+		case Map:
+			for _, key := range value.MapKeys() {
+				value.SetMapIndex(key, Value{})
+			}
+		case Slice:
+			for i := 0; i < value.Len(); i++ {
+				value.Index(i).SetZero()
+			}
+		default:
+			panicValueError("Clear", value)
+	}
+}
+
+// Bytes returns v's underlying value as a byte slice.
+func (value Value) Bytes() []byte {
+	if value.Kind() != Slice || value.Type().Elem().Kind() != Uint8 {
+		panicValueError("Bytes", value)
+	}
+	byteSlice := TypeOf([]byte{})
+	if value.Type() != byteSlice {
+		value = value.Convert(byteSlice)
+	}
+	return value.Interface().([]byte)
+}
+
+// SetBytes sets v's underlying value to x.
+func (value Value) SetBytes(x []byte) {
+	if value.Kind() != Slice || value.Type().Elem().Kind() != Uint8 {
+		panicValueError("SetBytes", value)
+	}
+	other := ValueOf(x)
+	if other.Type() != value.Type() {
+		other = other.Convert(value.Type())
+	}
+	value.Set(other)
+}
+
+func (value Value) swap(i int, j int) {
+	message, ok := runtimeValueSwap(value, i, j)
+	if !ok {
+		panic(message)
+	}
+}
+
+// SetBool sets v's underlying value.
+// It panics if v's Kind is not [Bool] or if [Value.CanSet] returns false.
+func (value Value) SetBool(other bool) {
+	if value.Kind() != Bool {
+		panicValueError("SetBool", value)
+	}
+	value.setConverted(ValueOf(other))
+}
+
+// SetInt sets v's underlying value to x.
+// It panics if v's Kind is not [Int], [Int8], [Int16], [Int32], or [Int64],
+// or if [Value.CanSet] returns false.
+func (value Value) SetInt(other int64) {
+	switch value.Kind() {
+		case Int, Int8, Int16, Int32, Int64:
+			value.setConverted(ValueOf(other))
+			return
+	}
+	panicValueError("SetInt", value)
+}
+
+// SetUint sets v's underlying value to x.
+// It panics if v's Kind is not [Uint], [Uintptr], [Uint8], [Uint16], [Uint32], or [Uint64],
+// or if [Value.CanSet] returns false.
+func (value Value) SetUint(other uint64) {
+	switch value.Kind() {
+		case Uint, Uint8, Uint16, Uint32, Uint64, Uintptr:
+			value.setConverted(ValueOf(other))
+			return
+	}
+	panicValueError("SetUint", value)
+}
+
+// SetFloat sets v's underlying value to x.
+// It panics if v's Kind is not [Float32] or [Float64],
+// or if [Value.CanSet] returns false.
+func (value Value) SetFloat(other float64) {
+	switch value.Kind() {
+		case Float32, Float64:
+			value.setConverted(ValueOf(other))
+			return
+	}
+	panicValueError("SetFloat", value)
+}
+
+// SetComplex sets v's underlying value to x.
+// It panics if v's Kind is not [Complex64] or [Complex128],
+// or if [Value.CanSet] returns false.
+func (value Value) SetComplex(other complex128) {
+	switch value.Kind() {
+		case Complex64, Complex128:
+			value.setConverted(ValueOf(other))
+			return
+	}
+	panicValueError("SetComplex", value)
+}
+
+// SetString sets v's underlying value to x.
+// It panics if v's Kind is not [String] or if [Value.CanSet] returns false.
+func (value Value) SetString(other string) {
+	if value.Kind() != String {
+		panicValueError("SetString", value)
+	}
+	value.setConverted(ValueOf(other))
+}
+
+func (value Value) setConverted(other Value) {
+	if other.Type() != value.Type() {
+		other = other.Convert(value.Type())
+	}
+	value.Set(other)
+}
+
+func requireValue(value Value, op string) {
+	if !value.valid {
+		panicValueError(op, value)
+	}
+}
+
+func panicValueError(method string, value Value) {
+	panic(&ValueError{Method: "reflect.Value." + method, Kind: value.Kind()})
+}
+
+func isNilCapableValue(value Value) bool {
+	switch value.Kind() {
+		case Chan, Func, Interface, Map, Pointer, Slice:
+			return true
+	}
+	return false
+}
+
+func isLenCapableValue(value Value) bool {
+	switch value.Kind() {
+		case Array, Chan, Map, Slice, String:
+			return true
+	}
+	return false
+}
+
+func isCapCapableValue(value Value) bool {
+	switch value.Kind() {
+		case Array, Chan, Slice:
+			return true
+	}
+	return false
+}
+
+func valueKindLabel(value Value) string {
+	if value.IsValid() {
+		return value.Kind().String()
+	}
+	return "invalid"
+}

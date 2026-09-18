@@ -1,0 +1,13 @@
+package main
+
+func main() {}
+func Answer() int { return 42 }
+func StepAnswer() int {
+	value := 40
+	value = value + 2
+	return value
+}
+func Add(left, right int) int { return left + right }
+func BigString() string { return "12345" }
+func BigSlice() []int { return []int{1, 2, 3} }
+func Endless() { for {} }

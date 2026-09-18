@@ -1,0 +1,65 @@
+package os
+
+import (
+	"errors"
+	"io"
+	"testing"
+)
+
+func TestHostOperationErrorIdentity(t *testing.T) {
+	err := &PathError{Op: "read", Path: "file", Err: hostError("unsupported", "backend cannot read")}
+	if !errors.Is(err, errors.ErrUnsupported) {
+		t.Fatalf("unsupported operation: %v", err)
+	}
+	if errors.Is(hostError("permission", "denied"), errors.ErrUnsupported) {
+		t.Fatal("permission failure classified as unsupported")
+	}
+}
+
+func TestFilePositionalIO(t *testing.T) {
+	file, err := Create("positional.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer Remove("positional.txt")
+	defer file.Close()
+	if _, err := file.WriteString("abcdef"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Seek(1, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	data := make([]byte, 4)
+	if n, err := file.ReadAt(data, 4); n != 2 || err != io.EOF || string(data[:n]) != "ef" {
+		t.Fatalf("ReadAt: %d %v", n, err)
+	}
+	if n, err := file.WriteAt([]byte("XY"), 2); n != 2 || err != nil {
+		t.Fatalf("WriteAt: %d %v", n, err)
+	}
+	if position, err := file.Seek(0, io.SeekCurrent); position != 1 || err != nil {
+		t.Fatalf("cursor: %d %v", position, err)
+	}
+	if n, err := file.Read(nil); n != 0 || err != nil {
+		t.Fatalf("empty read: %d %v", n, err)
+	}
+	if n, err := file.ReadAt(nil, 100); n != 0 || err != nil {
+		t.Fatalf("empty readat: %d %v", n, err)
+	}
+	if _, err := file.ReadAt(data, -1); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("negative offset: %v", err)
+	}
+	appendFile, err := OpenFile("positional.txt", O_WRONLY | O_APPEND, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer appendFile.Close()
+	if _, err := appendFile.WriteAt([]byte("x"), 0); err == nil {
+		t.Fatal("WriteAt must reject O_APPEND")
+	}
+}
+
+func TestConstants(t *testing.T) {
+	if O_RDONLY != 0 || O_CREATE == 0 || O_TRUNC == 0 {
+		t.Fatal("open constants are invalid")
+	}
+}

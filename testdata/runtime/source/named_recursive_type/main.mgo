@@ -1,0 +1,3 @@
+package main
+type Node struct { Value int; Next *Node }
+func Main() int { a := &Node{Value: 40}; b := &Node{Value: 2, Next: a}; a.Next = b; return a.Value + a.Next.Value }

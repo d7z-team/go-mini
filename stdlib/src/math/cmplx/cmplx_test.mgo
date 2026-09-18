@@ -1,0 +1,28 @@
+package cmplx_test
+
+import (
+	"math"
+	"math/cmplx"
+	"testing"
+)
+
+func closeComplex(left complex128, right complex128) bool {
+	return math.Abs(real(left) - real(right)) < 1e-12 && math.Abs(imag(left) - imag(right)) < 1e-12
+}
+
+func TestComplexFunctions(t *testing.T) {
+	value := complex(3.0, 4.0)
+	if cmplx.Abs(value) != 5 || cmplx.Conj(value) != complex(3.0, -4.0) {
+		t.Fatal("Abs or Conj returned the wrong value")
+	}
+	radius, angle := cmplx.Polar(value)
+	if radius != 5 || !closeComplex(cmplx.Rect(radius, angle), value) {
+		t.Fatal("Polar and Rect did not round trip")
+	}
+	if !closeComplex(cmplx.Sqrt(complex(-1.0, 0)), complex(0.0, 1.0)) {
+		t.Fatalf("Sqrt(-1) = %v", cmplx.Sqrt(complex(-1.0, 0)))
+	}
+	if !closeComplex(cmplx.Exp(cmplx.Log(value)), value) {
+		t.Fatal("Exp and Log did not round trip")
+	}
+}

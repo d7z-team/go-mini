@@ -1,0 +1,78 @@
+package rpc
+
+import (
+	"errors"
+	"testing"
+)
+
+func TestUnsupportedStatus(t *testing.T) {
+	for _, code := range []string{"unimplemented", "failed_precondition", "unavailable", "permission_denied", "canceled"} {
+		err := wrappedStatus{err: NewError(code, "failure")}
+		if errors.Is(err, errors.ErrUnsupported) != (code == "unimplemented") {
+			t.Fatalf("unsupported category for %s", code)
+		}
+	}
+}
+
+type wrappedStatus struct {
+	err error
+}
+
+func (w wrappedStatus) Error() string {
+	return "wrapped"
+}
+
+func (w wrappedStatus) Unwrap() error {
+	return w.err
+}
+
+func TestCodeOf(t *testing.T) {
+	code, message := CodeOf(wrappedStatus{err: NewError("aborted", "stopped")})
+	if code != "aborted" || message != "stopped" {
+		t.Fatalf("CodeOf = %q, %q", code, message)
+	}
+	code, message = CodeOf(nil)
+	if code != "" || message != "" {
+		t.Fatalf("CodeOf(nil) = %q, %q", code, message)
+	}
+}
+
+func TestValueCodecCanonicalizesFieldOrder(t *testing.T) {
+	left, err := encodeValues([]Value{{Type: "example.Message", Kind: "struct", Fields: []Field{
+			{ID: 2, Value: Value{Type: "int64", Kind: "int", Signed: 2}},
+			{ID: 1, Value: Value{Type: "string", Kind: "string", Text: "one"}},
+		}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := encodeValues([]Value{{Type: "example.Message", Kind: "struct", Fields: []Field{
+			{ID: 1, Value: Value{Type: "string", Kind: "string", Text: "one"}},
+			{ID: 2, Value: Value{Type: "int64", Kind: "int", Signed: 2}},
+		}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(left) != string(right) {
+		t.Fatalf("canonical field bytes differ: %v != %v", left, right)
+	}
+}
+
+func TestValueCodecPreservesByteSlicePresence(t *testing.T) {
+	encoded, err := encodeValues([]Value{
+		{Type: "[]uint8", Kind: "nil"},
+		{Type: "[]uint8", Kind: "bytes", Bytes: []byte{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, err := decodeValues(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values[0].Kind != "nil" || values[1].Kind != "bytes" || values[1].Bytes == nil || len(values[1].Bytes) != 0 {
+		t.Fatalf("byte presence changed: %#v", values)
+	}
+	if _, _, err := readWireUint([]byte{128, 0}, 0); err == nil {
+		t.Fatal("non-canonical varint was accepted")
+	}
+}

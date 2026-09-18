@@ -1,0 +1,61 @@
+package bytes
+
+import (
+	"iter"
+	"unicode"
+)
+
+// Lines returns an iterator over the newline-terminated lines in s.
+func Lines(s []byte) iter.Seq[[]byte] {
+	return func(yield func([]byte) bool) {
+		for len(s) != 0 {
+			end := IndexByte(s, '\n')
+			if end < 0 {
+				yield(s)
+				return
+			}
+			end++
+			if !yield(s[:end]) {
+				return
+			}
+			s = s[end:]
+		}
+	}
+}
+
+// SplitSeq returns an iterator over subslices separated by sep.
+func SplitSeq(s []byte, sep []byte) iter.Seq[[]byte] {
+	return splitSeq(s, sep, false)
+}
+
+// SplitAfterSeq returns an iterator over subslices split after sep.
+func SplitAfterSeq(s []byte, sep []byte) iter.Seq[[]byte] {
+	return splitSeq(s, sep, true)
+}
+
+func splitSeq(s []byte, sep []byte, after bool) iter.Seq[[]byte] {
+	return func(yield func([]byte) bool) {
+		for _, part := range splitN(s, sep, -1, after) {
+			if !yield(part) {
+				return
+			}
+		}
+	}
+}
+
+// FieldsSeq returns an iterator over fields separated by Unicode white space.
+func FieldsSeq(s []byte) iter.Seq[[]byte] {
+	return FieldsFuncSeq(s, unicode.IsSpace)
+}
+
+// FieldsFuncSeq returns an iterator over fields separated by code points
+// satisfying f.
+func FieldsFuncSeq(s []byte, f func(rune) bool) iter.Seq[[]byte] {
+	return func(yield func([]byte) bool) {
+		for _, field := range FieldsFunc(s, f) {
+			if !yield(field) {
+				return
+			}
+		}
+	}
+}

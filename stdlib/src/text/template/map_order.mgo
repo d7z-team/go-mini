@@ -1,0 +1,106 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package template
+
+import (
+	"reflect"
+	"sort"
+)
+
+type mapEntry struct {
+	Key reflect.Value
+	Value reflect.Value
+}
+
+func sortMap(value reflect.Value) []mapEntry {
+	entries := []mapEntry{}
+	iter := value.MapRange()
+	for iter.Next() {
+		entries = append(entries, mapEntry{Key: iter.Key(), Value: iter.Value()})
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		return compareMapKey(entries[i].Key, entries[j].Key) < 0
+	})
+	return entries
+}
+
+func compareMapKey(left, right reflect.Value) int {
+	if left.Type() != right.Type() {
+		if left.Type().String() < right.Type().String() {
+			return -1
+		}
+		return 1
+	}
+	switch left.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			return compareInt64(left.Int(), right.Int())
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+			return compareUint64(left.Uint(), right.Uint())
+		case reflect.String:
+			if left.String() < right.String() {
+				return -1
+			}
+			if left.String() > right.String() {
+				return 1
+			}
+		case reflect.Float32, reflect.Float64:
+			return compareFloat64(left.Float(), right.Float())
+		case reflect.Complex64, reflect.Complex128:
+			if result := compareFloat64(real(left.Complex()), real(right.Complex())); result != 0 {
+				return result
+			}
+			return compareFloat64(imag(left.Complex()), imag(right.Complex()))
+		case reflect.Bool:
+			if left.Bool() != right.Bool() {
+				if !left.Bool() {
+					return -1
+				}
+				return 1
+			}
+		case reflect.Array:
+			for i := 0; i < left.Len(); i++ {
+				if result := compareMapKey(left.Index(i), right.Index(i)); result != 0 {
+					return result
+				}
+			}
+		case reflect.Struct:
+			for i := 0; i < left.NumField(); i++ {
+				if result := compareMapKey(left.Field(i), right.Field(i)); result != 0 {
+					return result
+				}
+			}
+	}
+	return 0
+}
+
+func compareInt64(left, right int64) int {
+	if left < right {
+		return -1
+	}
+	if left > right {
+		return 1
+	}
+	return 0
+}
+
+func compareUint64(left, right uint64) int {
+	if left < right {
+		return -1
+	}
+	if left > right {
+		return 1
+	}
+	return 0
+}
+
+func compareFloat64(left, right float64) int {
+	if left < right || left != left && right == right {
+		return -1
+	}
+	if left > right || right != right && left == left {
+		return 1
+	}
+	return 0
+}

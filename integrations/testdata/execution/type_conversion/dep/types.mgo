@@ -1,0 +1,33 @@
+package dep
+
+type T struct {
+	N int
+}
+
+func (t T) Value() int {
+	t.N++
+	return t.N
+}
+
+func (t *T) Add(n int) {
+	t.N += n
+}
+
+func (t T) Sum(values ...int) int {
+	for _, n := range values {
+		t.N += n
+	}
+	return t.N
+}
+
+func (t T) Pair() (int, bool) {
+	return t.N, true
+}
+
+type Box struct {
+	T
+}
+
+type PtrBox struct {
+	*T
+}

@@ -1,0 +1,18 @@
+package main
+
+type Small int8
+func Bound[T ~int8 | ~int16]() T { return 127 }
+const Large = 1 << 100
+const Rounded = float32(16777217)
+const Difference = Rounded - 16777216
+const Typed float32 = 0.1
+const Fraction = Typed - 0.1
+const Z = complex64(complex(16777217, 2))
+
+func Main() int {
+	var value any = Large >> 100
+	if value.(int) != 1 || Difference != 0 || real(Z) != 16777216 || imag(Z) != 2 { return -1 }
+	if Fraction != 0 || float64(Typed) == 0.1 { return -2 }
+	var small Small = -128
+	return int(Bound[int16]()) - int(small)
+}

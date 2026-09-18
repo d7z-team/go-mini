@@ -1,0 +1,4 @@
+package main
+import "reflect"
+type Node struct { Number int; Next *Node }
+func Main() int { a := &Node{Number: 1}; b := &Node{Number: 1}; a.Next = a; b.Next = b; if !reflect.DeepEqual(a, b) { return -1 }; b.Number = 2; if reflect.DeepEqual(a, b) { return -2 }; x := map[string]any{}; y := map[string]any{}; x["self"] = x; y["self"] = y; if !reflect.DeepEqual(x, y) || !reflect.SameReference(reflect.ValueOf(a), reflect.ValueOf(a)) { return -3 }; return 42 }

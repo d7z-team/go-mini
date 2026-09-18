@@ -1,0 +1,11 @@
+package fmt
+
+// print implements the compiler's predeclared print syntax.
+func print(args ...any) {
+	_, _ = Print(args...)
+}
+
+// println implements the compiler's predeclared println syntax.
+func println(args ...any) {
+	_, _ = Println(args...)
+}

@@ -1,0 +1,3 @@
+package main
+import "reflect"
+func Main() int { typ := reflect.MapOf(reflect.TypeOf(""), reflect.TypeOf(int(0))); m := reflect.MakeMap(typ); m.SetMapIndex(reflect.ValueOf("answer"), reflect.ValueOf(42)); m.SetMapIndex(reflect.ValueOf("remove"), reflect.ValueOf(1)); m.SetMapIndex(reflect.ValueOf("remove"), reflect.Value{}); if m.Len() != 1 || typ != reflect.TypeOf(map[string]int{}) { return -1 }; return int(m.MapIndex(reflect.ValueOf("answer")).Int()) }

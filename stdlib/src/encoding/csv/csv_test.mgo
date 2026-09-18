@@ -1,0 +1,27 @@
+package csv_test
+
+import (
+	"bytes"
+	"encoding/csv"
+	"testing"
+)
+
+func TestReadWriteAndPositions(t *testing.T) {
+	reader := csv.NewReader(bytes.NewBuffer([]byte("name,note\r\nmini,\"line 1\nline 2\"\n")))
+	records, err := reader.ReadAll()
+	if err != nil || len(records) != 2 || records[1][1] != "line 1\nline 2" {
+		t.Fatalf("ReadAll returned wrong records: %v", err)
+	}
+	if reader.InputOffset() == 0 {
+		t.Fatal("InputOffset did not advance")
+	}
+	buffer := bytes.NewBuffer(nil)
+	writer := csv.NewWriter(buffer)
+	if err = writer.Write([]string{"a", "b,c", "quote\""}); err != nil {
+		t.Fatalf("Write returned error: %v", err)
+	}
+	writer.Flush()
+	if writer.Error() != nil || buffer.String() != "a,\"b,c\",\"quote\"\"\"\n" {
+		t.Fatalf("Writer returned %q, %v", buffer.String(), writer.Error())
+	}
+}

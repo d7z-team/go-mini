@@ -1,0 +1,10 @@
+package bytes
+
+import "errors"
+
+var (
+	errUnreadByte = errors.New("bytes: UnreadByte: previous operation was not a successful read")
+	errUnreadRune = errors.New("bytes: UnreadRune: previous operation was not a successful ReadRune")
+	errInvalidWhence = errors.New("bytes.Reader.Seek: invalid whence")
+	errNegativePosition = errors.New("bytes.Reader.Seek: negative position")
+)
