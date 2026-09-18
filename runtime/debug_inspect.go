@@ -119,11 +119,15 @@ func (vm *vm) refreshBreakpointsLocked(revision *instanceRevision) {
 }
 
 type DebugThread struct {
-	ID   int64
-	Name string
+	ScopeID int64
+	ID      int64
+	Name    string
 }
 
 type DebugFrame struct {
+	ScopeID          int64
+	SymbolsHash      string
+	SourceHash       string
 	ID               int
 	ThreadID         int64
 	Generation       uint64
@@ -194,12 +198,13 @@ func (e *Execution) buildDebugInspectionLocked() {
 		frame := &e.pause.Stack[index]
 		if _, exists := threads[frame.ExecutionContextID]; !exists {
 			threads[frame.ExecutionContextID] = struct{}{}
-			inspection.snapshot.Threads = append(inspection.snapshot.Threads, DebugThread{ID: frame.ExecutionContextID, Name: fmt.Sprintf("execution %d", frame.ExecutionContextID)})
+			inspection.snapshot.Threads = append(inspection.snapshot.Threads, DebugThread{ID: frame.ExecutionContextID, ScopeID: frame.ScopeID, Name: fmt.Sprintf("task %d / scope %d", frame.ExecutionContextID, frame.ScopeID)})
 		}
 		e.nextDebugReference++
 		frameID := e.nextDebugReference
 		inspection.frames[frameID] = frame
 		inspection.snapshot.Frames = append(inspection.snapshot.Frames, DebugFrame{
+			ScopeID: frame.ScopeID, SymbolsHash: frame.SymbolsHash, SourceHash: frame.SourceHash,
 			ID: frameID, ThreadID: frame.ExecutionContextID, Generation: frame.Generation, ProgramHash: frame.ProgramHash,
 			HasSymbols: frame.hasSymbols, ModulePath: frame.ModulePath, FunctionID: frame.FunctionID, PC: frame.PC,
 			File: frame.Loc.File, Line: frame.Loc.Line, Column: frame.Loc.Column,

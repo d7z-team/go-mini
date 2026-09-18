@@ -57,9 +57,9 @@ func TestPatchRejectsIncompatibleAndReusedPlansWithoutMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	plan.mu.Lock()
-	retainedOwner, retainedTarget, retainedModules := plan.owner, plan.target, plan.changedModules
+	retainedOwner, retainedTarget, retainedModules, retainedBase := plan.owner, plan.target, plan.changedModules, plan.base
 	plan.mu.Unlock()
-	if retainedOwner != nil || retainedTarget != nil || retainedModules != nil {
+	if retainedOwner != nil || retainedTarget != nil || retainedModules != nil || retainedBase != nil {
 		t.Fatal("committed patch retained runtime state")
 	}
 	before := instance.Revision()

@@ -3,7 +3,7 @@ package dap
 import (
 	"context"
 	"encoding/json"
-	"path/filepath"
+	"fmt"
 	"strings"
 
 	protocol "github.com/google/go-dap"
@@ -21,6 +21,12 @@ func (s *Session) handle(ctx context.Context, message protocol.Message) (bool, e
 		return false, s.sendError(base, "debug adapter is not initialized")
 	}
 	switch value := message.(type) {
+	case *protocol.SourceRequest:
+		text, err := s.sourceContent(ctx, value.Arguments.SourceReference)
+		if err != nil {
+			return false, s.sendError(base, err.Error())
+		}
+		return false, s.send(&protocol.SourceResponse{Response: s.response(base), Body: protocol.SourceResponseBody{Content: text, MimeType: "text/plain"}})
 	case *protocol.InitializeRequest:
 		if s.initialized {
 			return false, s.sendError(base, "debug adapter is already initialized")
@@ -136,20 +142,9 @@ func (s *Session) handle(ctx context.Context, message protocol.Message) (bool, e
 			if int(frame.ThreadID) != value.Arguments.ThreadId {
 				continue
 			}
-			stackFrame := protocol.StackFrame{Id: frame.ID, Name: frame.FunctionID, ModuleId: frame.ModulePath}
+			stackFrame := protocol.StackFrame{Id: frame.ID, Name: fmt.Sprintf("%s [generation %d, scope %d, %s]", frame.FunctionID, frame.Generation, frame.ScopeID, frame.ProgramHash), ModuleId: frame.ModulePath}
 			if frame.HasSymbols && frame.File != "" {
-				path := frame.File
-				if mapped, ok := s.target.Locations.File(frame.ModulePath, frame.File); ok {
-					path = mapped
-				} else if s.target.Locations == nil && !filepath.IsAbs(path) {
-					path = filepath.Join(s.target.RootPath, filepath.FromSlash(path))
-				}
-				stackFrame.Source = &protocol.Source{Name: filepath.Base(path)}
-				if filepath.IsAbs(path) {
-					stackFrame.Source.Path = s.clientPath(path)
-				} else if s.pathFormat == "uri" {
-					stackFrame.Source.Path = "mini-go://" + frame.ModulePath + "/" + frame.File
-				}
+				stackFrame.Source = s.frameSource(frame, snapshot.Epoch)
 				stackFrame.Line = s.clientLine(frame.Line)
 				stackFrame.Column = s.clientColumn(frame.Column)
 			}

@@ -97,6 +97,8 @@ type executionScope struct {
 }
 
 type executionTask struct {
+	// Poll suspension preserves the current scheduling quantum.
+	quantumSteps int
 	id           int64
 	scope        *executionScope
 	execution    *Execution

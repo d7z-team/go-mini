@@ -232,11 +232,10 @@ fn replace_program(instance: &Instance, image: &[u8]) -> Result<PatchResult, Run
 
 ### 长期宿主
 
-实例可反复承载有限调用；每次 `wait` 后继续 `wait_scope`，主动终止时先 `cancel`，最后等待
-`shutdown`。`Limits::max_steps` 为 i64：0 或默认值表示 1 亿步，`UNLIMITED_STEPS`（-1）不限累计步数，
+实例可反复承载有限调用，工作结束后按[生命周期约定](#等待取消与关闭)等待和关闭。
+`Limits::max_steps` 为 i64：0 或默认值表示 1 亿步，`UNLIMITED_STEPS`（-1）不限累计步数，
 正数设置有限预算，其他负数无效。推进批次和热更新不重置预算；无限模式仍保留取消、内存及任务限制。
-累计统计饱和后不回绕。观测方法见[开发指南](../../DEVELOPMENT.md#缓存与性能诊断)。
-业务进度由宿主持久化，值快照不是完整执行检查点。
+业务进度由宿主持久化；内存与版本存活的观测方法见[开发指南](../../DEVELOPMENT.md#缓存与性能诊断)。
 
 [有限宿主循环示例](examples/long_running.rs)接收两个兼容的算术镜像，交替调用和更新，
 演示无限步数配置下的有限调用、scope 等待、热更新与关闭。

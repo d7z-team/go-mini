@@ -56,68 +56,9 @@ Mini-Go 源码统一使用 `.mgo`，测试文件使用 `_test.mgo`；Go 宿主�
 go get github.com/d7z-team/mini-go
 ```
 
-以下完整示例编译一个没有 `main` 的脚本包，并调用其导出函数：
-
-```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"log"
-
-	minigo "github.com/d7z-team/mini-go"
-	"github.com/d7z-team/mini-go/compiler/source"
-	"github.com/d7z-team/mini-go/compiler/workspace"
-	"github.com/d7z-team/mini-go/runtime"
-)
-
-func main() {
-	if err := run(); err != nil {
-		log.Fatal(err)
-	}
-}
-
-func run() error {
-	sources, err := workspace.NewMemorySourceSet([]workspace.SourcePackage{{
-		ModulePath: "example/calc",
-		Files: []source.File{{Path: "calc.mgo", Text: `package calc
-func Answer() int { return 42 }
-`}},
-	}})
-	if err != nil {
-		return err
-	}
-	engine, err := minigo.New(minigo.Config{Sources: sources})
-	if err != nil {
-		return err
-	}
-	defer engine.Close()
-
-	program, checked, err := engine.Compile("example/calc",
-		minigo.EntryPoint{Name: "answer", Function: "Answer"})
-	if err != nil || !checked.OK() {
-		return fmt.Errorf("compile: %v; diagnostics: %v", err, checked.Diagnostics)
-	}
-	ctx := context.Background()
-	instance, err := program.Instantiate(ctx, runtime.InstanceOptions{})
-	if err != nil {
-		return err
-	}
-	defer instance.Close()
-
-	result, err := instance.Call(ctx, "answer")
-	if err != nil {
-		return err
-	}
-	answer, _ := result.Values[0].Int64()
-	fmt.Println(answer) // 42
-	return nil
-}
-```
-
-Engine 自动提供标准库源码。与 CLI 不同，嵌入应用需要显式提供 console、文件系统等宿主能力；
-接入方式、执行限制、输出捕获和热更新见[使用指南](./USAGE.md)。
+嵌入流程为：提供源码 → 创建 Engine → 编译 Program → 创建 Instance → 调用入口。
+Program 可复用，实例状态相互独立。可直接运行的代码见[完整嵌入示例](USAGE.md#完整嵌入示例)，
+源码装配、宿主能力、执行控制和热更新见[使用指南](USAGE.md)。
 
 ## 文档
 

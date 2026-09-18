@@ -53,16 +53,17 @@ func TestRetainedRevisionsDuringPendingPatchClose(t *testing.T) {
 		}
 		closed := make(chan error, 1)
 		go func() { closed <- plan.Close() }()
-		retained, err := instance.RetainedRevisions(context.Background())
+		snapshot, err := instance.RevisionRetention(context.Background())
+		retained := snapshot.Revisions
 		closeErr := <-closed
 		if err != nil || closeErr != nil {
 			t.Fatalf("snapshot = %v, close = %v", err, closeErr)
 		}
-		if len(retained) < 1 || len(retained) > 2 || retained[0].Generation != 1 || retained[0].Hash != "revision-old" {
+		if len(retained) != 1 || retained[0].Revision.Generation != 1 || retained[0].Revision.Hash != "revision-old" {
 			t.Fatalf("retained revisions = %#v", retained)
 		}
-		if len(retained) == 2 && (retained[1].Generation != 2 || retained[1].Hash != "revision-new") {
-			t.Fatalf("pending revision = %#v", retained[1])
+		if snapshot.PendingTarget != nil && snapshot.PendingTarget.Hash != "revision-new" {
+			t.Fatalf("pending target = %#v", snapshot.PendingTarget)
 		}
 	}
 }
@@ -238,6 +239,10 @@ func TestPatchKeepsPendingFFICallOnItsOriginalRevision(t *testing.T) {
 	}
 	if retained, err := instance.RetainedRevisions(context.Background()); err != nil || len(retained) != 2 {
 		t.Fatalf("retained revisions with pending FFI = %#v, %v", retained, err)
+	}
+	roots, err := instance.RevisionRoots(t.Context(), 1, RevisionRootLimits{})
+	if err != nil || !roots.Complete || len(roots.Roots) == 0 || roots.Roots[0].ScopeID != execution.scopeID {
+		t.Fatalf("pending FFI roots = %+v, %v", roots, err)
 	}
 	completion(ffi.Result{Payload: []byte("old")})
 	result, err := execution.Wait(context.Background())

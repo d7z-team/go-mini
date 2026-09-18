@@ -16,6 +16,7 @@ type RevisionInfo struct {
 
 // PatchPlan is an immutable, validated transition between two complete programs.
 type PatchPlan struct {
+	base           *Program
 	mu             sync.Mutex
 	owner          *Instance
 	baseGeneration uint64
@@ -60,6 +61,7 @@ func (p *PatchPlan) Close() error {
 	owner := p.owner
 	p.owner = nil
 	p.target = nil
+	p.base = nil
 	p.changedModules = nil
 	p.mu.Unlock()
 	if owner != nil {
@@ -212,6 +214,7 @@ func (i *Instance) ApplyPatch(plan *PatchPlan) (PatchResult, error) {
 	plan.state = patchPlanCommitted
 	plan.owner = nil
 	plan.target = nil
+	plan.base = nil
 	plan.changedModules = nil
 	plan.mu.Unlock()
 	i.vm.debugger.mu.Lock()

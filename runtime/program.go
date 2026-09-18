@@ -18,6 +18,21 @@ type Program struct {
 	symbols *symbolIndex
 }
 
+// ProgramIdentity identifies immutable code and optional symbols, not a deployment.
+type ProgramIdentity struct {
+	Hash        string
+	SymbolsHash string
+	CompilerID  string
+}
+
+func (p *Program) Identity() ProgramIdentity {
+	identity := ProgramIdentity{Hash: p.Hash(), SymbolsHash: p.SymbolsHash()}
+	if p != nil && p.code != nil {
+		identity.CompilerID = p.code.image.CompilerID
+	}
+	return identity
+}
+
 type programCode struct {
 	image         ir.ExecutionImage
 	root          *executable

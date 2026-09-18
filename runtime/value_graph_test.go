@@ -1,10 +1,36 @@
 package runtime
 
 import (
+	"fmt"
 	"testing"
 
 	ir "github.com/d7z-team/mini-go/runtime/bytecode"
 )
+
+func TestValueInspectionPreservesPointerAddressPath(t *testing.T) {
+	revision := &instanceRevision{generation: 1}
+	module := &moduleInstance{revision: revision}
+	cell := &slot{module: module, initialized: true, value: newSliceValue("Slice<Any>", []vmValue{
+		newVMValue("Function", functionRef{exact: module}), newVMValue("Int", int64(7)),
+	})}
+	for _, inspect := range []bool{false, true} {
+		for _, index := range []int64{0, 1} {
+			t.Run(fmt.Sprintf("inspect=%t/index=%d", inspect, index), func(t *testing.T) {
+				pointer := newPathPointerValue("Any", "element", cell, []ir.AddressPathSegment{{Kind: "index"}}, []vmValue{newVMValue("Int", index)})
+				found := false
+				walker := newRuntimeValueWalker(func(actual *instanceRevision) { found = found || actual == revision })
+				if inspect {
+					walker.enter = func(vmValue) bool { return true }
+					walker.leave = func() {}
+				}
+				walker.value(pointer)
+				if found != (index == 0) {
+					t.Fatalf("referenced revision=%t for index %d", found, index)
+				}
+			})
+		}
+	}
+}
 
 func TestRuntimeValueWalkerFindsNestedMethodRevision(t *testing.T) {
 	revision := &instanceRevision{generation: 1}

@@ -1,13 +1,22 @@
 package runtime
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	ir "github.com/d7z-team/mini-go/runtime/bytecode"
 )
 
 func TestSchedulerRotatesRunnableTasks(t *testing.T) {
+	for _, budgets := range [][]int{{1}, {taskInstructionQuantum - 1}, {taskInstructionQuantum}, {taskInstructionQuantum + 1}, {1, 7, 31}, {65536}} {
+		t.Run(fmt.Sprint(budgets), func(t *testing.T) { testSchedulerRotation(t, budgets) })
+	}
+}
+
+func testSchedulerRotation(t *testing.T, budgets []int) {
+	t.Helper()
 	artifact := ir.NewArtifact("scheduler/fairness", "main")
 	artifact.Constants = []ir.Constant{{ID: "const.true", Type: testType("Bool"), Value: json.RawMessage(`true`)}}
 	artifact.Globals = []ir.Global{
@@ -48,13 +57,7 @@ func TestSchedulerRotatesRunnableTasks(t *testing.T) {
 		ir.Instruction{Op: string(ir.OpReturn), Payload: testPayload(ir.ReturnPayload{})},
 	)
 	artifact.Exports = []ir.Export{{Name: "Main", Kind: "function", ID: "fn.main"}}
-	vm, err := loadTestEngine(artifact)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := runTestModuleExport(vm, "Main"); err != nil {
-		t.Fatal(err)
-	}
+	vm := pollSchedulerArtifact(t, artifact, budgets)
 	observed := vm.rootModule().state.globals["global.observed"].load()
 	if value, ok := observed.Data.(bool); !ok || !value {
 		t.Fatalf("child observed ready = %#v", observed)
@@ -100,16 +103,35 @@ func TestSchedulerDoesNotRotateInsideNoSwitchFunction(t *testing.T) {
 		Signature: testSignature("function() Void"), Instructions: worker,
 	}}
 	artifact.Exports = []ir.Export{{Name: "Main", Kind: "function", ID: "fn.main"}}
-	vm, err := loadTestEngine(artifact)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := runTestModuleExport(vm, "Main"); err != nil {
-		t.Fatal(err)
-	}
+	vm := pollSchedulerArtifact(t, artifact, []int{1, 7, 31})
 	observed := vm.rootModule().state.globals["global.observed"].load()
 	value, valueErr := asInt64(observed)
 	if valueErr != nil || value != 2 {
 		t.Fatalf("task observed phase = %#v, want 2", observed)
 	}
+}
+
+func pollSchedulerArtifact(t *testing.T, artifact ir.Artifact, budgets []int) *vm {
+	t.Helper()
+	vm, err := loadTestEngine(artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance := &Instance{vm: vm, done: make(chan struct{}), supervisor: make(chan struct{}, 1)}
+	t.Cleanup(vm.closeRevisions)
+	execution, err := instance.start(context.Background(), false, func(*instanceRevision) (int64, error) {
+		return vm.prepareFunction("fn.main", nil)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for poll := 0; execution.State() == ExecutionRunning; poll++ {
+		if poll > taskInstructionQuantum*20 {
+			t.Fatal("execution did not complete")
+		}
+		if _, _, err := execution.PollSteps(budgets[poll%len(budgets)]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return vm
 }

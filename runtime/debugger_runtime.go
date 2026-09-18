@@ -109,8 +109,12 @@ func (vm *vm) debugPanicEvent(frame *frame, functionID string, pc int, value vmV
 }
 
 func (vm *vm) debugStack(current *frame, functionID string, pc int, loc ir.Location) []debugFrame {
+	var scopeID int64
+	if vm != nil {
+		scopeID = vm.activeRunID
+	}
 	if vm == nil || len(vm.callStack) == 0 {
-		return []debugFrame{current.debugFrame(functionID, pc, loc)}
+		return []debugFrame{current.debugFrame(functionID, pc, loc, scopeID)}
 	}
 	out := make([]debugFrame, 0, len(vm.debugParents)+len(vm.callStack))
 	for i := len(vm.callStack) - 1; i >= 0; i-- {
@@ -134,13 +138,13 @@ func (vm *vm) debugStack(current *frame, functionID string, pc int, loc ir.Locat
 			}
 			frameLoc, _ = frame.revision.symbols.nearestLocation(frame.module.modulePath(), frameFunctionID, framePC)
 		}
-		out = append(out, frame.debugFrame(frameFunctionID, framePC, frameLoc))
+		out = append(out, frame.debugFrame(frameFunctionID, framePC, frameLoc, scopeID))
 	}
 	for i := len(vm.debugParents) - 1; i >= 0; i-- {
 		out = append(out, vm.debugParents[i])
 	}
 	if len(out) == 0 {
-		return []debugFrame{current.debugFrame(functionID, pc, loc)}
+		return []debugFrame{current.debugFrame(functionID, pc, loc, scopeID)}
 	}
 	return out
 }
@@ -153,11 +157,14 @@ func isHiddenGeneratedFrame(frame *frame) bool {
 	return ok && symbols.Generated
 }
 
-func (f *frame) debugFrame(functionID string, pc int, loc ir.Location) debugFrame {
+func (f *frame) debugFrame(functionID string, pc int, loc ir.Location, scopeID int64) debugFrame {
 	if f == nil || f.module == nil || f.module.executable == nil {
-		return debugFrame{FunctionID: functionID, PC: pc, Loc: loc}
+		return debugFrame{ScopeID: scopeID, FunctionID: functionID, PC: pc, Loc: loc}
 	}
 	return debugFrame{
+		ScopeID:            scopeID,
+		SymbolsHash:        f.revision.symbolsHash(),
+		SourceHash:         f.revision.symbols.sourceHash(f.module.modulePath(), loc.File),
 		Generation:         f.revisionGeneration(),
 		ProgramHash:        f.revisionHash(),
 		hasSymbols:         f.revision != nil && f.revision.symbols != nil,

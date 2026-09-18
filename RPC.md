@@ -297,8 +297,8 @@ Go 的零值选择默认值，Rust 使用 `EndpointOptions::default()`；显式�
 关闭或确认一旦开始，取消只停止当前等待，清理仍继续执行。
 传输停滞或取消部分发送的请求可能使连接失败。
 
-直接使用 Go `RouteSet.Call` 时，调用方必须对返回的 `Result` 执行 `Accept(ctx)` 或
-`Discard(ctx)`。首次决定不可反转，相反决定返回 `failed_precondition`。
+使用底层 `RouteSet.Call` 时需显式对 `Result` 执行 `Accept(ctx)` 或 `Discard(ctx)`；
+首次决定不可反转。生成客户端已负责此流程。
 
 超时或断线不证明服务端没有执行操作。框架不会自动重试可能有副作用的调用，业务重试应自行保证幂等性。
 Go handler 的普通 error 和 panic 会转成内部错误；需要调用方区分的业务失败应返回明确状态码。
@@ -324,8 +324,7 @@ Shutdown 会处理仍未释放的资源，并报告最终清理错误；不会�
 较大的 bytes、字符串和复合值由连接透明分片，无需业务手动处理网络帧。默认单条逻辑消息上限为 64 MiB，
 单连接在途 payload 上限为 128 MiB，可通过 `rpc.EndpointOptions.Limits` 配置。
 VM 与 Host 也有各自的限制；例如 `runtime.Limits.MaxBoundaryBytes` 约束 VM 调用边界，调大网络限额不会自动调大它。
-Host 的 `MaxSessions`（Rust 为 `max_sessions`）默认 1024；Go Gateway 的 `MaxConnections` 默认 4096。
-关闭或断开后，尚未完成清理的会话与连接仍占用额度。
+Host 和 Gateway 分别限制会话与连接数，关闭或断开后仍在清理的对象继续占用额度。
 
 持续流或超出单条消息上限的数据，使用 resource 的 `Read`/`Write` 一类分块业务方法。
 
@@ -386,6 +385,8 @@ Gateway 在清理完成后释放连接名额。业务停机时保留旧绑定的
 脚本退出与共享宿主的关闭流程见[优雅停机](USAGE.md#优雅停机)，执行预算见[长期运行](USAGE.md#长期运行)。
 
 ## Rust API
+
+原生 VM、取消与 Tokio 接入见 [Rust 使用指南](playground/runtime-rust/USAGE.md)，本节只说明 RPC 装配。
 
 Rust crate 位于 `playground/runtime-rust`，启用 `rpc` 使用本地服务、Router、Endpoint
 与 FFI Host；`rpc-gateway` 增加 WebSocket/TLS/Unix socket。`stdlib-host` 提供原生标准库宿主。
@@ -464,5 +465,4 @@ Host、Endpoint 和 Router 的 shutdown。begin_shutdown 发起关闭；Router �
 
 发布与替换服务的完整装配见 [Rust Gateway 示例测试](playground/runtime-rust/tests/rpc_gateway.rs)。
 
-VM 执行、取消与 Tokio 示例见 [Rust 使用指南](playground/runtime-rust/USAGE.md)；
 共享数据与互操作验证见 [RPC 测试数据](testdata/rpc/README.md)。

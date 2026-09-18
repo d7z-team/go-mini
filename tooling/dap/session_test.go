@@ -6,6 +6,7 @@ import (
 	"context"
 	"net"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -119,7 +120,7 @@ func TestSessionLaunchBreakpointAndInspect(t *testing.T) {
 	}
 	writeDAP(t, clientConn, &protocol.StackTraceRequest{Request: request(6, "stackTrace"), Arguments: protocol.StackTraceArguments{ThreadId: threads.Body.Threads[0].Id}})
 	stack := readDAP[*protocol.StackTraceResponse](t, reader)
-	if len(stack.Body.StackFrames) == 0 || stack.Body.StackFrames[0].Source.Path != sourcePath {
+	if len(stack.Body.StackFrames) == 0 || stack.Body.StackFrames[0].Source.SourceReference == 0 || !strings.Contains(stack.Body.StackFrames[0].Name, "generation 1") {
 		t.Fatalf("stack = %#v", stack.Body.StackFrames)
 	}
 	writeDAP(t, clientConn, &protocol.ScopesRequest{Request: request(7, "scopes"), Arguments: protocol.ScopesArguments{FrameId: stack.Body.StackFrames[0].Id}})

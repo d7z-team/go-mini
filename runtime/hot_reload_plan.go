@@ -46,7 +46,7 @@ func buildPatchPlan(current *instanceRevision, next *Program) (*PatchPlan, error
 		return nil, PatchError{Code: "unchanged", Message: "target program is already current"}
 	}
 	if current.code.image.Hash == next.code.image.Hash {
-		return &PatchPlan{baseHash: current.code.image.Hash, target: next}, nil
+		return &PatchPlan{base: &Program{code: current.code, symbols: current.symbols}, baseHash: current.code.image.Hash, target: next}, nil
 	}
 	if current.code.image.Root != next.code.image.Root {
 		return nil, PatchError{Code: "root_changed", Message: "root module changed"}
@@ -55,7 +55,13 @@ func buildPatchPlan(current *instanceRevision, next *Program) (*PatchPlan, error
 		return nil, PatchError{Code: "target_changed", Message: "build target changed"}
 	}
 	changed := make([]string, 0, len(next.code.modules))
-	for path, oldModule := range current.code.modules {
+	paths := make([]string, 0, len(current.code.modules))
+	for path := range current.code.modules {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		oldModule := current.code.modules[path]
 		newModule, ok := next.code.modules[path]
 		if !ok {
 			return nil, PatchError{Code: "module_removed", Message: fmt.Sprintf("module %q was removed", path)}
@@ -74,6 +80,7 @@ func buildPatchPlan(current *instanceRevision, next *Program) (*PatchPlan, error
 	}
 	sort.Strings(changed)
 	return &PatchPlan{
+		base:           &Program{code: current.code, symbols: current.symbols},
 		baseHash:       current.code.image.Hash,
 		target:         next,
 		changedModules: changed,
@@ -198,7 +205,8 @@ func typeDeclarationShape(module *executable, declaration types.TypeNode) patchT
 }
 
 func compareLogicalFunctions(oldModule, newModule *executable) error {
-	for id, oldFunction := range oldModule.Functions {
+	for _, oldFunction := range oldModule.FunctionOrder {
+		id := oldFunction.Decl.ID
 		if !isLogicalFunction(oldFunction) {
 			continue
 		}

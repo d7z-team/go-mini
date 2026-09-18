@@ -9,6 +9,69 @@ import (
 	ir "github.com/d7z-team/mini-go/runtime/bytecode"
 )
 
+func TestDebugSnapshotPreservesPausedTaskScope(t *testing.T) {
+	child := delayedLifecycleChild(ir.Instruction{Op: string(ir.OpReturn), Payload: testPayload(ir.ReturnPayload{})})
+	artifact := lifecycleArtifact(child)
+	setTestInstructionLocations(t, &artifact, testInstructionLocation{function: "fn.child", pc: len(child) - 1, line: 10, column: 2})
+	program := patchTestProgram(t, artifact, "cross-scope-debug")
+	instance, err := program.Instantiate(t.Context(), InstanceOptions{Debugger: NewDebugger()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanupTestInstance(t, instance)
+	if _, err := instance.SetBreakpoints(artifact.Module.Path, "main.mgo", []int{10}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := instance.Start("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Hold the owner so the supervisor cannot race the deterministic interleaving.
+	if err := instance.vm.enterOwnerContext(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	defer instance.vm.leaveOwner()
+	outcome := instance.vm.runPrepared(defaultPollQuantum)
+	if outcome.state != ExecutionCompleted {
+		t.Fatalf("first root: %+v", outcome)
+	}
+	first.capture(outcome)
+	scopeID, err := instance.vm.prepareFunction("fn.child", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := newExecution(instance, instance.vm.profileOptions)
+	second.scopeID = scopeID
+	instance.vm.machine.attachExecution(scopeID, second)
+	instance.active = second
+	outcome = instance.vm.runPrepared(defaultPollQuantum)
+	if outcome.state != ExecutionPaused {
+		t.Fatalf("second poll: %+v", outcome)
+	}
+	second.capture(outcome)
+	paused := instance.vm.machine.paused
+	snapshot, err := second.DebugSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paused.scope.id != first.scopeID {
+		t.Fatalf("expected older task, actual scope=%d", paused.scope.id)
+	}
+	if len(snapshot.Threads) == 0 || len(snapshot.Frames) == 0 {
+		t.Fatalf("missing paused task: %+v", snapshot)
+	}
+	for _, thread := range snapshot.Threads {
+		if thread.ScopeID != first.scopeID {
+			t.Errorf("thread scope=%d want=%d", thread.ScopeID, first.scopeID)
+		}
+	}
+	for _, frame := range snapshot.Frames {
+		if frame.ScopeID != first.scopeID {
+			t.Errorf("frame scope=%d want=%d", frame.ScopeID, first.scopeID)
+		}
+	}
+}
+
 func TestLibraryBackgroundTaskCanBeInspectedAndContinued(t *testing.T) {
 	child := delayedLifecycleChild(ir.Instruction{Op: string(ir.OpReturn), Payload: testPayload(ir.ReturnPayload{})})
 	artifact := lifecycleArtifact(child)

@@ -44,8 +44,7 @@ GOTOOLCHAIN=go1.26.6 go run ./cmd/mini-go-dev runtime-blocks -out /tmp/blocks pa
 | `stdlib-host` | 原生 console、环境与内存文件系统 |
 | `host-conformance` | 通过进程 broker 接入 Go provider 的测试适配器 |
 
-启用 RPC 的应用提供 Tokio runtime handle。异步应用通过 VmExecutor 执行同步 VM 工作，
-并在退出 Tokio runtime 前等待 Host、Endpoint 和 Router 关闭。
+RPC 的异步装配与关闭顺序见 [Tokio 接入](USAGE.md#在-tokio-中执行)和 [RPC 指南](../../RPC.md#rust-api)。
 
 ## 接入导航
 
@@ -64,8 +63,7 @@ LSP 和 DebugSession。语言与源码装配规则在预编译的 Go compiler �
 Go 应用直接使用原生 compiler 包。
 首次直接构建 tooling 前，在仓库根执行 `make runtime-compiler-image` 准备内嵌镜像。
 
-本地目录与内存文件都通过 `LanguageService::sources` 装配。
-源码输入、会话生命周期及 stdio 工具用法见[本地源码与编译器工具](USAGE.md#本地源码与编译器工具)。
+源码装配、会话与 stdio 接入见[本地源码与编译器工具](USAGE.md#本地源码与编译器工具)。
 
 ## 开发与许可证
 

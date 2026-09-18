@@ -30,6 +30,9 @@ func (machine *executionMachine) debugParentSnapshot(task *executionTask) []debu
 		functionID := frame.function.Decl.ID
 		loc, _ := frame.revision.symbols.nearestLocation(frame.module.modulePath(), functionID, pc)
 		out = append(out, debugFrame{
+			ScopeID:            task.scope.id,
+			SymbolsHash:        frame.revision.symbolsHash(),
+			SourceHash:         frame.revision.symbols.sourceHash(frame.module.modulePath(), loc.File),
 			Generation:         frame.revisionGeneration(),
 			ProgramHash:        frame.revisionHash(),
 			hasSymbols:         frame.revision != nil && frame.revision.symbols != nil,
@@ -359,6 +362,9 @@ func (machine *executionMachine) run(instructionBudget int) runOutcome {
 				machine.pushRunnableFront(task)
 				return runOutcome{state: ExecutionRunning}
 			}
+			if yield.kind != taskYieldPause {
+				task.quantumSteps = 0
+			}
 			switch yield.kind {
 			case taskYieldComplete:
 				root := machine.foreground != nil && task.id == machine.foreground.rootID
@@ -429,7 +435,6 @@ func (machine *executionMachine) run(instructionBudget int) runOutcome {
 }
 
 func (machine *executionMachine) runTask(task *executionTask) (taskYield, []vmValue, error) {
-	taskSteps := 0
 	for {
 		if task.pendingErr != nil {
 			err := task.pendingErr
@@ -498,11 +503,13 @@ func (machine *executionMachine) runTask(task *executionTask) (taskYield, []vmVa
 		if machine.pollBudget > 0 && machine.pollAttempts >= machine.pollBudget {
 			return taskYield{kind: taskYieldPoll}, nil, nil
 		}
-		if taskSteps >= taskInstructionQuantum && machine.runnableCount() != 0 && !task.inNoSwitchRegion() {
+		if task.quantumSteps >= taskInstructionQuantum && machine.runnableCount() != 0 && !task.inNoSwitchRegion() {
 			return taskYield{kind: taskYieldCooperate}, nil, nil
 		}
 		machine.pollAttempts++
-		taskSteps++
+		if task.quantumSteps < taskInstructionQuantum {
+			task.quantumSteps++
+		}
 		debugging := machine.vm.breakpointsActive.Load() || machine.vm.debugStep.Active || machine.vm.hostPauseRequested.Load()
 		if debugging {
 			machine.syncCallStack(task)

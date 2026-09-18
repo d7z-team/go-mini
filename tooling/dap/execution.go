@@ -134,6 +134,13 @@ func (s *Session) debugSnapshot() (minigoruntime.DebugSnapshot, error) {
 }
 
 func (s *Session) sourceIdentity(source protocol.Source) (string, string, error) {
+	if source.SourceReference != 0 {
+		identity, ok := s.debugSources[source.SourceReference]
+		if !ok {
+			return "", "", errors.New("unknown source reference")
+		}
+		return identity.Module, identity.File, nil
+	}
 	path := source.Path
 	if s.pathFormat == "uri" {
 		parsed, err := url.Parse(path)

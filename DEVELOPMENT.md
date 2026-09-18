@@ -189,10 +189,15 @@ MINIGO_DEBUG=cachehash=1,cacheverify=1 go run ./cmd/mini-go check main.mgo
 `bin/`、`.cache/`、`build/`，并清理 Go test/fuzz 缓存。Go build cache、Rust target、
 SDK 的 node_modules/dist 与生成镜像保留，可按所属工具和目录单独清理。
 
-Go 使用 `go test -bench ... -benchmem` 和 pprof，Rust 使用 `make runtime-rust-bench`。
-固定输入与构建参数，串行采样，保留正确性和资源回收验证。
-消融每次只改变一个机制，保持行为与资源计费契约，保留基线和对照结果。
-调查报告与临时实验保存在 `/tmp`，结论注明对应工作负载。
+性能测量使用 Go benchmark/pprof 或 Rust 基准：
+
+```bash
+go test ./runtime -run '^$' -bench 'Benchmark(VM|RevisionRetention)' -benchmem
+make runtime-rust-bench
+```
+
+固定工作负载与构建参数，串行保留多次采样。消融一次只改变一个机制，并独立验证行为、
+计费与回收；单条路径的收益不代表整体性能。调查报告和原始结果保存在 `/tmp`。
 
 长期运行验证使用固定工作集，预热后重复调用、取消与热更新，观察存活资源是否稳定。
 分别记录 VM 逻辑费用、保留版本、宿主内存和连接等系统资源；WASM 另记线性内存容量。

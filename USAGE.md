@@ -1,6 +1,6 @@
 # 使用指南
 
-首次使用请从 [README](README.md) 的完整示例开始。本文说明嵌入、执行控制和 CLI；
+本文说明 Go 嵌入、执行控制和 CLI，首次接入可从[完整嵌入示例](#完整嵌入示例)开始；
 RPC 接入见 [RPC.md](RPC.md)，Rust 原生 API 见 [Rust 使用指南](playground/runtime-rust/USAGE.md)。
 
 按任务查阅：[嵌入](#嵌入-api) · [源码装配](#源码装配) · [执行与取消](#运行实例) · [宿主能力](#系统能力) ·
@@ -19,6 +19,72 @@ RPC 接入见 [RPC.md](RPC.md)，Rust 原生 API 见 [Rust 使用指南](playgro
 
 Engine 由创建方关闭。共享缓存可通过 `Config.Cache` 注入，其 backend 由所有者管理。
 分阶段编译与镜像加载见[架构](ARCHITECTURE.md#编译与链接)。
+
+### 完整嵌入示例
+
+以下完整示例编译一个没有 `main` 的脚本包，并调用其导出函数：
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	minigo "github.com/d7z-team/mini-go"
+	"github.com/d7z-team/mini-go/compiler/source"
+	"github.com/d7z-team/mini-go/compiler/workspace"
+	"github.com/d7z-team/mini-go/runtime"
+)
+
+func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
+	sources, err := workspace.NewMemorySourceSet([]workspace.SourcePackage{{
+		ModulePath: "example/calc",
+		Files: []source.File{{Path: "calc.mgo", Text: `package calc
+func Answer() int { return 42 }
+`}},
+	}})
+	if err != nil {
+		return err
+	}
+	engine, err := minigo.New(minigo.Config{Sources: sources})
+	if err != nil {
+		return err
+	}
+	defer engine.Close()
+
+	program, checked, err := engine.Compile("example/calc",
+		minigo.EntryPoint{Name: "answer", Function: "Answer"})
+	if err != nil || !checked.OK() {
+		return fmt.Errorf("compile: %v; diagnostics: %v", err, checked.Diagnostics)
+	}
+	ctx := context.Background()
+	instance, err := program.Instantiate(ctx, runtime.InstanceOptions{})
+	if err != nil {
+		return err
+	}
+	defer instance.Close()
+
+	result, err := instance.Call(ctx, "answer")
+	if err != nil {
+		return err
+	}
+	answer, _ := result.Values[0].Int64()
+	fmt.Println(answer) // 42
+	return nil
+}
+```
+
+Engine 自动提供标准库源码。与 CLI 不同，嵌入应用需要显式提供 console、文件系统等宿主能力；
+宿主装配见[系统能力](#系统能力)，执行控制见[运行实例](#运行实例)。
+
 
 ## 源码装配
 
@@ -197,6 +263,29 @@ globals、导出与命名类型/函数的状态契约；需要改变这些契约
 新 Program 的强制能力必须已安装，FFI Session 与宿主连接跨 revision 保持稳定。
 服务替换与资源关闭另见 [RPC.md](RPC.md#热更新与关闭)。
 
+### 检查补丁与版本引用
+
+提交前用 `runtime.ComparePrograms(currentProgram, candidate)` 查看代码、契约、能力与符号的变化；
+不兼容的候选也可检查。`Compatible` 仅表示结构兼容，实例准入与提交仍由 Prepare/Apply 检查。
+函数表示未变不代表行为不受依赖变化影响。准备成功后可用 `plan.Inspect()` 查看带基准 generation 的报告，
+需在关闭或提交 plan 前读取。
+
+`Instance.RevisionRetention(ctx)` 返回已发布版本的存活摘要，包含 current、显式 pin 数和
+最近一次扫描的全局根保留状态；未提交候选在 `PendingTarget` 中单独返回。`RetainedRevisions` 只列出已发布版本。
+需要定位长期保留的旧代码时，可显式查询：
+
+```go
+roots, err := instance.RevisionRoots(ctx, generation, runtime.RevisionRootLimits{
+    MaxNodes: 10000,
+    MaxDepth: 64,
+    MaxRoots: 100,
+})
+```
+
+结果说明任务、帧、全局变量等如何引用版本。`Complete=false` 表示扫描被截断；零配置采用上述默认值。
+路径仅对本次快照有效，共享对象展示代表性路径，条数不等于 pin 或闭包数量。
+查询不改变 GC 和步骤计费，也不强制释放引用；旧版本在引用解除后自然回收。
+
 ## 嵌入资源
 
 `workspace.SourcePackage.Resources` 保存 package-relative 资源，资源内容参与编译缓存 identity：
@@ -295,6 +384,10 @@ library 使用 `SetBreakpoints`、`DebugSnapshot`、`DebugScopes` 和 `DebugVari
 变量引用在恢复后失效。无符号 Program 仍可执行、暂停和查看代码位置；
 源码单步和变量检查需要 ProgramSymbols，否则返回 `runtime.ErrDebugSymbolsUnavailable`。
 热更新后断点按新 revision 重新解析。
+
+Go DAP 栈帧显示 generation、实际所属 scope 和程序 hash。源码通过 `sourceReference` 读取，
+按帧的源码 hash 校验；历史源码由宿主保存，可通过 `dap.LaunchTarget.Source` 提供。
+磁盘内容变化时会报告不匹配，源码引用在恢复执行后失效。
 
 Go 应用通过 `compiler/language` 查询语言信息，或使用 `compiler/service.Session`
 管理文档更新、分析与构建；会话使用完毕调用 `Close`。

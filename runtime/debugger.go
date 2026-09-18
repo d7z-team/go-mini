@@ -35,6 +35,9 @@ type debugLocal struct {
 }
 
 type debugFrame struct {
+	ScopeID            int64
+	SymbolsHash        string
+	SourceHash         string
 	Generation         uint64
 	ProgramHash        string
 	hasSymbols         bool

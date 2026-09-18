@@ -21,16 +21,13 @@ impl Instance {
             .retain(|_, revision| revision.strong_count() != 0);
         let current = self.revision.generation;
         let retired = &self.retired_revisions;
-        self.memory.retain_revisions(|generation| {
-            generation == current || retired.contains_key(&generation)
-        });
-        self.constant_values.retain(|(generation, _), _| {
-            *generation == self.revision.generation
-                || self.retired_revisions.contains_key(generation)
-        });
-        self.call_bindings.retain(|(generation, _, _), _| {
-            *generation == current || retired.contains_key(generation)
-        });
+        let is_live_revision =
+            |generation| generation == current || retired.contains_key(&generation);
+        self.memory.retain_revisions(is_live_revision);
+        self.constant_values
+            .retain(|(generation, _), _| is_live_revision(*generation));
+        self.call_bindings
+            .retain(|(generation, _, _), _| is_live_revision(*generation));
     }
 
     pub(super) fn collect_rooted(&mut self) -> Result<usize, RuntimeError> {
@@ -40,14 +37,6 @@ impl Instance {
         roots.extend(self.globals.values().copied());
         self.frame_pool.trace(&mut |handle| roots.push(handle));
         roots.extend(self.transient_roots.iter().copied());
-        if let Some(task) = &self.resuming_task {
-            for frame in &task.frames {
-                frame.trace(&mut |handle| roots.push(handle));
-            }
-            if let Some(operation) = &task.blocked {
-                operation.trace(&mut |handle| roots.push(handle));
-            }
-        }
         for value in self.constant_values.values() {
             value.trace(&mut |handle| roots.push(handle));
         }
@@ -57,6 +46,7 @@ impl Instance {
             .chain(&self.suspended_frames)
             .chain(self.runnable.iter().flat_map(|task| &task.frames))
             .chain(self.blocked.iter().flat_map(|task| &task.frames))
+            .chain(self.resuming_task.iter().flat_map(|task| &task.frames))
         {
             frame.trace(&mut |handle| roots.push(handle));
         }
@@ -66,7 +56,7 @@ impl Instance {
         for timer in &self.timers {
             timer.channel.trace(&mut |handle| roots.push(handle));
         }
-        for task in self.blocked.iter() {
+        for task in self.blocked.iter().chain(&self.resuming_task) {
             if let Some(operation) = &task.blocked {
                 operation.trace(&mut |handle| roots.push(handle));
             }

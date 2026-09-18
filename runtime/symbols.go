@@ -15,6 +15,7 @@ type symbolIndex struct {
 }
 
 type packageSymbolIndex struct {
+	files     map[string]string
 	functions map[string]ir.FunctionSymbols
 	globals   map[string]string
 }
@@ -47,8 +48,12 @@ func newSymbolIndex(code *programCode, symbols *ir.ProgramSymbols) (*symbolIndex
 	index := &symbolIndex{hash: owned.Hash, packages: make(map[string]packageSymbolIndex, len(owned.Packages))}
 	for modulePath, pkg := range owned.Packages {
 		packageIndex := packageSymbolIndex{
+			files:     make(map[string]string, len(pkg.Files)),
 			functions: make(map[string]ir.FunctionSymbols, len(pkg.Functions)),
 			globals:   make(map[string]string, len(pkg.Globals)),
+		}
+		for _, file := range pkg.Files {
+			packageIndex.files[file.Path] = file.Hash
 		}
 		for _, function := range pkg.Functions {
 			packageIndex.functions[function.ID] = function
@@ -59,6 +64,13 @@ func newSymbolIndex(code *programCode, symbols *ir.ProgramSymbols) (*symbolIndex
 		index.packages[modulePath] = packageIndex
 	}
 	return index, nil
+}
+
+func (s *symbolIndex) sourceHash(modulePath, file string) string {
+	if s == nil {
+		return ""
+	}
+	return s.packages[modulePath].files[file]
 }
 
 func (s *symbolIndex) function(modulePath, functionID string) (ir.FunctionSymbols, bool) {

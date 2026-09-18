@@ -24,6 +24,8 @@ type LaunchConfig struct {
 }
 
 type LaunchTarget struct {
+	// Source resolves exact historical content. Returned text is checked against SourceHash.
+	Source     func(context.Context, SourceIdentity) (string, error)
 	Locations  *workspace.SourceLocations
 	Program    *minigoruntime.Program
 	Options    minigoruntime.InstanceOptions
@@ -36,6 +38,9 @@ type LaunchTarget struct {
 type Launcher func(context.Context, LaunchConfig) (LaunchTarget, error)
 
 type Session struct {
+	sourceEpoch  uint64
+	sourceNext   int
+	debugSources map[int]SourceIdentity
 	input        *bufio.Reader
 	closer       io.Closer
 	output       io.Writer

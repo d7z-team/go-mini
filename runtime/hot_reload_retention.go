@@ -1,59 +1,11 @@
 package runtime
 
-import (
-	"context"
-	"errors"
-	"sort"
-)
-
-// RetainedRevisions reports the current and pending revisions plus retired revisions
-// retained by frames, timers, or global values.
-func (i *Instance) RetainedRevisions(ctx context.Context) ([]RevisionInfo, error) {
-	if i == nil || i.vm == nil {
-		return nil, errors.New("instance is closed")
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := i.vm.enterOwnerContext(ctx); err != nil {
-		return nil, err
-	}
-	defer i.vm.leaveOwner()
-	revisions := map[uint64]RevisionInfo{}
-	if current := i.vm.revision.Load(); current != nil && current.code != nil {
-		revisions[current.generation] = RevisionInfo{Generation: current.generation, Hash: current.code.image.Hash, SymbolsHash: current.symbolsHash()}
-	}
-	for _, revision := range i.vm.retiredRevisionSnapshot() {
-		if revision == nil || revision.code == nil {
-			continue
-		}
-		revision.mu.Lock()
-		closed := revision.closed
-		revision.mu.Unlock()
-		if !closed {
-			revisions[revision.generation] = RevisionInfo{Generation: revision.generation, Hash: revision.code.image.Hash, SymbolsHash: revision.symbolsHash()}
-		}
-	}
-	i.patchMu.Lock()
-	pending := i.pendingPatch
-	i.patchMu.Unlock()
-	if pending != nil {
-		pending.mu.Lock()
-		if pending.target != nil {
-			revisions[pending.baseGeneration+1] = RevisionInfo{Generation: pending.baseGeneration + 1, Hash: pending.target.code.image.Hash, SymbolsHash: pending.target.SymbolsHash()}
-		}
-		pending.mu.Unlock()
-	}
-	out := make([]RevisionInfo, 0, len(revisions))
-	for _, revision := range revisions {
-		out = append(out, revision)
-	}
-	sort.Slice(out, func(left, right int) bool { return out[left].Generation < out[right].Generation })
-	return out, nil
-}
-
 func (vm *vm) sweepRetiredRevisions() {
 	if vm == nil {
+		return
+	}
+	retired := vm.retiredRevisionSnapshot()
+	if len(retired) == 0 {
 		return
 	}
 	retained := make(map[*instanceRevision]bool)
@@ -70,7 +22,7 @@ func (vm *vm) sweepRetiredRevisions() {
 			}
 		}
 	}
-	for _, revision := range vm.retiredRevisionSnapshot() {
+	for _, revision := range retired {
 		revision.setRootRetained(retained[revision])
 	}
 	vm.retiredMu.Lock()
