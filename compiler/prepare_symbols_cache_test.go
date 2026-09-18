@@ -1,6 +1,8 @@
 package compiler_test
 
 import (
+	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -10,6 +12,64 @@ import (
 	"github.com/d7z-team/mini-go/compiler/workspace"
 	ir "github.com/d7z-team/mini-go/runtime/bytecode"
 )
+
+func TestPrepareSymbolsAreIndependentOfCachePopulationOrder(t *testing.T) {
+	sources, err := workspace.NewMemorySourceSet([]workspace.SourcePackage{
+		{ModulePath: "example/root", Files: []source.File{{Path: "root.mgo", Text: `package root
+import "example/extra"
+import "example/target"
+func Main() int { return extra.Identity(target.Main()) }
+`}}},
+		{ModulePath: "example/extra", Files: []source.File{{Path: "extra.mgo", Text: `package extra
+func Identity[T any](v T) T { return v }
+`}}},
+		{ModulePath: "example/target", Files: []source.File{{Path: "target.mgo", Text: `package target
+import "example/lib"
+func Main() int { return lib.Identity(42) }
+`}}},
+		{ModulePath: "example/lib", Files: []source.File{{Path: "lib.mgo", Text: `package lib
+func Identity[T any](v T) T { return v }
+`}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for level := compiler.OptimizationNone; level <= compiler.OptimizationFull; level++ {
+		var wantImage, wantSymbols []byte
+		for _, prewarm := range []string{"", "example/root", "example/target"} {
+			backend := cache.NewMemoryBackend()
+			roots := []string{"example/target", "example/target"}
+			if prewarm != "" {
+				roots = append([]string{prewarm}, roots...)
+			}
+			for _, root := range roots {
+				result, err := compiler.Prepare(compiler.Request{
+					Root: root, Sources: sources, Cache: cache.New(backend), Symbols: true, Optimization: level,
+					EntryPoints: []compiler.EntryPoint{{Name: "default", ModulePath: root, Function: "Main"}},
+				})
+				if err != nil || result.Image == nil || result.Symbols == nil {
+					t.Fatalf("prepare %s O%d (prewarm %q): %v, %v", root, level, prewarm, err, result.Checked.Diagnostics)
+				}
+				if root != "example/target" {
+					continue
+				}
+				image, err := json.Marshal(result.Image)
+				if err != nil {
+					t.Fatal(err)
+				}
+				symbols, err := json.Marshal(result.Symbols)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if wantImage == nil {
+					wantImage, wantSymbols = image, symbols
+				} else if !bytes.Equal(image, wantImage) || !bytes.Equal(symbols, wantSymbols) {
+					t.Fatalf("O%d prewarm %q changed target image or symbols", level, prewarm)
+				}
+			}
+		}
+	}
+}
 
 func TestPrepareCacheTracksSourceOrigins(t *testing.T) {
 	backend := cache.NewMemoryBackend()

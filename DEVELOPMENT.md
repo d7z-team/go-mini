@@ -13,21 +13,27 @@ Go 开发及标准库差分基准使用 **Go 1.26.6**，Rust 使用 **1.98.1**�
 
 Go/Mini-Go 开发使用 Go 工具链；完整生成还需要 rustfmt。Rust 与 WASM 开发从 Git checkout 进行。
 
-本机 Go 版本不同时设置 `GOTOOLCHAIN=go1.26.6`。`make generate` 已固定 Go 版本。
+Makefile 默认导出 `GOTOOLCHAIN=go1.26.6`，覆盖其启动的 Go 命令与子进程；显式设置的
+环境变量或 make 参数优先。直接调用 `go` 时，本机版本不符则设置 `GOTOOLCHAIN=go1.26.6`。
 
 ## 日常工作流
 
-先在行为所属包修改并运行目标测试，再按影响范围扩大验证：
+在仓库根运行 `make` 或 `make help` 查看目标说明。目标按生成、Go、fuzz、Rust、RPC、
+WASM 和清理分组；先运行行为所属包的测试，再按改动影响扩大验证：
 
 ```bash
 make test TEST_PACKAGES='./compiler/semantic' TEST_FLAGS='-run TestName'
 make test TEST_PACKAGES='./rpc/... ./integrations'
 make race RACE_PACKAGES='./rpc/...'
-GOTOOLCHAIN=go1.26.6 make lint test build
+make lint test build
 ```
 
 `TEST_FLAGS` 替换默认参数；`-count=1` 仅跳过 Go 测试结果缓存，Mini-Go 编译缓存仍可复用。
 race 默认按包串行运行，可用 `RACE_PACKAGES=./...` 扩大范围。
+
+同一次 make 调用按顺序执行目标及其前置任务，`make -j` 也保持这层编排串行，避免生成、
+构建和测试争用共享产物。Go、Cargo 内部仍使用各自的并行策略；需要控制资源时可设置
+`GOFLAGS=-p=1`、`GOMAXPROCS`、`CARGO_BUILD_JOBS` 和 `RUST_TEST_THREADS`。
 
 | 修改范围 | 验证 |
 | --- | --- |
@@ -65,9 +71,11 @@ make doc
 
 Rust tooling 与 npm tools 使用根生成流程产出的 compiler 镜像。
 `testdata/runtime/{execution,stdlib}.json.gz` 和 `playground/runtime-rust/tooling/assets/compiler.json.gz`
-按需生成并在本地复用，由 `make runtime-artifacts` 准备；相关 Make 测试目标自动补齐缺失文件。
+按需生成并在本地复用。`make runtime-artifacts` 补齐全部三份镜像，
+`make runtime-compiler-image` 仅补齐 compiler 镜像；相关 Make 测试目标准备各自所需文件。
 SDK 构建自动准备编译器镜像，最终 npm 分发包包含该镜像。
-直接运行 Cargo 或 Go 测试前先执行 `make runtime-artifacts`；修改生成输入后执行 `make generate` 更新产物与 manifest。
+直接运行消费镜像的 Cargo 或 Go 测试前先准备产物。按需目标只补齐缺失文件；
+修改生成输入后执行 `make generate` 更新产物与 manifest，完成后再启动测试。
 升级移植依赖时审查适配、保留许可证，并验证原生与 VM 行为。
 
 `docs/reference` 从标准库源码注释生成，维护入口为 `make doc`。
@@ -177,8 +185,9 @@ MINIGO_DEBUG=cachehash=1,cacheverify=1 go run ./cmd/mini-go check main.mgo
 
 `cacheverify` 在命中后重建并比较结果。分析缓存命中时，结合 trace 和 profile 检查实际执行的阶段。
 
-日常验证保留缓存；`make cache-clean` 清理 Mini-Go 缓存，`make clean` 还清理构建产物与
-Go test/fuzz 缓存，保留源码和 Go build cache。
+日常验证保留缓存；`make cache-clean` 清理 Mini-Go 缓存，`make clean` 还删除根目录的
+`bin/`、`.cache/`、`build/`，并清理 Go test/fuzz 缓存。Go build cache、Rust target、
+SDK 的 node_modules/dist 与生成镜像保留，可按所属工具和目录单独清理。
 
 Go 使用 `go test -bench ... -benchmem` 和 pprof，Rust 使用 `make runtime-rust-bench`。
 固定输入与构建参数，串行采样，保留正确性和资源回收验证。

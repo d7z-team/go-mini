@@ -57,6 +57,31 @@ func Values[V any](values []V) iter.Seq[V] {
 	}
 }
 
+func TestCompileImportedGenericUsesTransitiveGenericType(t *testing.T) {
+	compiled, err := compileTestWorkspace([]SourcePackage{
+		{ModulePath: "example/iter", Files: []SourceFile{{Path: "iter.mgo", Text: `package iter
+type Seq[V any] func(yield func(V) bool)
+`}}},
+		{ModulePath: "example/values", Files: []SourceFile{{Path: "values.mgo", Text: `package values
+import "example/iter"
+func Values[V any](value V) iter.Seq[V] {
+	return func(yield func(V) bool) { yield(value) }
+}
+`}}},
+		{ModulePath: "example/main", Files: []SourceFile{{Path: "main.mgo", Text: `package main
+import "example/values"
+func Main() int {
+	result := 0
+	values.Values(42)(func(value int) bool { result = value; return true })
+	return result
+}
+`}}},
+	})
+	if err != nil || !compiled.OK() {
+		t.Fatalf("compile transitive generic type: %v, %v", err, compiled.Diagnostics)
+	}
+}
+
 func TestCompileFunctionUsingImportedGenericType(t *testing.T) {
 	compiled, err := compileTestWorkspace([]SourcePackage{
 		{ModulePath: "example/iter", Files: []SourceFile{{Path: "iter.mgo", Text: `package iter

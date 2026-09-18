@@ -98,6 +98,24 @@ func (r compiledPackage) OK() bool {
 }
 
 func compileParsedPackageWithLimits(ctx context.Context, program ast.Program, options lower.Options, dependencies map[string]cache.PackageData, limits Limits, optimization OptimizationLevel) (compiledPackage, error) {
+	packageDependencies := make(map[string]cache.PackageData)
+	pending := sourceImportPaths(program)
+	for next := 0; next < len(pending); next++ {
+		path := pending[next]
+		if _, seen := packageDependencies[path]; seen {
+			continue
+		}
+		data, ok := dependencies[path]
+		if !ok {
+			continue
+		}
+		packageDependencies[path] = data
+		for _, requirement := range data.Requirements {
+			if requirement.Kind == ir.RequirementSource {
+				pending = append(pending, requirement.ModulePath)
+			}
+		}
+	}
 	// Runtime exports contain concrete declarations. Source analysis also needs
 	// the signatures of generic templates, including file-scoped dot imports.
 	options.Dependencies = append([]check.DependencyPackage(nil), options.Dependencies...)
@@ -141,8 +159,8 @@ func compileParsedPackageWithLimits(ctx context.Context, program ast.Program, op
 		return compiledPackage{}, err
 	}
 	checked := sourceChecked
-	if specialize.Required(sourceChecked, dependencies) {
-		specialized, genericDiagnostics, err := specialize.ApplyWithLimits(sourceChecked, dependencies, specialize.Limits{
+	if specialize.Required(sourceChecked, packageDependencies) {
+		specialized, genericDiagnostics, err := specialize.ApplyWithLimits(sourceChecked, packageDependencies, specialize.Limits{
 			MaxSpecializations: limits.MaxSpecializations, MaxDiagnostics: limits.MaxDiagnostics,
 		})
 		if err != nil {
