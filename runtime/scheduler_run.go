@@ -569,7 +569,7 @@ func (machine *executionMachine) runTask(task *executionTask) (taskYield, []vmVa
 						return taskYield{}, nil, machine.vm.runtimeInstructionError(callFrame, functionID, pc, inst, selectErr)
 					}
 					machine.blockTask(task, current, pc, inst, &blockedOperation{
-						kind: "waitset", waitSet: selectRequest.waitSet, selectDone: selectRequest.complete,
+						kind: "waitset", waitSet: selectRequest.waitSet, reflectSelect: selectRequest,
 					})
 					return taskYield{kind: taskYieldBlocked}, nil, nil
 				}
@@ -595,7 +595,7 @@ func (machine *executionMachine) runTask(task *executionTask) (taskYield, []vmVa
 				if blocked {
 					machine.blockTask(task, current, pc, inst, &blockedOperation{
 						kind: "send", resource: resource, waitable: send.waitable,
-						sendDone: func() []vmValue { return []vmValue{newVMValue("String", ""), newVMValue("Bool", true)} },
+						reflectSend: true,
 					})
 					return taskYield{kind: taskYieldBlocked}, nil, nil
 				}
@@ -620,7 +620,7 @@ func (machine *executionMachine) runTask(task *executionTask) (taskYield, []vmVa
 						return taskYield{}, nil, machine.vm.runtimeInstructionError(callFrame, functionID, pc, inst, waitErr)
 					}
 					machine.blockTask(task, current, pc, inst, &blockedOperation{
-						kind: "recv", resource: resource, waitable: recv.waitable, recvToken: token, recvDone: recv.complete,
+						kind: "recv", resource: resource, waitable: recv.waitable, recvToken: token, reflectRecv: recv,
 					})
 					return taskYield{kind: taskYieldBlocked}, nil, nil
 				}
@@ -642,20 +642,7 @@ func (machine *executionMachine) runTask(task *executionTask) (taskYield, []vmVa
 				if frameErr != nil {
 					return taskYield{}, nil, machine.vm.runtimeInstructionError(callFrame, functionID, pc, inst, frameErr)
 				}
-				callee.resume = func(task *executionTask, caller *executionFrame, results []vmValue) error {
-					values, resumeErr := request.resume(results)
-					if resumeErr == nil && len(values) != request.resumeResults {
-						resumeErr = fmt.Errorf("artifact callback %s resumed with %d results, expected %d", request.functionID, len(values), request.resumeResults)
-					}
-					if resumeErr != nil {
-						machine.startPanic(task, caller, caller.frame.pc-1, newVMValue("String", resumeErr.Error()))
-						return nil
-					}
-					for _, value := range values {
-						caller.frame.push(value)
-					}
-					return nil
-				}
+				callee.resume = machine.reflectCallCompletion(request.result, request.resumeResults, "artifact callback "+request.functionID+" resumed with")
 				task.frames = append(task.frames, callee)
 				continue
 			}

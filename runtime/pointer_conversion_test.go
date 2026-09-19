@@ -44,7 +44,7 @@ func testPointerConversionViews(t *testing.T, operations []byte) {
 	}
 	module, _ := registry.module("example")
 	stored := newVMValue("example.A", int64(1))
-	root := newPointerValue("example.A", func() (vmValue, error) { return stored, nil }, func(v vmValue) error { stored = v; return nil })
+	root := reflectCellPointer(module, "example.A", "stored", &stored)
 	p := root
 	for i, operation := range operations {
 		var err error

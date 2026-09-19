@@ -46,84 +46,79 @@ impl Trace for IntrinsicResume {
 
 impl Instance {
     pub(super) fn resume_reflect(&mut self, resume: IntrinsicResume) -> Result<(), RuntimeError> {
-        if let IntrinsicResume::Select { cases, tokens } = resume {
-            let index = self.pop()?.integer()?;
-            for token in tokens {
-                self.finish_token(token, true)?;
-            }
-            let case = cases.into_iter().nth(index as usize).ok_or_else(|| {
-                RuntimeError::new("invalid_select", "reflect.Select", "invalid selected case")
-            })?;
-            let results = self.complete_reflect_select(case)?;
-            self.frames.last_mut().unwrap().stack.extend(results);
-            return Ok(());
-        }
-        if matches!(
-            resume,
-            IntrinsicResume::Call { .. } | IntrinsicResume::Callback { .. }
-        ) {
-            let (values, reflected) = match resume {
-                IntrinsicResume::Call { count } => (self.pop_values(count)?, true),
-                IntrinsicResume::Callback { results, reflected } => {
-                    let values = self.pop()?;
-                    let values = self.slice_values(&values)?;
-                    if values.len() != results.len() {
-                        return Err(RuntimeError::new(
-                            "panic",
-                            "MakeFunc",
-                            "reflect: wrong result count from MakeFunc callback",
-                        ));
-                    }
-                    let values = values
-                        .iter()
-                        .zip(results)
-                        .map(|(value, typ)| {
-                            let value = self.reflected_value(value)?.current.ok_or_else(|| {
-                                RuntimeError::new(
-                                    "panic",
-                                    "MakeFunc",
-                                    "reflect: invalid callback result",
-                                )
-                            })?;
-                            self.coerce(value, &typ).map_err(|error| {
-                                RuntimeError::new("panic", "MakeFunc", error.message)
-                            })
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-                    (values, reflected)
+        let (values, reflected) = match resume {
+            IntrinsicResume::Select { cases, tokens } => {
+                let index = self.pop()?.integer()?;
+                for token in tokens {
+                    self.finish_token(token, true)?;
                 }
-                _ => unreachable!(),
-            };
-            let results = if reflected {
+                let case = cases.into_iter().nth(index as usize).ok_or_else(|| {
+                    RuntimeError::new("invalid_select", "reflect.Select", "invalid selected case")
+                })?;
+                (self.complete_reflect_select(case)?, false)
+            }
+            IntrinsicResume::Send => (vec![Value::string(""), Value::boolean(true)], false),
+            IntrinsicResume::Receive => {
+                let received = self.pop()?;
+                let value = self.pop()?;
+                (
+                    vec![
+                        self.reflect_snapshot(ReflectedValue::owned(value), 0)?,
+                        received,
+                        Value::string(""),
+                        Value::boolean(true),
+                    ],
+                    false,
+                )
+            }
+            IntrinsicResume::Call { count } => (self.pop_values(count)?, true),
+            IntrinsicResume::Callback { results, reflected } => {
+                let values = self.pop()?;
+                let values = self.slice_values(&values)?;
+                if values.len() != results.len() {
+                    return Err(RuntimeError::new(
+                        "panic",
+                        "MakeFunc",
+                        "reflect: wrong result count from MakeFunc callback",
+                    ));
+                }
                 let values = values
-                    .into_iter()
-                    .map(|value| self.reflect_snapshot(ReflectedValue::owned(value), 0))
+                    .iter()
+                    .zip(results)
+                    .map(|(value, typ)| {
+                        let value = self.reflected_value(value)?.current.ok_or_else(|| {
+                            RuntimeError::new(
+                                "panic",
+                                "MakeFunc",
+                                "reflect: invalid callback result",
+                            )
+                        })?;
+                        self.coerce(value, &typ)
+                            .map_err(|error| RuntimeError::new("panic", "MakeFunc", error.message))
+                    })
                     .collect::<Result<Vec<_>, _>>()?;
-                let typ = TypeIdentity::Slice(std::sync::Arc::new(TypeIdentity::Named(
-                    std::sync::Arc::new(wire::TypeKey {
-                        module_path: "reflect".to_owned(),
-                        decl_id: "Value".to_owned(),
-                    }),
-                )));
-                vec![
-                    self.make_slice(typ, values.len(), values.len(), values)?,
-                    Value::string(""),
-                    Value::boolean(true),
-                ]
-            } else {
-                values
-            };
-            self.frames.last_mut().unwrap().stack.extend(results);
-            return Ok(());
-        }
-        let mut results = Vec::new();
-        if matches!(resume, IntrinsicResume::Receive) {
-            let received = self.pop()?;
-            let value = self.pop()?;
-            results.push(self.reflect_snapshot(ReflectedValue::owned(value), 0)?);
-            results.push(received);
-        }
-        results.extend([Value::string(""), Value::boolean(true)]);
+                (values, reflected)
+            }
+        };
+        let results = if reflected {
+            let values = values
+                .into_iter()
+                .map(|value| self.reflect_snapshot(ReflectedValue::owned(value), 0))
+                .collect::<Result<Vec<_>, _>>()?;
+            let typ = TypeIdentity::Slice(std::sync::Arc::new(TypeIdentity::Named(
+                std::sync::Arc::new(wire::TypeKey {
+                    module_path: "reflect".to_owned(),
+                    decl_id: "Value".to_owned(),
+                }),
+            )));
+            vec![
+                self.make_slice(typ, values.len(), values.len(), values)?,
+                Value::string(""),
+                Value::boolean(true),
+            ]
+        } else {
+            values
+        };
         self.frames.last_mut().unwrap().stack.extend(results);
         Ok(())
     }

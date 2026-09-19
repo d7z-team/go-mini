@@ -132,20 +132,7 @@ func (machine *executionMachine) executeControl(task *executionTask, current *ex
 			if err != nil {
 				return taskYield{}, true, err
 			}
-			callee.resume = func(task *executionTask, caller *executionFrame, results []vmValue) error {
-				out, err := request.resume(results)
-				if err == nil && len(out) != payload.ResultCount {
-					err = fmt.Errorf("reflect MakeFunc returned %d values, expected %d", len(out), payload.ResultCount)
-				}
-				if err != nil {
-					machine.startPanic(task, caller, caller.frame.pc-1, newVMValue("String", err.Error()))
-					return nil
-				}
-				for _, value := range out {
-					caller.frame.push(value)
-				}
-				return nil
-			}
+			callee.resume = machine.reflectCallCompletion(request.result, payload.ResultCount, "reflect MakeFunc returned")
 			task.frames = append(task.frames, callee)
 			return taskYield{}, true, nil
 		}

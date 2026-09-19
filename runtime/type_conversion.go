@@ -234,35 +234,7 @@ func (m *moduleInstance) convertSliceToArrayPointer(value vmValue, target vmType
 	if slice.ByteBacked {
 		identity = fmt.Sprintf("slice-array:%p:%d", slice.ByteBacking, start)
 	}
-	pointer := newPointerValueWithIdentity(arrayRuntimeType, identity, func() (vmValue, error) {
-		if !slice.ByteBacked {
-			return newVMValue(arrayRuntimeType, slice.Backing[start:start+n]), nil
-		}
-		values := make([]vmValue, n)
-		for i := range values {
-			values[i] = slice.valueAt(i)
-		}
-		return newVMValue(arrayRuntimeType, values), nil
-	}, func(updated vmValue) error {
-		values, ok := updated.Data.([]vmValue)
-		if !ok || len(values) != n {
-			return fmt.Errorf("array length mismatch: got %d, want %d", len(values), n)
-		}
-		for i, item := range values {
-			normalized, err := m.coerceAssignableValue(item, elemType)
-			if err != nil {
-				return fmt.Errorf("array element %d: %w", i, err)
-			}
-			if !slice.ByteBacked {
-				slice.Backing[start+i] = m.cloneValueForStore(normalized)
-				continue
-			}
-			if err := slice.setValueAt(i, m.cloneValueForStore(normalized)); err != nil {
-				return fmt.Errorf("array element %d: %w", i, err)
-			}
-		}
-		return nil
-	})
+	pointer := newTargetPointer(&vmPointer{Type: arrayRuntimeType, Identity: identity, target: pointerArray, module: m, array: slice, arrayLen: n})
 	pointer.Type = target
 	return pointer, true, nil
 }

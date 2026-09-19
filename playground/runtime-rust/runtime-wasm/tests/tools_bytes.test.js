@@ -1,6 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { snapshotBytes } from "../dist/tools.js";
+import { copyBytes } from "../dist/protocol.js";
+
+test("binary input copies preserve visible bytes and caller ownership across transfer", () => {
+  for (const source of [
+    Uint8Array.of(1, 2, 3, 4).subarray(1, 3),
+    Buffer.from([1, 2, 3, 4]).subarray(1, 3),
+    Uint8Array.of(2, 3).buffer,
+  ]) {
+    const copy = copyBytes(source);
+    const transferred = structuredClone(copy, { transfer: [copy.buffer] });
+    assert.equal(copy.byteLength, 0);
+    assert.deepEqual(transferred, Uint8Array.of(2, 3));
+    transferred[0] = 99;
+    const original = source instanceof ArrayBuffer ? new Uint8Array(source) : source;
+    assert.deepEqual(Array.from(original), [2, 3]);
+  }
+});
 
 test("compiler byte results preserve slice ranges and independent ownership", () => {
   for (const backing of [

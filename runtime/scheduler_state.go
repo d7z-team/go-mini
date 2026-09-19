@@ -189,7 +189,7 @@ type artifactCallbackRequest struct {
 	upvalues      map[string]*slot
 	resultCount   int
 	resumeResults int
-	resume        func([]vmValue) ([]vmValue, error)
+	result        reflectCallResult
 }
 
 type reflectRecvRequest struct {
@@ -204,8 +204,9 @@ type reflectSendRequest struct {
 }
 
 type reflectSelectRequest struct {
-	waitSet  vmValue
-	complete func(int) ([]vmValue, error)
+	waitSet vmValue
+	ctx     intrinsicContext
+	cases   []reflectSelectCaseState
 }
 
 func (request *reflectRecvRequest) Error() string {
@@ -240,17 +241,17 @@ type machinePanic struct {
 }
 
 type blockedOperation struct {
-	kind       string
-	resource   *waitableResource
-	waitable   vmValue
-	waitSet    vmValue
-	ffi        *pendingFFICall
-	withOK     bool
-	recvDone   func(vmValue, bool) ([]vmValue, error)
-	recvToken  vmValue
-	sendDone   func() []vmValue
-	selectDone func(int) ([]vmValue, error)
-	error      Error
+	kind          string
+	resource      *waitableResource
+	waitable      vmValue
+	waitSet       vmValue
+	ffi           *pendingFFICall
+	withOK        bool
+	reflectRecv   *reflectRecvRequest
+	recvToken     vmValue
+	reflectSend   bool
+	reflectSelect *reflectSelectRequest
+	error         Error
 }
 
 type taskYield struct {

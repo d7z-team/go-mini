@@ -1,13 +1,13 @@
 package runtime
 
-import "github.com/d7z-team/mini-go/compiler/types"
+import ir "github.com/d7z-team/mini-go/runtime/bytecode"
 
 type runtimeValueWalker struct {
 	visitRevision func(*instanceRevision)
 	enter         func(vmValue) bool
 	leave         func()
 	stopped       bool
-	seenPointers  map[*vmPointer]bool
+	seenPointers  map[*vmPointer]pointerVisit
 	seenSlices    map[*vmSlice]bool
 	seenMaps      map[*vmMap]bool
 	seenStructs   map[*vmStruct]bool
@@ -17,10 +17,17 @@ type runtimeValueWalker struct {
 	seenWaitSets  map[*waitSetState]bool
 }
 
+type pointerVisit uint8
+
+const (
+	pointerVisited pointerVisit = 1 << iota
+	pointerReading
+)
+
 func newRuntimeValueWalker(visitRevision func(*instanceRevision)) *runtimeValueWalker {
 	return &runtimeValueWalker{
 		visitRevision: visitRevision,
-		seenPointers:  make(map[*vmPointer]bool), seenSlices: make(map[*vmSlice]bool),
+		seenPointers:  make(map[*vmPointer]pointerVisit), seenSlices: make(map[*vmSlice]bool),
 		seenMaps: make(map[*vmMap]bool), seenSlots: make(map[*slot]bool),
 		seenStructs:   make(map[*vmStruct]bool),
 		seenWaitables: make(map[*waitableResource]bool), seenTokens: make(map[*waitTokenState]bool),
@@ -39,10 +46,10 @@ func (walker *runtimeValueWalker) slot(cell *slot) {
 		return
 	}
 	walker.seenSlots[cell] = true
-	if walker.enter != nil && !cell.initialized {
+	if !cell.initialized {
 		return
 	}
-	walker.value(cell.load())
+	walker.value(cell.value)
 }
 
 func (walker *runtimeValueWalker) value(value vmValue) {
@@ -83,33 +90,14 @@ func (walker *runtimeValueWalker) value(value vmValue) {
 	case vmValue:
 		walker.value(data)
 	case *vmPointer:
-		if data != nil && !walker.seenPointers[data] {
-			walker.seenPointers[data] = true
+		if data != nil && walker.seenPointers[data]&pointerVisited == 0 {
+			walker.seenPointers[data] |= pointerVisited
 			if data.original != nil {
 				walker.value(newVMValue(pointerType(data.original.Type), data.original))
 				return
 			}
-			if walker.enter != nil {
-				// Byte storage cannot retain code. Loading an array view would
-				// materialize every byte before the next inspection budget check.
-				_, elem, array := data.Type.ArrayInfo()
-				if data.Type.Primitive(types.PrimitiveUint8) || array && elem.Primitive(types.PrimitiveUint8) {
-					return
-				}
-			}
-			if walker.enter != nil && data.slot != nil {
-				if !data.slot.initialized {
-					return
-				}
-				if len(data.path) == 0 {
-					walker.slot(data.slot)
-					return
-				}
-			}
-			if data.load != nil || data.slot != nil {
-				if pointed, err := data.loadValue(); err == nil {
-					walker.value(pointed)
-				}
+			if pointed := walker.pointerContents(data); pointed.Type.Valid() || pointed.Data != nil {
+				walker.value(pointed)
 			}
 		}
 	case *vmSlice:
@@ -191,6 +179,106 @@ func (walker *runtimeValueWalker) value(value vmValue) {
 				}
 				walker.waitToken(token)
 			}
+		}
+	}
+}
+
+// pointerContents observes stored references without initializing slots, coercing
+// values or expanding byte-backed array views. Storage accounting follows owners
+// separately; revision inspection follows the selected address only.
+func (walker *runtimeValueWalker) pointerContents(pointer *vmPointer) vmValue {
+	if pointer == nil || walker.stopped || walker.seenPointers[pointer]&pointerReading != 0 {
+		return vmValue{}
+	}
+	walker.seenPointers[pointer] |= pointerReading
+	defer func() {
+		walker.seenPointers[pointer] &^= pointerReading
+		if walker.seenPointers[pointer] == 0 {
+			delete(walker.seenPointers, pointer)
+		}
+	}()
+	if pointer.original != nil {
+		return walker.addressContents(newVMValue("", pointer.original), nil, nil, true)
+	}
+	switch pointer.target {
+	case pointerCell:
+		if pointer.cell != nil {
+			return *pointer.cell
+		}
+	case pointerField:
+		return walker.addressContents(pointer.parent, []ir.AddressPathSegment{{Kind: "field", Field: pointer.field}}, nil, true)
+	case pointerIndex:
+		return walker.addressContents(pointer.parent, []ir.AddressPathSegment{{Kind: "index"}}, []vmValue{newVMValue("Int", pointer.index)}, true)
+	case pointerArray:
+		if pointer.array != nil && !pointer.array.ByteBacked {
+			return newVMValue(pointer.Type, pointer.array.Backing[pointer.array.Start:pointer.array.Start+pointer.arrayLen])
+		}
+	case pointerSlot:
+		if pointer.slot != nil && pointer.slot.initialized {
+			return walker.addressContents(pointer.slot.value, pointer.path, pointer.indexes, false)
+		}
+	}
+	return vmValue{}
+}
+
+func (walker *runtimeValueWalker) addressContents(value vmValue, path []ir.AddressPathSegment, indexes []vmValue, indirect bool) vmValue {
+	indexPosition := 0
+	for position := 0; ; position++ {
+		if walker.stopped {
+			return vmValue{}
+		}
+		if position < len(path) {
+			if walker.enter != nil {
+				if !walker.enter(value) {
+					return vmValue{}
+				}
+				defer walker.leave()
+			}
+			indirect = true
+		}
+		if pointer, ok := value.Data.(*vmPointer); ok && indirect {
+			if walker.enter != nil {
+				if !walker.enter(value) {
+					return vmValue{}
+				}
+				defer walker.leave()
+			}
+			value = walker.pointerContents(pointer)
+		}
+		if position == len(path) {
+			return value
+		}
+		indirect = false
+		segment := path[position]
+		switch segment.Kind {
+		case "indirect":
+		case "field":
+			value, _ = structValueField(value.Data, segment.Field)
+		case "index":
+			if indexPosition >= len(indexes) {
+				return vmValue{}
+			}
+			index, err := asInt64(indexes[indexPosition])
+			indexPosition++
+			if err != nil || index < 0 {
+				return vmValue{}
+			}
+			switch data := value.Data.(type) {
+			case *vmSlice:
+				if data == nil || data.ByteBacked || index >= int64(data.Len) {
+					return vmValue{}
+				}
+				value = data.Backing[data.Start+int(index)]
+			case []vmValue:
+				if index >= int64(len(data)) {
+					return vmValue{}
+				}
+				value = data[index]
+			default:
+				return vmValue{}
+			}
+		default:
+			return vmValue{}
 		}
 	}
 }

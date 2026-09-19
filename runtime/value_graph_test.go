@@ -45,7 +45,7 @@ func TestRuntimeValueWalkerFindsNestedMethodRevision(t *testing.T) {
 		}},
 	})
 	slice := newSliceValue("Slice<Any>", []vmValue{target, dynamic})
-	pointer := newPointerValue("Slice<Any>", func() (vmValue, error) { return slice, nil }, nil)
+	pointer := newSlotPointerValue("Slice<Any>", "slice", &slot{value: slice, initialized: true})
 	pointer = newVMValue(pointer.Type, &vmPointer{Type: coerceRuntimeType("Slice<Any>"), original: pointer.Data.(*vmPointer)})
 	seen := make(map[*instanceRevision]bool)
 	newRuntimeValueWalker(func(found *instanceRevision) { seen[found] = true }).value(pointer)

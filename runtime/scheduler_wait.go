@@ -119,8 +119,8 @@ func (machine *executionMachine) resumeBlocked(task *executionTask, op *blockedO
 			return false, nil
 		}
 		if op.resource.takeCompletedSend(task.id) {
-			if op.sendDone != nil {
-				for _, value := range op.sendDone() {
+			if op.reflectSend {
+				for _, value := range []vmValue{newVMValue("String", ""), newVMValue("Bool", true)} {
 					callFrame.push(value)
 				}
 			}
@@ -145,8 +145,8 @@ func (machine *executionMachine) resumeBlocked(task *executionTask, op *blockedO
 				return false, err
 			}
 		}
-		if op.recvDone != nil {
-			values, err := op.recvDone(value, ok)
+		if op.reflectRecv != nil {
+			values, err := op.reflectRecv.complete(value, ok)
 			if err != nil {
 				return false, err
 			}
@@ -178,9 +178,9 @@ func (machine *executionMachine) resumeBlocked(task *executionTask, op *blockedO
 			}
 			return false, err
 		}
-		if op.selectDone != nil {
+		if op.reflectSelect != nil {
 			selected, _ := asInt64(index)
-			values, err := op.selectDone(int(selected))
+			values, err := op.reflectSelect.complete(int(selected))
 			if err != nil {
 				current := task.frames[len(task.frames)-1]
 				machine.startPanic(task, current, current.frame.pc-1, newVMValue("String", err.Error()))

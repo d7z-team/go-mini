@@ -110,18 +110,18 @@ func reflectSelect(ctx intrinsicContext, args []vmValue) ([]vmValue, error) {
 		waitState.Tokens = append(waitState.Tokens, token.Data.(*waitTokenState))
 		selectedCases = append(selectedCases, selected)
 	}
-	request := &reflectSelectRequest{waitSet: waitSet}
-	request.complete = func(index int) ([]vmValue, error) {
-		if index < 0 || index >= len(selectedCases) {
-			return nil, fmt.Errorf("reflect.Select: selected case index %d is invalid", index)
-		}
-		selected := selectedCases[index]
-		if err := cancelWaitSet(waitSet); err != nil {
-			return nil, err
-		}
-		return reflectCompleteSelect(ctx, selected)
+	return nil, &reflectSelectRequest{waitSet: waitSet, ctx: ctx, cases: selectedCases}
+}
+
+func (request *reflectSelectRequest) complete(index int) ([]vmValue, error) {
+	if index < 0 || index >= len(request.cases) {
+		return nil, fmt.Errorf("reflect.Select: selected case index %d is invalid", index)
 	}
-	return nil, request
+	selected := request.cases[index]
+	if err := cancelWaitSet(request.waitSet); err != nil {
+		return nil, err
+	}
+	return reflectCompleteSelect(request.ctx, selected)
 }
 
 func reflectSelectReady(module *moduleInstance, selected reflectSelectCaseState) (bool, error) {

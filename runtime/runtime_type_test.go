@@ -259,7 +259,7 @@ func TestPointerConversionPreservesStorageAndNamedIdentity(t *testing.T) {
 	}
 	module, _ := registry.module("example")
 	stored := newVMValue("example.Left", int64(1))
-	original := newPointerValue("example.Left", func() (vmValue, error) { return stored, nil }, func(v vmValue) error { stored = v; return nil })
+	original := reflectCellPointer(module, "example.Left", "stored", &stored)
 	converted, err := module.convertValue(original, "Ptr<example.Right>")
 	if err != nil {
 		t.Fatal(err)

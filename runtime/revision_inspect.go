@@ -322,6 +322,18 @@ func (i *Instance) RevisionRoots(ctx context.Context, generation uint64, limits 
 					if task.blocked.resource != nil {
 						inspect(root, newVMValue(task.blocked.resource.Type, task.blocked.resource))
 					}
+					if request := task.blocked.reflectSelect; request != nil {
+						for index, selected := range request.cases {
+							if stopped {
+								break
+							}
+							ref := root
+							ref.Path += fmt.Sprintf("/reflect select/case %d/channel", index)
+							inspect(ref, selected.channel)
+							ref.Path = root.Path + fmt.Sprintf("/reflect select/case %d/send", index)
+							inspect(ref, selected.send)
+						}
+					}
 				}
 			}
 		}

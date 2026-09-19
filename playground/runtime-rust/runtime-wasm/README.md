@@ -162,6 +162,8 @@ RPC 续租由 Worker 内的 Rust Endpoint 负责。暂停脚本不会暂停网�
 HostValue 使用显式类型与数据描述；64 位整数及浮点位模式使用 BigInt，
 字节使用 Uint8Array。`values.int/bool/string/bytes` 构造常用输入。
 快照保留别名和循环；输入会复制，返回快照独立拥有数据。
+运行时和语言服务接收的镜像、符号字节也会复制；传入 Buffer 或偏移视图时只复制可见范围，
+向 Worker 转移数据不会分离调用方的缓冲区。
 
 通过 `maxSteps`、`maxHeapBytes` 和 `maxPendingCalls` 限制执行。
 镜像加载、FFI 和快照也受各自预算约束。guest 计费不代表全部 JS、网络或进程内存。

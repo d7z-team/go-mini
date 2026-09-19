@@ -59,6 +59,7 @@ type runtimeValueSizer struct {
 	seenMaps      map[*vmMap]bool
 	seenStructs   map[*vmStruct]bool
 	seenSlots     map[*slot]bool
+	seenCells     map[*vmValue]bool
 	seenWaitables map[*waitableResource]bool
 	seenTokens    map[*waitTokenState]bool
 	seenWaitSets  map[*waitSetState]bool
@@ -75,6 +76,7 @@ func newRuntimeValueSizer() *runtimeValueSizer {
 		seenSlots: make(map[*slot]bool), seenWaitables: make(map[*waitableResource]bool),
 		seenTokens: make(map[*waitTokenState]bool), seenWaitSets: make(map[*waitSetState]bool),
 		seenTasks: make(map[*executionTask]bool),
+		seenCells: make(map[*vmValue]bool),
 	}
 }
 
@@ -149,10 +151,15 @@ func (sizer *runtimeValueSizer) visitValue(value vmValue) {
 		for _, index := range data.indexes {
 			sizer.value(index)
 		}
-		if data.slot == nil && data.load != nil {
-			if pointed, err := data.loadValue(); err == nil {
-				sizer.value(pointed)
-			}
+		if data.cell != nil && !sizer.seenCells[data.cell] {
+			sizer.seenCells[data.cell] = true
+			sizer.value(*data.cell)
+		}
+		if data.parent.Type.Valid() {
+			sizer.value(data.parent)
+		}
+		if data.array != nil {
+			sizer.value(newVMValue("", data.array))
 		}
 	case *vmSlice:
 		if data == nil || sizer.seenSlices[data] {
@@ -291,6 +298,13 @@ func (sizer *runtimeValueSizer) task(task *executionTask) {
 		}
 	}
 	if blocked := task.blocked; blocked != nil {
+		if request := blocked.reflectSelect; request != nil {
+			sizer.add(artifact.RuntimeNodeBytes + int64(cap(request.cases))*(artifact.RuntimeNodeBytes+artifact.RuntimeSlotBytes))
+			for _, selected := range request.cases {
+				sizer.value(selected.channel)
+				sizer.value(selected.send)
+			}
+		}
 		sizer.value(blocked.waitable)
 		sizer.value(blocked.waitSet)
 		sizer.value(blocked.recvToken)

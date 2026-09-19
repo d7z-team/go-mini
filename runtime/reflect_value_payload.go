@@ -291,23 +291,7 @@ func reflectStructFieldPointer(module *moduleInstance, parentPtr vmValue, field 
 	if pointer, err := pointerValue(parentPtr); err == nil && strings.TrimSpace(pointer.Identity) != "" {
 		identity = pointer.Identity + ".field:" + fieldName
 	}
-	return newPointerValueWithIdentity(fieldType, identity, func() (vmValue, error) {
-		parent, err := derefPointer(parentPtr)
-		if err != nil {
-			return vmValue{}, err
-		}
-		return loadFieldValue(module, parent, fieldName)
-	}, func(value vmValue) error {
-		parent, err := derefPointer(parentPtr)
-		if err != nil {
-			return err
-		}
-		parent, err = storeFieldValue(module, parent, fieldName, value)
-		if err != nil {
-			return err
-		}
-		return storePointer(parentPtr, parent)
-	})
+	return newTargetPointer(&vmPointer{Type: coerceRuntimeType(fieldType), Identity: identity, target: pointerField, module: module, parent: parentPtr, field: fieldName})
 }
 
 func reflectIndexPointer(module *moduleInstance, parentPtr vmValue, index int64) (vmValue, error) {
@@ -333,21 +317,5 @@ func reflectIndexPointer(module *moduleInstance, parentPtr vmValue, index int64)
 	if slice, ok := parent.Data.(*vmSlice); ok && slice != nil {
 		identity = fmt.Sprintf("slice:%p.index:%d", slice.storage, int64(slice.Start)+index)
 	}
-	return newPointerValueWithIdentity(elemType, identity, func() (vmValue, error) {
-		parent, err := derefPointer(parentPtr)
-		if err != nil {
-			return vmValue{}, err
-		}
-		return indexValue(module, parent, newVMValue("Int", index))
-	}, func(value vmValue) error {
-		parent, err := derefPointer(parentPtr)
-		if err != nil {
-			return err
-		}
-		parent, err = setIndexValue(module, parent, newVMValue("Int", index), value)
-		if err != nil {
-			return err
-		}
-		return storePointer(parentPtr, parent)
-	}), nil
+	return newTargetPointer(&vmPointer{Type: coerceRuntimeType(elemType), Identity: identity, target: pointerIndex, module: module, parent: parentPtr, index: index}), nil
 }

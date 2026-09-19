@@ -21,22 +21,7 @@ func reflectRuntimeTypeFromTypeValue(ctx intrinsicContext, value vmValue) (strin
 }
 
 func reflectCellPointer(module *moduleInstance, typ, identity string, cell *vmValue) vmValue {
-	return newPointerValueWithIdentity(typ, identity, func() (vmValue, error) {
-		if cell == nil {
-			return vmValue{}, errors.New("reflect: invalid cell pointer")
-		}
-		return *cell, nil
-	}, func(value vmValue) error {
-		if cell == nil {
-			return errors.New("reflect: invalid cell pointer")
-		}
-		normalized, err := module.coerceAssignableValue(value, typ)
-		if err != nil {
-			return err
-		}
-		*cell = module.cloneValueForStore(normalized)
-		return nil
-	})
+	return newTargetPointer(&vmPointer{Type: coerceRuntimeType(typ), Identity: identity, target: pointerCell, module: module, cell: cell})
 }
 
 func reflectZeroValue(module *moduleInstance, typ string) vmValue {

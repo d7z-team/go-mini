@@ -1,4 +1,5 @@
 import { Runtime, values } from "./runtime.js";
+import { copyBytes } from "./protocol.js";
 import type { HostRequest, Options, Snapshot } from "./types.js";
 
 export interface SourceFile {
@@ -143,19 +144,15 @@ export class LanguageService {
     image: Uint8Array | ArrayBuffer,
     options: Options = {},
   ): Promise<LanguageService> {
-    const service = new LanguageService(
-      factory,
-      image instanceof Uint8Array ? Uint8Array.from(image) : image.slice(0),
-      {
-        ...options,
-        capabilities: options.capabilities?.slice(),
-        symbols: options.symbols ? Uint8Array.from(options.symbols) : undefined,
-        providerModule: options.providerModule?.toString(),
-        workerUrl: options.workerUrl?.toString(),
-        wasmUrl: options.wasmUrl?.toString(),
-        signal: undefined,
-      },
-    );
+    const service = new LanguageService(factory, copyBytes(image), {
+      ...options,
+      capabilities: options.capabilities?.slice(),
+      symbols: options.symbols ? copyBytes(options.symbols) : undefined,
+      providerModule: options.providerModule?.toString(),
+      workerUrl: options.workerUrl?.toString(),
+      wasmUrl: options.wasmUrl?.toString(),
+      signal: undefined,
+    });
     service.runtime = await service.createRuntime(options.signal);
     try {
       await service.request({ Operation: "hello" }, options.signal);
@@ -363,7 +360,7 @@ export class LanguageService {
     return this.runtime.stats();
   }
   upgrade(image: Uint8Array | ArrayBuffer, signal?: AbortSignal): Promise<void> {
-    const bytes = image instanceof Uint8Array ? Uint8Array.from(image) : image.slice(0);
+    const bytes = copyBytes(image);
     return this.enqueue(async () => {
       const candidate = await LanguageService.create(this.factory, bytes, {
         ...this.options,

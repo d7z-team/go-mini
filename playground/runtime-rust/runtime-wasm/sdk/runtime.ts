@@ -1,4 +1,5 @@
 import {
+  copyBytes,
   deferred,
   toError,
   type Control,
@@ -109,8 +110,7 @@ export class Runtime {
     };
     signal?.addEventListener("abort", abort, { once: true });
     try {
-      // Uint8Array.from also copies Node Buffer, whose slice() retains storage.
-      const bytes = Uint8Array.from(image instanceof Uint8Array ? image : new Uint8Array(image));
+      const bytes = copyBytes(image);
       vm.worker.send({ kind: "create", image: bytes, options: configuration }, [bytes.buffer]);
       if (signal?.aborted) abort();
       await vm.ready.promise;

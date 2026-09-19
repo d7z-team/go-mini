@@ -1,9 +1,57 @@
 package runtime
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+type lateAlarmClock struct {
+	callback func()
+	stops    atomic.Int32
+}
+
+func (*lateAlarmClock) Now() time.Time { return time.Unix(100, 0) }
+func (clock *lateAlarmClock) AfterFunc(_ time.Duration, callback func()) ClockTimer {
+	clock.callback = callback
+	return clock
+}
+func (clock *lateAlarmClock) Stop() bool { clock.stops.Add(1); return false }
+
+func TestRuntimeTimerLateCallbackCannotReviveStoppedTimer(t *testing.T) {
+	for _, concurrent := range []bool{false, true} {
+		clock := &lateAlarmClock{}
+		machine, module := newTimerTestVM(clock)
+		revision := &instanceRevision{}
+		module.revision = revision
+		signal := newTimerSignal(t, module)
+		if err := machine.startTimer(module, signal, time.Hour, 0); err != nil {
+			t.Fatal(err)
+		}
+		ready, done := make(chan struct{}), make(chan struct{})
+		go func() { <-ready; clock.callback(); close(done) }()
+		if concurrent {
+			close(ready)
+		}
+		_, stopErr := machine.stopTimer(module, signal)
+		if !concurrent {
+			close(ready)
+		}
+		<-done
+		if stopErr != nil {
+			t.Fatal(stopErr)
+		}
+		if err := machine.drainReadyTimers(); err != nil {
+			t.Fatal(err)
+		}
+		if len(machine.timers) != 0 || machine.pendingEvents.Load() != 0 || revision.pins != 0 || clock.stops.Load() != 1 {
+			t.Fatal("late callback revived timer ownership")
+		}
+		if fired, closed := receiveTimerSignal(t, module, signal); fired || !closed {
+			t.Fatal("stopped timer delivered a signal")
+		}
+	}
+}
 
 type nilAlarmClock struct{ now time.Time }
 

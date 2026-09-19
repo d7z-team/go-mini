@@ -9,35 +9,37 @@ import (
 )
 
 type vmPointer struct {
-	Type           vmType
-	Identity       string
-	original       *vmPointer
-	load           func() (vmValue, error)
-	store          func(vmValue) error
-	commitMutation func(vmValue) error
-	slot           *slot
-	path           []ir.AddressPathSegment
-	indexes        []vmValue
+	Type     vmType
+	Identity string
+	original *vmPointer
+	target   pointerTarget
+	module   *moduleInstance
+	cell     *vmValue
+	parent   vmValue
+	field    string
+	index    int64
+	array    *vmSlice
+	arrayLen int
+	slot     *slot
+	path     []ir.AddressPathSegment
+	indexes  []vmValue
 }
 
-func newPointerValue(typ any, load func() (vmValue, error), store func(vmValue) error) vmValue {
-	pointerTypeValue := coerceRuntimeType(typ)
-	pointer := &vmPointer{Type: pointerTypeValue, load: load, store: store}
-	pointer.Identity = fmt.Sprintf("pointer:%p", pointer)
-	return newVMValue(pointerType(pointerTypeValue), pointer)
-}
+type pointerTarget uint8
 
-func newPointerValueWithIdentity(typ any, identity string, load func() (vmValue, error), store func(vmValue) error) vmValue {
-	return newPointerValueWithMutation(typ, identity, load, store, store)
-}
+const (
+	pointerSlot pointerTarget = iota
+	pointerCell
+	pointerField
+	pointerIndex
+	pointerArray
+)
 
-func newPointerValueWithMutation(typ any, identity string, load func() (vmValue, error), store, commitMutation func(vmValue) error) vmValue {
-	pointerTypeValue := coerceRuntimeType(typ)
-	pointer := &vmPointer{Type: pointerTypeValue, Identity: identity, load: load, store: store, commitMutation: commitMutation}
+func newTargetPointer(pointer *vmPointer) vmValue {
 	if pointer.Identity == "" {
 		pointer.Identity = fmt.Sprintf("pointer:%p", pointer)
 	}
-	return newVMValue(pointerType(pointerTypeValue), pointer)
+	return newVMValue(pointerType(pointer.Type), pointer)
 }
 
 func newSlotPointerValue(typ any, identity string, cell *slot) vmValue {
@@ -59,8 +61,34 @@ func (pointer *vmPointer) loadValue() (vmValue, error) {
 		value.Type = pointer.Type
 		return value, err
 	}
-	if pointer.load != nil {
-		return pointer.load()
+	switch pointer.target {
+	case pointerCell:
+		if pointer.cell == nil {
+			return vmValue{}, errors.New("reflect: invalid cell pointer")
+		}
+		return *pointer.cell, nil
+	case pointerField, pointerIndex:
+		parent := pointer.parent
+		if parent.Type.ShapeKind() == types.Pointer {
+			var err error
+			parent, err = derefPointer(parent)
+			if err != nil {
+				return vmValue{}, err
+			}
+		}
+		if pointer.target == pointerField {
+			return loadFieldValue(pointer.module, parent, pointer.field)
+		}
+		return indexValue(pointer.module, parent, newVMValue("Int", pointer.index))
+	case pointerArray:
+		if !pointer.array.ByteBacked {
+			return newVMValue(pointer.Type, pointer.array.Backing[pointer.array.Start:pointer.array.Start+pointer.arrayLen]), nil
+		}
+		values := make([]vmValue, pointer.arrayLen)
+		for i := range values {
+			values[i] = pointer.array.valueAt(i)
+		}
+		return newVMValue(pointer.Type, values), nil
 	}
 	if pointer.slot == nil {
 		return vmValue{}, errors.New("invalid pointer")
@@ -76,11 +104,55 @@ func (pointer *vmPointer) storeValue(value vmValue, mutation bool) error {
 		value.Type = pointer.original.Type
 		return pointer.original.storeValue(value, mutation)
 	}
-	if mutation && pointer.commitMutation != nil {
-		return pointer.commitMutation(value)
-	}
-	if pointer.store != nil {
-		return pointer.store(value)
+	switch pointer.target {
+	case pointerCell:
+		if pointer.cell == nil {
+			return errors.New("reflect: invalid cell pointer")
+		}
+		normalized, err := pointer.module.coerceAssignableValue(value, pointer.Type)
+		if err != nil {
+			return err
+		}
+		*pointer.cell = pointer.module.cloneValueForStore(normalized)
+		return nil
+	case pointerField, pointerIndex:
+		parent := pointer.parent
+		indirect := parent.Type.ShapeKind() == types.Pointer
+		var err error
+		if indirect {
+			parent, err = derefPointer(parent)
+			if err != nil {
+				return err
+			}
+		}
+		if pointer.target == pointerField {
+			parent, err = storeFieldValue(pointer.module, parent, pointer.field, value)
+		} else {
+			parent, err = setIndexValue(pointer.module, parent, newVMValue("Int", pointer.index), value)
+		}
+		if err != nil {
+			return err
+		}
+		if indirect {
+			return storePointer(pointer.parent, parent)
+		}
+		return nil
+	case pointerArray:
+		values, ok := value.Data.([]vmValue)
+		if !ok || len(values) != pointer.arrayLen {
+			return fmt.Errorf("array length mismatch: got %d, want %d", len(values), pointer.arrayLen)
+		}
+		_, elem, _ := pointer.Type.ArrayInfo()
+		for i, item := range values {
+			normalized, err := pointer.module.coerceAssignableValue(item, elem)
+			if err != nil {
+				return fmt.Errorf("array element %d: %w", i, err)
+			}
+			if err := pointer.array.setValueAt(i, pointer.module.cloneValueForStore(normalized)); err != nil {
+				return fmt.Errorf("array element %d: %w", i, err)
+			}
+		}
+		return nil
 	}
 	if pointer.slot == nil {
 		return errors.New("invalid pointer")
@@ -141,7 +213,7 @@ func pointerValue(value vmValue) (*vmPointer, error) {
 	if pointer == nil {
 		return nil, newGuestPanic(errors.New("invalid memory address or nil pointer dereference"))
 	}
-	if pointer.original == nil && (pointer.load == nil || pointer.store == nil) && pointer.slot == nil {
+	if pointer.original == nil && pointer.target == pointerSlot && pointer.slot == nil {
 		return nil, errors.New("invalid pointer")
 	}
 	return pointer, nil

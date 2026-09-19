@@ -1,5 +1,10 @@
 import type { Bindings, Frame, FrameRef, HostValue, Options, Snapshot, Stats } from "./types.js";
 
+/** Own the visible bytes, including Buffer and offset views, before transfer or retention. */
+export function copyBytes(source: Uint8Array | ArrayBuffer): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(source instanceof Uint8Array ? source : new Uint8Array(source));
+}
+
 export interface Failure {
   message: string;
   code?: string;

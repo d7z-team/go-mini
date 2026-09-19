@@ -81,14 +81,8 @@ func reflectValueCall(ctx intrinsicContext, args []vmValue) ([]vmValue, error) {
 	if err != nil {
 		return reflectValueCallError(err.Error()), nil
 	}
-	resume := request.resume
-	request.resume = func(results []vmValue) ([]vmValue, error) {
-		results, err := resume(results)
-		if err != nil {
-			return nil, err
-		}
-		return reflectValueCallResults(ctx, results)
-	}
+	request.result.reflected = true
+	request.result.ctx = ctx
 	return nil, request
 }
 
@@ -159,12 +153,7 @@ func reflectCallValue(ctx intrinsicContext, current vmValue, reflectedArgs []vmV
 		upvalues:    ref.upvalues,
 		resultCount: len(function.ResultTypes),
 	}
-	request.resume = func(results []vmValue) ([]vmValue, error) {
-		if targetModule != module {
-			results = targetModule.qualifyValuesForExport(results)
-		}
-		return results, nil
-	}
+	request.result = reflectCallResult{module: targetModule, qualify: targetModule != module}
 	return request, nil
 }
 
@@ -201,12 +190,7 @@ func reflectCallUnboundMethodTarget(ctx intrinsicContext, target reflectUnboundM
 		module: target.Module, functionID: target.Method.FunctionID,
 		args: args, resultCount: len(function.ResultTypes),
 	}
-	request.resume = func(results []vmValue) ([]vmValue, error) {
-		if target.Module != currentModule {
-			results = target.Module.qualifyValuesForExport(results)
-		}
-		return results, nil
-	}
+	request.result = reflectCallResult{module: target.Module, qualify: target.Module != currentModule}
 	return request, nil
 }
 
@@ -241,12 +225,7 @@ func reflectCallMethodTarget(ctx intrinsicContext, target reflectMethodTarget, r
 		args:        args,
 		resultCount: len(function.ResultTypes),
 	}
-	request.resume = func(results []vmValue) ([]vmValue, error) {
-		if targetModule != currentModule {
-			results = targetModule.qualifyValuesForExport(results)
-		}
-		return results, nil
-	}
+	request.result = reflectCallResult{module: targetModule, qualify: targetModule != currentModule}
 	return request, nil
 }
 

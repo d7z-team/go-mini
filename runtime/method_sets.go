@@ -410,32 +410,11 @@ func (m *moduleInstance) methodSetOwner(valueType any) (*moduleInstance, string,
 }
 
 func embeddedFieldPointer(module *moduleInstance, container vmValue, fieldName, fieldType string) vmValue {
+	identity := ""
 	if container.Type.ShapeKind() == types.Pointer {
-		identity := fmt.Sprintf("field:%v:%s", referenceComparableIdentity(container.Data), fieldName)
-		return newPointerValueWithIdentity(fieldType, identity, func() (vmValue, error) {
-			loaded, err := derefPointer(container)
-			if err != nil {
-				return vmValue{}, err
-			}
-			return loadFieldValue(module, loaded, fieldName)
-		}, func(value vmValue) error {
-			loaded, err := derefPointer(container)
-			if err != nil {
-				return err
-			}
-			loaded, err = storeFieldValue(module, loaded, fieldName, value)
-			if err != nil {
-				return err
-			}
-			return storePointer(container, loaded)
-		})
+		identity = fmt.Sprintf("field:%v:%s", referenceComparableIdentity(container.Data), fieldName)
 	}
-	return newPointerValue(fieldType, func() (vmValue, error) {
-		return loadFieldValue(module, container, fieldName)
-	}, func(value vmValue) error {
-		_, err := storeFieldValue(module, container, fieldName, value)
-		return err
-	})
+	return newTargetPointer(&vmPointer{Type: coerceRuntimeType(fieldType), Identity: identity, target: pointerField, module: module, parent: container, field: fieldName})
 }
 
 func isPointerType(typ string) bool {
